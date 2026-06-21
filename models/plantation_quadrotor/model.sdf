@@ -6,33 +6,30 @@
 
     <link name="base_link">
       <inertial>
-        <mass>1.45</mass>
+        <mass>1.5</mass>
         <inertia>
-          <ixx>0.030</ixx>
+          <ixx>0.0347563</ixx>
           <ixy>0</ixy>
           <ixz>0</ixz>
-          <iyy>0.030</iyy>
+          <iyy>0.070</iyy>
           <iyz>0</iyz>
-          <izz>0.055</izz>
+          <izz>0.0977</izz>
         </inertia>
       </inertial>
       <collision name="body_collision">
         <geometry>
           <box>
-            <size>0.42 0.42 0.12</size>
+            <size>0.47 0.47 0.11</size>
           </box>
         </geometry>
       </collision>
-      <visual name="body_visual">
+      <visual name="x3_body_visual">
         <geometry>
-          <box>
-            <size>0.42 0.42 0.12</size>
-          </box>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://plantation_quadrotor/meshes/x3.dae</uri>
+          </mesh>
         </geometry>
-        <material>
-          <ambient>0.035 0.040 0.045 1</ambient>
-          <diffuse>0.055 0.060 0.065 1</diffuse>
-        </material>
       </visual>
 
       <sensor name="imu" type="imu">
@@ -55,7 +52,7 @@
     </link>
 
     <link name="zed2i_link">
-      <pose relative_to="base_link">0.27 0 0.015 0 0 0</pose>
+      <pose relative_to="base_link">0.255 0 -0.035 0 0 0</pose>
       <inertial>
         <mass>0.09</mass>
         <inertia>
@@ -72,6 +69,32 @@
         <material>
           <ambient>0.15 0.16 0.17 1</ambient>
           <diffuse>0.20 0.21 0.22 1</diffuse>
+        </material>
+      </visual>
+      <visual name="zed2i_left_lens">
+        <pose>0.02 0.06 0 0 1.57079632679 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.014</radius>
+            <length>0.010</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.02 0.025 0.03 1</ambient>
+          <diffuse>0.03 0.04 0.05 1</diffuse>
+        </material>
+      </visual>
+      <visual name="zed2i_right_lens">
+        <pose>0.02 -0.06 0 0 1.57079632679 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.014</radius>
+            <length>0.010</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.02 0.025 0.03 1</ambient>
+          <diffuse>0.03 0.04 0.05 1</diffuse>
         </material>
       </visual>
 
@@ -200,51 +223,55 @@
     </joint>
 
     <link name="rotor_0">
-      <pose relative_to="base_link">0.24 0.24 0.055 0 0 0</pose>
-      <inertial><mass>0.035</mass><inertia><ixx>0.00006</ixx><iyy>0.00006</iyy><izz>0.00010</izz></inertia></inertial>
-      <visual name="visual"><geometry><cylinder><radius>0.13</radius><length>0.018</length></cylinder></geometry><material><ambient>0.1 0.35 0.95 1</ambient><diffuse>0.1 0.35 0.95 1</diffuse></material></visual>
+      <pose relative_to="base_link">0.13 -0.22 0.023 0 0 0</pose>
+      <inertial><mass>0.005</mass><inertia><ixx>9.75e-07</ixx><ixy>0</ixy><ixz>0</ixz><iyy>4.17041e-05</iyy><iyz>0</iyz><izz>4.26041e-05</izz></inertia></inertial>
+      <collision name="collision"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></collision>
+      <visual name="visual"><geometry><mesh><scale>0.1 0.1 0.1</scale><uri>model://plantation_quadrotor/meshes/propeller_ccw.dae</uri></mesh></geometry><material><ambient>0.1 0.35 0.95 1</ambient><diffuse>0.1 0.35 0.95 1</diffuse></material></visual>
     </link>
     <link name="rotor_1">
-      <pose relative_to="base_link">-0.24 0.24 0.055 0 0 0</pose>
-      <inertial><mass>0.035</mass><inertia><ixx>0.00006</ixx><iyy>0.00006</iyy><izz>0.00010</izz></inertia></inertial>
-      <visual name="visual"><geometry><cylinder><radius>0.13</radius><length>0.018</length></cylinder></geometry><material><ambient>0.1 0.35 0.95 1</ambient><diffuse>0.1 0.35 0.95 1</diffuse></material></visual>
+      <pose relative_to="base_link">-0.13 0.20 0.023 0 0 0</pose>
+      <inertial><mass>0.005</mass><inertia><ixx>9.75e-07</ixx><ixy>0</ixy><ixz>0</ixz><iyy>4.17041e-05</iyy><iyz>0</iyz><izz>4.26041e-05</izz></inertia></inertial>
+      <collision name="collision"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></collision>
+      <visual name="visual"><geometry><mesh><scale>0.1 0.1 0.1</scale><uri>model://plantation_quadrotor/meshes/propeller_ccw.dae</uri></mesh></geometry><material><ambient>0.95 0.12 0.1 1</ambient><diffuse>0.95 0.12 0.1 1</diffuse></material></visual>
     </link>
     <link name="rotor_2">
-      <pose relative_to="base_link">-0.24 -0.24 0.055 0 0 0</pose>
-      <inertial><mass>0.035</mass><inertia><ixx>0.00006</ixx><iyy>0.00006</iyy><izz>0.00010</izz></inertia></inertial>
-      <visual name="visual"><geometry><cylinder><radius>0.13</radius><length>0.018</length></cylinder></geometry><material><ambient>0.95 0.12 0.1 1</ambient><diffuse>0.95 0.12 0.1 1</diffuse></material></visual>
+      <pose relative_to="base_link">0.13 0.22 0.023 0 0 0</pose>
+      <inertial><mass>0.005</mass><inertia><ixx>9.75e-07</ixx><ixy>0</ixy><ixz>0</ixz><iyy>4.17041e-05</iyy><iyz>0</iyz><izz>4.26041e-05</izz></inertia></inertial>
+      <collision name="collision"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></collision>
+      <visual name="visual"><geometry><mesh><scale>0.1 0.1 0.1</scale><uri>model://plantation_quadrotor/meshes/propeller_cw.dae</uri></mesh></geometry><material><ambient>0.1 0.35 0.95 1</ambient><diffuse>0.1 0.35 0.95 1</diffuse></material></visual>
     </link>
     <link name="rotor_3">
-      <pose relative_to="base_link">0.24 -0.24 0.055 0 0 0</pose>
-      <inertial><mass>0.035</mass><inertia><ixx>0.00006</ixx><iyy>0.00006</iyy><izz>0.00010</izz></inertia></inertial>
-      <visual name="visual"><geometry><cylinder><radius>0.13</radius><length>0.018</length></cylinder></geometry><material><ambient>0.95 0.12 0.1 1</ambient><diffuse>0.95 0.12 0.1 1</diffuse></material></visual>
+      <pose relative_to="base_link">-0.13 -0.20 0.023 0 0 0</pose>
+      <inertial><mass>0.005</mass><inertia><ixx>9.75e-07</ixx><ixy>0</ixy><ixz>0</ixz><iyy>4.17041e-05</iyy><iyz>0</iyz><izz>4.26041e-05</izz></inertia></inertial>
+      <collision name="collision"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></collision>
+      <visual name="visual"><geometry><mesh><scale>0.1 0.1 0.1</scale><uri>model://plantation_quadrotor/meshes/propeller_cw.dae</uri></mesh></geometry><material><ambient>0.95 0.12 0.1 1</ambient><diffuse>0.95 0.12 0.1 1</diffuse></material></visual>
     </link>
 
     <joint name="rotor_0_joint" type="revolute">
-      <pose relative_to="base_link">0.24 0.24 0.055 0 0 0</pose>
+      <pose relative_to="base_link">0.13 -0.22 0.023 0 0 0</pose>
       <parent>base_link</parent><child>rotor_0</child>
       <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
     </joint>
     <joint name="rotor_1_joint" type="revolute">
-      <pose relative_to="base_link">-0.24 0.24 0.055 0 0 0</pose>
+      <pose relative_to="base_link">-0.13 0.20 0.023 0 0 0</pose>
       <parent>base_link</parent><child>rotor_1</child>
       <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
     </joint>
     <joint name="rotor_2_joint" type="revolute">
-      <pose relative_to="base_link">-0.24 -0.24 0.055 0 0 0</pose>
+      <pose relative_to="base_link">0.13 0.22 0.023 0 0 0</pose>
       <parent>base_link</parent><child>rotor_2</child>
       <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
     </joint>
     <joint name="rotor_3_joint" type="revolute">
-      <pose relative_to="base_link">0.24 -0.24 0.055 0 0 0</pose>
+      <pose relative_to="base_link">-0.13 -0.20 0.023 0 0 0</pose>
       <parent>base_link</parent><child>rotor_3</child>
       <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
     </joint>
 
-    <frame name="front_left_arm" attached_to="base_link"><pose>0.12 0.12 0 0 0 0.78539816339</pose></frame>
-    <frame name="front_right_arm" attached_to="base_link"><pose>0.12 -0.12 0 0 0 -0.78539816339</pose></frame>
-    <frame name="rear_left_arm" attached_to="base_link"><pose>-0.12 0.12 0 0 0 -0.78539816339</pose></frame>
-    <frame name="rear_right_arm" attached_to="base_link"><pose>-0.12 -0.12 0 0 0 0.78539816339</pose></frame>
+    <frame name="front_left_arm" attached_to="base_link"><pose>0.13 0.22 0.023 0 0 0</pose></frame>
+    <frame name="front_right_arm" attached_to="base_link"><pose>0.13 -0.22 0.023 0 0 0</pose></frame>
+    <frame name="rear_left_arm" attached_to="base_link"><pose>-0.13 0.20 0.023 0 0 0</pose></frame>
+    <frame name="rear_right_arm" attached_to="base_link"><pose>-0.13 -0.20 0.023 0 0 0</pose></frame>
 
     <plugin filename="gz-sim-multicopter-motor-model-system" name="gz::sim::systems::MulticopterMotorModel">
       <robotNamespace>plantation_uav</robotNamespace>
@@ -261,7 +288,7 @@
       <robotNamespace>plantation_uav</robotNamespace>
       <jointName>rotor_1_joint</jointName>
       <linkName>rotor_1</linkName>
-      <turningDirection>cw</turningDirection>
+      <turningDirection>ccw</turningDirection>
       <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
       <maxRotVelocity>800</maxRotVelocity><motorConstant>8.54858e-06</motorConstant><momentConstant>0.016</momentConstant>
       <commandSubTopic>gazebo/command/motor_speed</commandSubTopic><motorNumber>1</motorNumber><actuator_number>1</actuator_number>
@@ -272,7 +299,7 @@
       <robotNamespace>plantation_uav</robotNamespace>
       <jointName>rotor_2_joint</jointName>
       <linkName>rotor_2</linkName>
-      <turningDirection>ccw</turningDirection>
+      <turningDirection>cw</turningDirection>
       <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
       <maxRotVelocity>800</maxRotVelocity><motorConstant>8.54858e-06</motorConstant><momentConstant>0.016</momentConstant>
       <commandSubTopic>gazebo/command/motor_speed</commandSubTopic><motorNumber>2</motorNumber><actuator_number>2</actuator_number>
@@ -308,8 +335,8 @@
       <angularVelocityNoiseStdDev>0.002 0.002 0.002</angularVelocityNoiseStdDev>
       <rotorConfiguration>
         <rotor><jointName>rotor_0_joint</jointName><forceConstant>8.54858e-06</forceConstant><momentConstant>0.016</momentConstant><direction>1</direction></rotor>
-        <rotor><jointName>rotor_1_joint</jointName><forceConstant>8.54858e-06</forceConstant><momentConstant>0.016</momentConstant><direction>-1</direction></rotor>
-        <rotor><jointName>rotor_2_joint</jointName><forceConstant>8.54858e-06</forceConstant><momentConstant>0.016</momentConstant><direction>1</direction></rotor>
+        <rotor><jointName>rotor_1_joint</jointName><forceConstant>8.54858e-06</forceConstant><momentConstant>0.016</momentConstant><direction>1</direction></rotor>
+        <rotor><jointName>rotor_2_joint</jointName><forceConstant>8.54858e-06</forceConstant><momentConstant>0.016</momentConstant><direction>-1</direction></rotor>
         <rotor><jointName>rotor_3_joint</jointName><forceConstant>8.54858e-06</forceConstant><momentConstant>0.016</momentConstant><direction>-1</direction></rotor>
       </rotorConfiguration>
     </plugin>
