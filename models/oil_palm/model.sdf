@@ -1,0 +1,73 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="oil_palm">
+    <static>true</static>
+    <link name="trunk">
+      <pose>0 0 2.60 0 0 0</pose>
+      <collision name="collision">
+        <geometry><cylinder><radius>0.22</radius><length>5.20</length></cylinder></geometry>
+      </collision>
+      <visual name="ribbed_trunk">
+        <geometry><cylinder><radius>0.22</radius><length>5.20</length></cylinder></geometry>
+        <material><ambient>0.28 0.16 0.08 1</ambient><diffuse>0.40 0.24 0.12 1</diffuse><specular>0.03 0.02 0.01 1</specular></material>
+      </visual>
+    </link>
+    <link name="crown">
+      <pose>0 0 0 0 0 0</pose>
+      <collision name="crown_collision">
+        <pose>0 0 5.55 0 0 0</pose>
+        <geometry><sphere><radius>1.26</radius></sphere></geometry>
+      </collision>
+      <visual name="crown_core">
+        <pose>0 0 5.55 0 0 0</pose>
+        <geometry><sphere><radius>0.60</radius></sphere></geometry>
+        <material><ambient>0.04 0.22 0.07 1</ambient><diffuse>0.08 0.35 0.10 1</diffuse></material>
+      </visual>
+      <visual name="frond_00">
+        <pose>0.45 0 5.55 0.22 0 0</pose>
+        <geometry><box><size>3.00 0.34 0.08</size></box></geometry>
+        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
+      </visual>
+      <visual name="frond_01">
+        <pose>0.45 0.45 5.55 0.22 0 0.78539816339</pose>
+        <geometry><box><size>3.00 0.34 0.08</size></box></geometry>
+        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
+      </visual>
+      <visual name="frond_02">
+        <pose>0 0.45 5.55 0.22 0 1.57079632679</pose>
+        <geometry><box><size>3.00 0.34 0.08</size></box></geometry>
+        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
+      </visual>
+      <visual name="frond_03">
+        <pose>-0.45 0.45 5.55 0.22 0 2.35619449019</pose>
+        <geometry><box><size>3.00 0.34 0.08</size></box></geometry>
+        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
+      </visual>
+      <visual name="frond_04">
+        <pose>-0.45 0 5.55 0.22 0 3.14159265359</pose>
+        <geometry><box><size>3.00 0.34 0.08</size></box></geometry>
+        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
+      </visual>
+      <visual name="frond_05">
+        <pose>-0.45 -0.45 5.55 0.22 0 -2.35619449019</pose>
+        <geometry><box><size>3.00 0.34 0.08</size></box></geometry>
+        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
+      </visual>
+      <visual name="frond_06">
+        <pose>0 -0.45 5.55 0.22 0 -1.57079632679</pose>
+        <geometry><box><size>3.00 0.34 0.08</size></box></geometry>
+        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
+      </visual>
+      <visual name="frond_07">
+        <pose>0.45 -0.45 5.55 0.22 0 -0.78539816339</pose>
+        <geometry><box><size>3.00 0.34 0.08</size></box></geometry>
+        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
+      </visual>
+      <visual name="inflorescence_target">
+        <pose>0.35 0 5.18 0 0 0</pose>
+        <geometry><sphere><radius>0.18</radius></sphere></geometry>
+        <material><ambient>0.65 0.45 0.08 1</ambient><diffuse>0.95 0.67 0.16 1</diffuse><specular>0.08 0.05 0.02 1</specular></material>
+      </visual>
+    </link>
+  </model>
+</sdf>

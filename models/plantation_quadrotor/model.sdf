@@ -1,0 +1,318 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="plantation_uav">
+    <pose>0 0 1 0 0 0</pose>
+    <self_collide>false</self_collide>
+
+    <link name="base_link">
+      <inertial>
+        <mass>1.45</mass>
+        <inertia>
+          <ixx>0.030</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.030</iyy>
+          <iyz>0</iyz>
+          <izz>0.055</izz>
+        </inertia>
+      </inertial>
+      <collision name="body_collision">
+        <geometry>
+          <box>
+            <size>0.42 0.42 0.12</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="body_visual">
+        <geometry>
+          <box>
+            <size>0.42 0.42 0.12</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.035 0.040 0.045 1</ambient>
+          <diffuse>0.055 0.060 0.065 1</diffuse>
+        </material>
+      </visual>
+
+      <sensor name="imu" type="imu">
+        <topic>/plantation_uav/imu</topic>
+        <always_on>true</always_on>
+        <update_rate>200</update_rate>
+        <imu>
+          <angular_velocity>
+            <x><noise type="gaussian"><mean>0</mean><stddev>0.0015</stddev><dynamic_bias_stddev>0.0002</dynamic_bias_stddev><dynamic_bias_correlation_time>3600</dynamic_bias_correlation_time></noise></x>
+            <y><noise type="gaussian"><mean>0</mean><stddev>0.0015</stddev><dynamic_bias_stddev>0.0002</dynamic_bias_stddev><dynamic_bias_correlation_time>3600</dynamic_bias_correlation_time></noise></y>
+            <z><noise type="gaussian"><mean>0</mean><stddev>0.0015</stddev><dynamic_bias_stddev>0.0002</dynamic_bias_stddev><dynamic_bias_correlation_time>3600</dynamic_bias_correlation_time></noise></z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x><noise type="gaussian"><mean>0</mean><stddev>0.025</stddev><dynamic_bias_stddev>0.002</dynamic_bias_stddev><dynamic_bias_correlation_time>3600</dynamic_bias_correlation_time></noise></x>
+            <y><noise type="gaussian"><mean>0</mean><stddev>0.025</stddev><dynamic_bias_stddev>0.002</dynamic_bias_stddev><dynamic_bias_correlation_time>3600</dynamic_bias_correlation_time></noise></y>
+            <z><noise type="gaussian"><mean>0</mean><stddev>0.025</stddev><dynamic_bias_stddev>0.002</dynamic_bias_stddev><dynamic_bias_correlation_time>3600</dynamic_bias_correlation_time></noise></z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+    </link>
+
+    <link name="zed2i_link">
+      <pose relative_to="base_link">0.27 0 0.015 0 0 0</pose>
+      <inertial>
+        <mass>0.09</mass>
+        <inertia>
+          <ixx>0.00008</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.00008</iyy><iyz>0</iyz><izz>0.00008</izz>
+        </inertia>
+      </inertial>
+      <visual name="zed2i_body">
+        <geometry>
+          <box>
+            <size>0.175 0.030 0.033</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.15 0.16 0.17 1</ambient>
+          <diffuse>0.20 0.21 0.22 1</diffuse>
+        </material>
+      </visual>
+
+      <sensor name="zed2i_left_camera" type="camera">
+        <pose>0.02 0.06 0 -1.57079632679 0 -1.57079632679</pose>
+        <topic>/plantation_uav/zed2i/left/image_rect_color</topic>
+        <always_on>true</always_on>
+        <update_rate>30</update_rate>
+        <camera>
+          <camera_info_topic>/plantation_uav/zed2i/left/camera_info</camera_info_topic>
+          <horizontal_fov>1.3962634</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.05</near>
+            <far>80</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0</mean>
+            <stddev>0.005</stddev>
+          </noise>
+        </camera>
+      </sensor>
+
+      <sensor name="zed2i_right_camera" type="camera">
+        <pose>0.02 -0.06 0 -1.57079632679 0 -1.57079632679</pose>
+        <topic>/plantation_uav/zed2i/right/image_rect_color</topic>
+        <always_on>true</always_on>
+        <update_rate>30</update_rate>
+        <camera>
+          <camera_info_topic>/plantation_uav/zed2i/right/camera_info</camera_info_topic>
+          <horizontal_fov>1.3962634</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.05</near>
+            <far>80</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0</mean>
+            <stddev>0.005</stddev>
+          </noise>
+        </camera>
+      </sensor>
+
+      <sensor name="zed2i_depth_camera" type="rgbd_camera">
+        <pose>0.03 0 0 -1.57079632679 0 -1.57079632679</pose>
+        <topic>/plantation_uav/zed2i/depth</topic>
+        <always_on>true</always_on>
+        <update_rate>30</update_rate>
+        <camera>
+          <camera_info_topic>/plantation_uav/zed2i/depth/camera_info</camera_info_topic>
+          <horizontal_fov>1.3962634</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.12</near>
+            <far>15</far>
+          </clip>
+        </camera>
+      </sensor>
+    </link>
+
+    <joint name="zed2i_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>zed2i_link</child>
+    </joint>
+
+    <link name="range_link">
+      <pose relative_to="base_link">0 0 -0.08 0 1.57079632679 0</pose>
+      <inertial>
+        <mass>0.02</mass>
+        <inertia>
+          <ixx>0.00001</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.00001</iyy><iyz>0</iyz><izz>0.00001</izz>
+        </inertia>
+      </inertial>
+      <sensor name="downward_lidar" type="gpu_lidar">
+        <topic>/plantation_uav/range</topic>
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>50</update_rate>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.08</min>
+            <max>20</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0</mean>
+            <stddev>0.015</stddev>
+          </noise>
+        </lidar>
+      </sensor>
+    </link>
+
+    <joint name="range_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>range_link</child>
+    </joint>
+
+    <link name="rotor_0">
+      <pose relative_to="base_link">0.24 0.24 0.055 0 0 0</pose>
+      <inertial><mass>0.035</mass><inertia><ixx>0.00006</ixx><iyy>0.00006</iyy><izz>0.00010</izz></inertia></inertial>
+      <visual name="visual"><geometry><cylinder><radius>0.13</radius><length>0.018</length></cylinder></geometry><material><ambient>0.1 0.35 0.95 1</ambient><diffuse>0.1 0.35 0.95 1</diffuse></material></visual>
+    </link>
+    <link name="rotor_1">
+      <pose relative_to="base_link">-0.24 0.24 0.055 0 0 0</pose>
+      <inertial><mass>0.035</mass><inertia><ixx>0.00006</ixx><iyy>0.00006</iyy><izz>0.00010</izz></inertia></inertial>
+      <visual name="visual"><geometry><cylinder><radius>0.13</radius><length>0.018</length></cylinder></geometry><material><ambient>0.1 0.35 0.95 1</ambient><diffuse>0.1 0.35 0.95 1</diffuse></material></visual>
+    </link>
+    <link name="rotor_2">
+      <pose relative_to="base_link">-0.24 -0.24 0.055 0 0 0</pose>
+      <inertial><mass>0.035</mass><inertia><ixx>0.00006</ixx><iyy>0.00006</iyy><izz>0.00010</izz></inertia></inertial>
+      <visual name="visual"><geometry><cylinder><radius>0.13</radius><length>0.018</length></cylinder></geometry><material><ambient>0.95 0.12 0.1 1</ambient><diffuse>0.95 0.12 0.1 1</diffuse></material></visual>
+    </link>
+    <link name="rotor_3">
+      <pose relative_to="base_link">0.24 -0.24 0.055 0 0 0</pose>
+      <inertial><mass>0.035</mass><inertia><ixx>0.00006</ixx><iyy>0.00006</iyy><izz>0.00010</izz></inertia></inertial>
+      <visual name="visual"><geometry><cylinder><radius>0.13</radius><length>0.018</length></cylinder></geometry><material><ambient>0.95 0.12 0.1 1</ambient><diffuse>0.95 0.12 0.1 1</diffuse></material></visual>
+    </link>
+
+    <joint name="rotor_0_joint" type="revolute">
+      <pose relative_to="base_link">0.24 0.24 0.055 0 0 0</pose>
+      <parent>base_link</parent><child>rotor_0</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+    </joint>
+    <joint name="rotor_1_joint" type="revolute">
+      <pose relative_to="base_link">-0.24 0.24 0.055 0 0 0</pose>
+      <parent>base_link</parent><child>rotor_1</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+    </joint>
+    <joint name="rotor_2_joint" type="revolute">
+      <pose relative_to="base_link">-0.24 -0.24 0.055 0 0 0</pose>
+      <parent>base_link</parent><child>rotor_2</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+    </joint>
+    <joint name="rotor_3_joint" type="revolute">
+      <pose relative_to="base_link">0.24 -0.24 0.055 0 0 0</pose>
+      <parent>base_link</parent><child>rotor_3</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+    </joint>
+
+    <frame name="front_left_arm" attached_to="base_link"><pose>0.12 0.12 0 0 0 0.78539816339</pose></frame>
+    <frame name="front_right_arm" attached_to="base_link"><pose>0.12 -0.12 0 0 0 -0.78539816339</pose></frame>
+    <frame name="rear_left_arm" attached_to="base_link"><pose>-0.12 0.12 0 0 0 -0.78539816339</pose></frame>
+    <frame name="rear_right_arm" attached_to="base_link"><pose>-0.12 -0.12 0 0 0 0.78539816339</pose></frame>
+
+    <plugin filename="gz-sim-multicopter-motor-model-system" name="gz::sim::systems::MulticopterMotorModel">
+      <robotNamespace>plantation_uav</robotNamespace>
+      <jointName>rotor_0_joint</jointName>
+      <linkName>rotor_0</linkName>
+      <turningDirection>ccw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>800</maxRotVelocity><motorConstant>8.54858e-06</motorConstant><momentConstant>0.016</momentConstant>
+      <commandSubTopic>gazebo/command/motor_speed</commandSubTopic><motorNumber>0</motorNumber><actuator_number>0</actuator_number>
+      <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient><rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <motorSpeedPubTopic>motor_speed/0</motorSpeedPubTopic><rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
+    </plugin>
+    <plugin filename="gz-sim-multicopter-motor-model-system" name="gz::sim::systems::MulticopterMotorModel">
+      <robotNamespace>plantation_uav</robotNamespace>
+      <jointName>rotor_1_joint</jointName>
+      <linkName>rotor_1</linkName>
+      <turningDirection>cw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>800</maxRotVelocity><motorConstant>8.54858e-06</motorConstant><momentConstant>0.016</momentConstant>
+      <commandSubTopic>gazebo/command/motor_speed</commandSubTopic><motorNumber>1</motorNumber><actuator_number>1</actuator_number>
+      <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient><rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <motorSpeedPubTopic>motor_speed/1</motorSpeedPubTopic><rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
+    </plugin>
+    <plugin filename="gz-sim-multicopter-motor-model-system" name="gz::sim::systems::MulticopterMotorModel">
+      <robotNamespace>plantation_uav</robotNamespace>
+      <jointName>rotor_2_joint</jointName>
+      <linkName>rotor_2</linkName>
+      <turningDirection>ccw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>800</maxRotVelocity><motorConstant>8.54858e-06</motorConstant><momentConstant>0.016</momentConstant>
+      <commandSubTopic>gazebo/command/motor_speed</commandSubTopic><motorNumber>2</motorNumber><actuator_number>2</actuator_number>
+      <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient><rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <motorSpeedPubTopic>motor_speed/2</motorSpeedPubTopic><rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
+    </plugin>
+    <plugin filename="gz-sim-multicopter-motor-model-system" name="gz::sim::systems::MulticopterMotorModel">
+      <robotNamespace>plantation_uav</robotNamespace>
+      <jointName>rotor_3_joint</jointName>
+      <linkName>rotor_3</linkName>
+      <turningDirection>cw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>800</maxRotVelocity><motorConstant>8.54858e-06</motorConstant><momentConstant>0.016</momentConstant>
+      <commandSubTopic>gazebo/command/motor_speed</commandSubTopic><motorNumber>3</motorNumber><actuator_number>3</actuator_number>
+      <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient><rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <motorSpeedPubTopic>motor_speed/3</motorSpeedPubTopic><rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
+    </plugin>
+
+    <plugin filename="gz-sim-multicopter-control-system" name="gz::sim::systems::MulticopterVelocityControl">
+      <robotNamespace>plantation_uav</robotNamespace>
+      <commandSubTopic>gazebo/command/twist</commandSubTopic>
+      <enableSubTopic>enable</enableSubTopic>
+      <comLinkName>base_link</comLinkName>
+      <velocityGain>2.7 2.7 2.7</velocityGain>
+      <attitudeGain>2 3 0.15</attitudeGain>
+      <angularRateGain>0.4 0.52 0.18</angularRateGain>
+      <maximumLinearAcceleration>2 2 2</maximumLinearAcceleration>
+      <maximumLinearVelocity>2.0 2.0 1.0</maximumLinearVelocity>
+      <maximumAngularVelocity>0.5 0.5 1.5</maximumAngularVelocity>
+      <linearVelocityNoiseMean>0 0 0</linearVelocityNoiseMean>
+      <linearVelocityNoiseStdDev>0.015 0.015 0.015</linearVelocityNoiseStdDev>
+      <angularVelocityNoiseMean>0 0 0</angularVelocityNoiseMean>
+      <angularVelocityNoiseStdDev>0.002 0.002 0.002</angularVelocityNoiseStdDev>
+      <rotorConfiguration>
+        <rotor><jointName>rotor_0_joint</jointName><forceConstant>8.54858e-06</forceConstant><momentConstant>0.016</momentConstant><direction>1</direction></rotor>
+        <rotor><jointName>rotor_1_joint</jointName><forceConstant>8.54858e-06</forceConstant><momentConstant>0.016</momentConstant><direction>-1</direction></rotor>
+        <rotor><jointName>rotor_2_joint</jointName><forceConstant>8.54858e-06</forceConstant><momentConstant>0.016</momentConstant><direction>1</direction></rotor>
+        <rotor><jointName>rotor_3_joint</jointName><forceConstant>8.54858e-06</forceConstant><momentConstant>0.016</momentConstant><direction>-1</direction></rotor>
+      </rotorConfiguration>
+    </plugin>
+
+  </model>
+</sdf>
