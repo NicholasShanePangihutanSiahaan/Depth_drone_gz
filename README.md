@@ -16,7 +16,7 @@ The GitHub repository can be named `gazebo_sim`; the ROS 2 package inside it is 
 ```bash
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
-git clone <your-github-repo-url> gazebo_sim
+git clone https://github.com/NicholasShanePangihutanSiahaan/Depth_drone_gz.git gazebo_sim
 cd ~/ros2_ws
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --packages-select uav_plantation_sim
