@@ -52,7 +52,7 @@
     </link>
 
     <link name="zed2i_link">
-      <pose relative_to="base_link">0.255 0 -0.035 0 0 0</pose>
+      <pose relative_to="base_link">0.12 0 0.02 0 0 0</pose>
       <inertial>
         <mass>0.09</mass>
         <inertia>
@@ -63,7 +63,7 @@
       <visual name="zed2i_body">
         <geometry>
           <box>
-            <size>0.175 0.030 0.033</size>
+            <size>0.030 0.175 0.033</size>
           </box>
         </geometry>
         <material>
