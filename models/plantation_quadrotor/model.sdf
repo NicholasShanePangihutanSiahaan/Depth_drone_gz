@@ -99,7 +99,7 @@
       </visual>
 
       <sensor name="zed2i_left_camera" type="camera">
-        <pose>0.02 0.06 0 -1.57079632679 0 -1.57079632679</pose>
+        <pose>0.02 0.06 0 0 0 0</pose>
         <topic>/plantation_uav/zed2i/left/image_rect_color</topic>
         <always_on>true</always_on>
         <update_rate>30</update_rate>
@@ -124,7 +124,7 @@
       </sensor>
 
       <sensor name="zed2i_right_camera" type="camera">
-        <pose>0.02 -0.06 0 -1.57079632679 0 -1.57079632679</pose>
+        <pose>0.02 -0.06 0 0 0 0</pose>
         <topic>/plantation_uav/zed2i/right/image_rect_color</topic>
         <always_on>true</always_on>
         <update_rate>30</update_rate>
@@ -149,7 +149,7 @@
       </sensor>
 
       <sensor name="zed2i_depth_camera" type="rgbd_camera">
-        <pose>0.03 0 0 -1.57079632679 0 -1.57079632679</pose>
+        <pose>0.03 0 0 0 0 0</pose>
         <topic>/plantation_uav/zed2i/depth</topic>
         <always_on>true</always_on>
         <update_rate>30</update_rate>
