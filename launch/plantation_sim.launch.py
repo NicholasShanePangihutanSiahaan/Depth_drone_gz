@@ -17,7 +17,12 @@ def generate_launch_description():
     return LaunchDescription([
         SetEnvironmentVariable(
             name="GZ_SIM_RESOURCE_PATH",
-            value=[model_path, ":", EnvironmentVariable("GZ_SIM_RESOURCE_PATH", default_value="")],
+            value="/home/shane/ProjekAtaka/gazebo_sim/models",
+        ),
+
+	SetEnvironmentVariable(
+            name="IGN_GAZEBO_RESOURCE_PATH",
+            value="/home/shane/ProjekAtaka/gazebo_sim/models",
         ),
 
         IncludeLaunchDescription(
