@@ -32,7 +32,7 @@
         </geometry>
       </visual>
 
-      <sensor name="imu" type="imu">
+      <sensor name="imu_sensor" type="imu">
         <topic>/plantation_uav/imu</topic>
         <always_on>true</always_on>
         <update_rate>200</update_rate>
@@ -273,14 +273,14 @@
     <frame name="rear_left_arm" attached_to="base_link"><pose>-0.13 0.20 0.023 0 0 0</pose></frame>
     <frame name="rear_right_arm" attached_to="base_link"><pose>-0.13 -0.20 0.023 0 0 0</pose></frame>
 
-<plugin filename="ArduPilotPlugin" name="ArduPilotPlugin">
+    <plugin name="ArduPilotPlugin" filename="ignition-gazebo-ardupilot-plugin">
       <fdm_addr>127.0.0.1</fdm_addr>
       <fdm_port_in>9002</fdm_port_in>
       <fdm_port_out>9003</fdm_port_out>
 
       <modelXYZToAirplaneXForwardZDown>0 0 0 3.141593 0 0</modelXYZToAirplaneXForwardZDown>
       <gazeboXYZToNED>0 0 0 3.141593 0 0</gazeboXYZToNED>
-      <imuName>plantation_uav::base_link::imu</imuName>
+      <imuName>plantation_uav::base_link::imu_sensor</imuName>
 
       <control channel="0">
         <jointName>rotor_0_joint</jointName>
