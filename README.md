@@ -2,7 +2,7 @@
 
 Repository ini berisi simulasi UAV untuk pengujian algoritma persepsi dan navigasi pada perkebunan kelapa sawit sebelum diuji di lapangan. Repository GitHub dapat bernama `gazebo_sim`, sedangkan nama paket ROS 2 di dalamnya adalah `uav_plantation_sim`.
 
-Simulasi menggunakan ROS 2 Humble, Gazebo Sim 8.11.0 / Gazebo Harmonic, model quadcopter X3-style, kamera ZED 2i-style, dan world perkebunan sawit.
+Simulasi menggunakan ROS 2 Humble, Gazebo Sim 8.11.0 / Gazebo Fortress, model quadcopter X3-style, kamera ZED 2i-style, dan world perkebunan sawit.
 
 ## Fitur
 
@@ -44,7 +44,7 @@ Direkomendasikan menggunakan:
 
 - Ubuntu 22.04
 - ROS 2 Humble
-- Gazebo Sim 8.11.0 / Gazebo Harmonic
+- Gazebo Sim 8.11.0 / Gazebo Fortress
 - `ros_gz_sim`
 - `ros_gz_bridge`
 - `colcon`
