@@ -148,7 +148,7 @@
       <modelXYZToAirplaneXForwardZDown degrees="true">0 0 0 180 0 0</modelXYZToAirplaneXForwardZDown>
       <gazeboXYZToNED degrees="true">0 0 0 180 0 90</gazeboXYZToNED>
 
-      <imuName>plantation_uav::imu_link::imu_sensor</imuName>
+      <imuName>imu_sensor</imuName>
 
       <control channel="0">
         <jointName>rotor_0_joint</jointName>
