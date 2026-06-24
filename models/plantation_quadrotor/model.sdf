@@ -16,9 +16,7 @@
         <geometry><box><size>0.47 0.47 0.11</size></box></geometry>
       </collision>
       <visual name="x3_body_visual">
-        <geometry>
-          <mesh><scale>1 1 1</scale><uri>model://plantation_quadrotor/meshes/x3.dae</uri></mesh>
-        </geometry>
+        <geometry><mesh><scale>1 1 1</scale><uri>model://plantation_quadrotor/meshes/x3.dae</uri></mesh></geometry>
       </visual>
     </link>
 
@@ -65,10 +63,17 @@
         <inertia><ixx>0.00001</ixx><iyy>0.00002</iyy><izz>0.00002</izz></inertia>
       </inertial>
       <sensor name="imu_sensor" type="imu">
-        <gz_frame_id>imu_link</gz_frame_id>
+        <gz_frame_id>plantation_uav/imu_link</gz_frame_id>
         <pose degrees="true">0 0 0 180 0 0</pose>
         <always_on>1</always_on>
         <update_rate>1000.0</update_rate>
+        <imu>
+          <angular_velocity>
+             <x><noise type="gaussian"><mean>0</mean><stddev>0.0002</stddev></noise></x>
+             <y><noise type="gaussian"><mean>0</mean><stddev>0.0002</stddev></noise></y>
+             <z><noise type="gaussian"><mean>0</mean><stddev>0.0002</stddev></noise></z>
+          </angular_velocity>
+        </imu>
       </sensor>
     </link>
     <joint name='imu_joint' type='revolute'>
@@ -153,13 +158,8 @@
         <servo_min>1100</servo_min>
         <servo_max>1900</servo_max>
         <type>VELOCITY</type>
-        <p_gain>0.20</p_gain>
-        <i_gain>0</i_gain>
-        <d_gain>0</d_gain>
-        <i_max>0</i_max>
-        <i_min>0</i_min>
-        <cmd_max>2.5</cmd_max>
-        <cmd_min>-2.5</cmd_min>
+        <p_gain>0.20</p_gain><i_gain>0</i_gain><d_gain>0</d_gain><i_max>0</i_max><i_min>0</i_min>
+        <cmd_max>2.5</cmd_max><cmd_min>-2.5</cmd_min>
         <controlVelocitySlowdownSim>1</controlVelocitySlowdownSim>
       </control>
       <control channel="1">
@@ -170,13 +170,8 @@
         <servo_min>1100</servo_min>
         <servo_max>1900</servo_max>
         <type>VELOCITY</type>
-        <p_gain>0.20</p_gain>
-        <i_gain>0</i_gain>
-        <d_gain>0</d_gain>
-        <i_max>0</i_max>
-        <i_min>0</i_min>
-        <cmd_max>2.5</cmd_max>
-        <cmd_min>-2.5</cmd_min>
+        <p_gain>0.20</p_gain><i_gain>0</i_gain><d_gain>0</d_gain><i_max>0</i_max><i_min>0</i_min>
+        <cmd_max>2.5</cmd_max><cmd_min>-2.5</cmd_min>
         <controlVelocitySlowdownSim>1</controlVelocitySlowdownSim>
       </control>
       <control channel="2">
@@ -187,13 +182,8 @@
         <servo_min>1100</servo_min>
         <servo_max>1900</servo_max>
         <type>VELOCITY</type>
-        <p_gain>0.20</p_gain>
-        <i_gain>0</i_gain>
-        <d_gain>0</d_gain>
-        <i_max>0</i_max>
-        <i_min>0</i_min>
-        <cmd_max>2.5</cmd_max>
-        <cmd_min>-2.5</cmd_min>
+        <p_gain>0.20</p_gain><i_gain>0</i_gain><d_gain>0</d_gain><i_max>0</i_max><i_min>0</i_min>
+        <cmd_max>2.5</cmd_max><cmd_min>-2.5</cmd_min>
         <controlVelocitySlowdownSim>1</controlVelocitySlowdownSim>
       </control>
       <control channel="3">
@@ -204,13 +194,8 @@
         <servo_min>1100</servo_min>
         <servo_max>1900</servo_max>
         <type>VELOCITY</type>
-        <p_gain>0.20</p_gain>
-        <i_gain>0</i_gain>
-        <d_gain>0</d_gain>
-        <i_max>0</i_max>
-        <i_min>0</i_min>
-        <cmd_max>2.5</cmd_max>
-        <cmd_min>-2.5</cmd_min>
+        <p_gain>0.20</p_gain><i_gain>0</i_gain><d_gain>0</d_gain><i_max>0</i_max><i_min>0</i_min>
+        <cmd_max>2.5</cmd_max><cmd_min>-2.5</cmd_min>
         <controlVelocitySlowdownSim>1</controlVelocitySlowdownSim>
       </control>
     </plugin>
