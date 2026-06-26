@@ -51,3 +51,9 @@
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: "GZ_TO_ROS"
+
+- ros_topic_name: "/mavros/odometry/out"
+  gz_topic_name: "/plantation_uav/dummy_vslam"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: "GZ_TO_ROS"

@@ -173,6 +173,12 @@
       <link_name>rotor_3</link_name>
     </plugin>
     
+    <plugin filename="gz-sim-odometry-system" name="gz::sim::systems::Odometry">
+      <odom_topic>/plantation_uav/dummy_vslam</odom_topic>
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+    </plugin>
+    
     <plugin name="ArduPilotPlugin" filename="ArduPilotPlugin">
       <fdm_addr>127.0.0.1</fdm_addr>
       <fdm_port_in>9002</fdm_port_in>
@@ -235,5 +241,6 @@
         <controlVelocitySlowdownSim>1</controlVelocitySlowdownSim>
       </control>
     </plugin>
+
   </model>
 </sdf>
