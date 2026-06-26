@@ -13,6 +13,8 @@
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
     <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
 
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+
     <scene>
       <ambient>0.36 0.38 0.40 1</ambient>
       <background>0.70 0.82 0.94 1</background>
