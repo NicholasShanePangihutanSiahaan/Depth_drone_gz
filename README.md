@@ -2,7 +2,7 @@
 
 Repository ini berisi simulasi UAV untuk pengujian algoritma persepsi dan navigasi pada perkebunan kelapa sawit sebelum diuji di lapangan. Repository GitHub dapat bernama `gazebo_sim`, sedangkan nama paket ROS 2 di dalamnya adalah `uav_plantation_sim`.
 
-Simulasi menggunakan ROS 2 Humble, Gazebo Sim 8.11.0 / Gazebo Fortress, model quadcopter X3-style, kamera ZED 2i-style, dan world perkebunan sawit.
+Simulasi menggunakan ROS 2 Humble, Gazebo Sim 8.14.0 / Gazebo Harmonic, model quadcopter X3-style, kamera ZED 2i-style, dan world perkebunan sawit.
 
 ## Fitur
 
@@ -44,7 +44,7 @@ Direkomendasikan menggunakan:
 
 - Ubuntu 22.04
 - ROS 2 Humble
-- Gazebo Sim 8.11.0 / Gazebo Fortress
+- Gazebo Sim 8.14.0 / Gazebo Harmonic
 - `ros_gz_sim`
 - `ros_gz_bridge`
 - `colcon`
@@ -388,21 +388,75 @@ ros2 node list
 ros2 topic info /cmd_vel
 ```
 
-## Status ArduPilot `sim_vehicle.py`
+## Status ArduPilot dan Gazebo Harmonic
 
-Drone saat ini belum langsung terhubung ke ArduPilot `sim_vehicle.py`.
+Drone sudah menggunakan ArduPilot SITL (Software In The Loop) yang terhubung dengan Flight Controller pada simulasi Gazebo Harmonic. 
+Rincian instalasi dapat dilihat pada https://github.com/ArduPilot/ardupilot_gazebo/blob/main/README.md
 
-Model drone masih memakai sistem kontrol Gazebo:
-
-```text
-gz::sim::systems::MulticopterVelocityControl
+## Harmonic (apt)
+```bash
+sudo apt update
+```
+```bash
+sudo apt install libgz-sim8-dev rapidjson-dev
+```
+```bash
+sudo apt install libopencv-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-gl
 ```
 
-Artinya drone dapat dikontrol dari ROS 2 melalui `/cmd_vel`, tetapi belum menerima output motor dari ArduPilot SITL. Untuk menggunakan `sim_vehicle.py`, perlu integrasi tambahan yang menghubungkan ArduPilot SITL/MAVLink dengan Gazebo, termasuk:
+### Rosdep:
+```bash
+export GZ_VERSION=harmonic
+sudo bash -c 'wget https://raw.githubusercontent.com/osrf/osrf-rosdep/master/gz/00-gazebo.list -O /etc/ros/rosdep/sources.list.d/00-gazebo.list'
+rosdep update
+rosdep resolve gz-harmonic
+rosdep install --from-paths src --ignore-src -y
+```
 
-- mapping output motor ArduPilot ke empat rotor joint,
-- feedback IMU dan state dari Gazebo ke ArduPilot,
-- konfigurasi frame dan parameter ArduPilot,
-- launch flow untuk menjalankan Gazebo dan SITL bersama.
+### Clone repo:
+```bash
+git clone https://github.com/ArduPilot/ardupilot_gazebo
+cd ardupilot_gazebo
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
+make -j4
+```
 
-Simulasi ini sudah dapat digunakan untuk tahap awal pengujian kamera, depth image, deteksi objek, SLAM, visual servoing, dan navigasi berbasis ROS 2.
+### Configure
+
+#### Terminal
+Jika ingin langsung menjalankan Gazebo Environment di terminal, maka jalankan command berikut sebelum menjalankan Gazebo:
+```bash
+cd ~/ardupilot_gazebo
+export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/ardupilot_gazebo/build:$GZ_SIM_SYSTEM_PLUGIN_PATH
+export GZ_SIM_RESOURCE_PATH=$HOME/ardupilot_gazebo/models:$HOME/ardupilot_gazebo/worlds:$GZ_SIM_RESOURCE_PATH
+```
+
+#### Bashrc
+Jika ingin langsung menjalankan Gazebo Environment setiap membuka terminal/menyalakan laptop, perintah hanya perlu dilakukan satu kali:
+```bash
+echo 'export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/ardupilot_gazebo/build:${GZ_SIM_SYSTEM_PLUGIN_PATH}' >> ~/.bashrc
+echo 'export GZ_SIM_RESOURCE_PATH=$HOME/ardupilot_gazebo/models:$HOME/ardupilot_gazebo/worlds:${GZ_SIM_RESOURCE_PATH}' >> ~/.bashrc
+```
+
+```bash
+source ~/.bashrc
+```
+
+Untuk menjalankan SITL yang terhubung dengan model quadcopter X3-style:
+```bash
+sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON --map --console
+```
+
+### ROS dan SITL
+Agar Gazebo, SITL dan program-program ROS dapat terhubung, protokol komunikasi perlu disesuaikan dengan perintah
+#### SITL 
+```bash
+sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON --console --out=udp:127.0.0.1:14551
+```
+
+#### ROS
+```bash
+ros2 run mavros mavros_node --ros-args -p fcu_url:=udp://127.0.0.1:14551@
+```
+Masing-masing dijalankan di terminal yang berbeda. Skrip python dapat dijalankan setelah keduanya berjalan
