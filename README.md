@@ -394,17 +394,15 @@ Drone sudah menggunakan ArduPilot SITL (Software In The Loop) yang terhubung den
 Rincian instalasi dapat dilihat pada https://github.com/ArduPilot/ardupilot_gazebo/blob/main/README.md
 
 ## Harmonic (apt)
+Untuk instalasi Gazebo Harmonic (apt) dapat menggunakan command line berikut:
 ```bash
 sudo apt update
-```
-```bash
 sudo apt install libgz-sim8-dev rapidjson-dev
-```
-```bash
 sudo apt install libopencv-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-gl
 ```
 
 ### Rosdep:
+Untuk depedensi ROS, dapat menjalankan perintah berikut:
 ```bash
 export GZ_VERSION=harmonic
 sudo bash -c 'wget https://raw.githubusercontent.com/osrf/osrf-rosdep/master/gz/00-gazebo.list -O /etc/ros/rosdep/sources.list.d/00-gazebo.list'
@@ -414,6 +412,7 @@ rosdep install --from-paths src --ignore-src -y
 ```
 
 ### Clone repo:
+Clone repository berikut dan build repository berikut:
 ```bash
 git clone https://github.com/ArduPilot/ardupilot_gazebo
 cd ardupilot_gazebo
