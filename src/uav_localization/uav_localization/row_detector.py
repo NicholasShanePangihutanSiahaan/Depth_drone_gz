@@ -3,11 +3,10 @@
 import numpy as np
 
 import rclpy
-
 from rclpy.node import Node
 
 from visualization_msgs.msg import Marker
-
+from visualization_msgs.msg import MarkerArray
 from geometry_msgs.msg import Point
 
 
@@ -18,57 +17,82 @@ class RowDetector(Node):
         super().__init__("row_detector")
 
         self.create_subscription(
-            Marker,
+            MarkerArray,
             "/tree_markers",
-            self.callback,
+            self.marker_callback,
             10
         )
 
-        self.pub=self.create_publisher(
+        self.row_pub = self.create_publisher(
             Marker,
             "/row_center",
             10
         )
 
-    def callback(self,msg):
+        self.get_logger().info("Row Detector Started")
 
-        if len(msg.points)<5:
+    def marker_callback(self, msg):
+
+        if len(msg.markers) < 5:
             return
 
-        ys=[p.y for p in msg.points]
+        xs = []
+        ys = []
 
-        center=np.mean(ys)
+        for marker in msg.markers:
 
-        line=Marker()
+            xs.append(marker.pose.position.x)
+            ys.append(marker.pose.position.y)
 
-        line.header.frame_id="odom"
+        xs = np.array(xs)
+        ys = np.array(ys)
 
-        line.type=Marker.LINE_STRIP
+        center_y = float(np.mean(ys))
 
-        line.scale.x=0.2
+        line = Marker()
 
-        line.color.r=1.0
+        line.header.frame_id = "odom"
+        line.header.stamp = self.get_clock().now().to_msg()
 
-        line.color.a=1.0
+        line.ns = "row"
 
-        for x in np.linspace(-100,100,30):
+        line.id = 0
 
-            p=Point()
+        line.type = Marker.LINE_STRIP
+        line.action = Marker.ADD
 
-            p.x=float(x)
+        line.scale.x = 0.25
 
-            p.y=float(center)
+        line.color.r = 1.0
+        line.color.g = 0.0
+        line.color.b = 0.0
+        line.color.a = 1.0
+
+        xmin = np.min(xs) - 5.0
+        xmax = np.max(xs) + 5.0
+
+        for x in np.linspace(xmin, xmax, 40):
+
+            p = Point()
+
+            p.x = float(x)
+            p.y = center_y
+            p.z = 0.0
 
             line.points.append(p)
 
-        self.pub.publish(line)
+        self.row_pub.publish(line)
+
+        self.get_logger().info(
+            f"Detected row center at y = {center_y:.2f}"
+        )
 
 
-def main():
+def main(args=None):
 
-    rclpy.init()
+    rclpy.init(args=args)
 
-    node=RowDetector()
+    node = RowDetector()
 
     rclpy.spin(node)
 
@@ -77,5 +101,5 @@ def main():
     rclpy.shutdown()
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
