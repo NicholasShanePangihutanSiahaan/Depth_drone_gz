@@ -78,7 +78,7 @@ def generate_launch_description():
         # Hanya memerlukan variabel GZ modern untuk mencari aset mesh/model
         SetEnvironmentVariable(
             name="GZ_SIM_RESOURCE_PATH",
-            value="/home/shane/ProjekAtaka/gazebo_sim/models",
+            value="/home/shane/ProjekAtaka/gazebo_sim/src/uav_plantation_sim/models",
         ),
 
         IncludeLaunchDescription(
