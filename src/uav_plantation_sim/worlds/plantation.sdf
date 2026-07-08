@@ -131,10 +131,10 @@
     <include><name>tree_03_03</name><uri>model://oil_palm</uri><pose>-30.0 -7.5 0 0 0 0.08</pose></include>
     <include><name>tree_03_04</name><uri>model://oil_palm_large</uri><pose>-22.5 -7.5 0 0 0 0.29</pose></include>
     <include><name>tree_03_05</name><uri>model://oil_palm_small</uri><pose>-15.0 -7.5 0 0 0 -0.53</pose></include>
-    <include><name>tree_03_06</name><uri>model://oil_palm</uri><pose>-7.5 -7.5 0 0 0 0.17</pose></include>
-    <include><name>tree_03_08</name><uri>model://oil_palm</uri><pose>7.5 -7.5 0 0 0 0.37</pose></include>
-    <include><name>tree_03_09</name><uri>model://oil_palm_small</uri><pose>15.0 -7.5 0 0 0 -0.06</pose></include>
-    <include><name>tree_03_10</name><uri>model://oil_palm_large</uri><pose>22.5 -7.5 0 0 0 0.52</pose></include>
+    <include><name>tree_03_06</name><uri>model://oil_palm_tag0</uri><pose>-7.5 -7.5 0 0 0 0.17</pose></include>
+    <include><name>tree_03_08</name><uri>model://oil_palm_tag1</uri><pose>7.5 -7.5 0 0 0 0.37</pose></include>
+    <include><name>tree_03_09</name><uri>model://oil_palm_tag2</uri><pose>15.0 -7.5 0 0 0 -0.06</pose></include>
+    <include><name>tree_03_10</name><uri>model://oil_palm_tag3</uri><pose>22.5 -7.5 0 0 0 0.52</pose></include>
     <include><name>tree_03_11</name><uri>model://oil_palm</uri><pose>30.0 -7.5 0 0 0 -0.39</pose></include>
     <include><name>tree_03_12</name><uri>model://oil_palm_small</uri><pose>37.5 -7.5 0 0 0 0.13</pose></include>
     <include><name>tree_03_13</name><uri>model://oil_palm</uri><pose>45.0 -7.5 0 0 0 -0.18</pose></include>
@@ -146,10 +146,10 @@
     <include><name>tree_04_03</name><uri>model://oil_palm_small</uri><pose>-30.0 0.0 0 0 0 0.48</pose></include>
     <include><name>tree_04_04</name><uri>model://oil_palm</uri><pose>-22.5 0.0 0 0 0 -0.27</pose></include>
     <include><name>tree_04_05</name><uri>model://oil_palm_large</uri><pose>-15.0 0.0 0 0 0 0.31</pose></include>
-    <include><name>tree_04_06</name><uri>model://oil_palm_small</uri><pose>-7.5 0.0 0 0 0 -0.15</pose></include>
-    <include><name>tree_04_08</name><uri>model://oil_palm</uri><pose>7.5 0.0 0 0 0 0.19</pose></include>
-    <include><name>tree_04_09</name><uri>model://oil_palm</uri><pose>15.0 0.0 0 0 0 -0.50</pose></include>
-    <include><name>tree_04_10</name><uri>model://oil_palm_small</uri><pose>22.5 0.0 0 0 0 0.10</pose></include>
+    <include><name>tree_04_06</name><uri>model://oil_palm_tag0</uri><pose>-7.5 0.0 0 0 0 -0.15</pose></include>
+    <include><name>tree_04_08</name><uri>model://oil_palm_tag1</uri><pose>7.5 0.0 0 0 0 0</pose></include>
+    <include><name>tree_04_09</name><uri>model://oil_palm_tag2</uri><pose>15.0 0.0 0 0 0 -0.50</pose></include>
+    <include><name>tree_04_10</name><uri>model://oil_palm_tag3</uri><pose>22.5 0.0 0 0 0 0.10</pose></include>
     <include><name>tree_04_11</name><uri>model://oil_palm_large</uri><pose>30.0 0.0 0 0 0 0.41</pose></include>
     <include><name>tree_04_12</name><uri>model://oil_palm</uri><pose>37.5 0.0 0 0 0 -0.33</pose></include>
     <include><name>tree_04_13</name><uri>model://oil_palm_small</uri><pose>45.0 0.0 0 0 0 0.26</pose></include>
