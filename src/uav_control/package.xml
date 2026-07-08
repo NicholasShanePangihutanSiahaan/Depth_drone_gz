@@ -7,6 +7,7 @@
   <maintainer email="nicholasshane08@gmail.com">shane</maintainer>
   <license>TODO: License declaration</license>
 
+  <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>mavros_msgs</depend>

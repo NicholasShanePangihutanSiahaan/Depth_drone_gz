@@ -3,18 +3,15 @@
 import math
 
 import rclpy
-
 from rclpy.node import Node
 
-from std_msgs.msg import String
+from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import Point
 
 from nav_msgs.msg import Path
 
-from geometry_msgs.msg import PoseStamped
-
 from visualization_msgs.msg import Marker
-
-from geometry_msgs.msg import Point
 
 
 class GlobalPlanner(Node):
@@ -23,12 +20,15 @@ class GlobalPlanner(Node):
 
         super().__init__("global_planner")
 
+        self.trees=[]
+
         self.create_subscription(
-            String,
+            PoseArray,
             "/map/tree_locations",
             self.tree_callback,
             10
         )
+
 
         self.path_pub = self.create_publisher(
             Path,
@@ -36,106 +36,151 @@ class GlobalPlanner(Node):
             10
         )
 
+
         self.marker_pub = self.create_publisher(
             Marker,
             "/navigation/global_path_marker",
             10
         )
 
-        self.get_logger().info("Global Planner Started")
 
-    def tree_callback(self, msg):
+        self.get_logger().info(
+            "Global Planner Started"
+        )
 
-        trees = []
 
-        lines = msg.data.strip().split("\n")
+    def tree_callback(self,msg):
 
-        for line in lines:
+        self.trees=[]
 
-            if line == "":
-                continue
+        for pose in msg.poses:
 
-            data = line.split(",")
+            self.trees.append(
+                (
+                    pose.position.x,
+                    pose.position.y
+                )
+            )
 
-            if len(data) != 3:
-                continue
 
-            _, x, y = data
+        self.get_logger().info(
+            f"Received {len(self.trees)} trees"
+        )
 
-            trees.append((float(x), float(y)))
 
-        if len(trees) < 2:
+        if len(self.trees) < 2:
             return
 
-        trees.sort(key=lambda p: p[0])
+
+        self.generate_path()
+
+
+
+    def generate_path(self):
+
+        # urutkan berdasarkan posisi x
+        self.trees.sort(
+            key=lambda p:p[0]
+        )
+
 
         path = Path()
 
-        path.header.frame_id = "odom"
+        path.header.frame_id="odom"
+
 
         marker = Marker()
 
-        marker.header.frame_id = "odom"
+        marker.header.frame_id="odom"
 
-        marker.type = Marker.LINE_STRIP
+        marker.type=Marker.LINE_STRIP
 
-        marker.action = Marker.ADD
+        marker.action=Marker.ADD
 
-        marker.scale.x = 0.25
+        marker.scale.x=0.2
 
-        marker.color.r = 0.0
-        marker.color.g = 0.0
-        marker.color.b = 1.0
-        marker.color.a = 1.0
+        marker.color.b=1.0
+        marker.color.a=1.0
 
-        for i in range(len(trees)-1):
 
-            x1, y1 = trees[i]
-            x2, y2 = trees[i+1]
 
-            mx = (x1 + x2) / 2.0
-            my = (y1 + y2) / 2.0
+        for i in range(len(self.trees)-1):
 
-            pose = PoseStamped()
+            x1,y1=self.trees[i]
 
-            pose.header.frame_id = "odom"
+            x2,y2=self.trees[i+1]
 
-            pose.pose.position.x = mx
-            pose.pose.position.y = my
-            pose.pose.position.z = 3.0
 
-            dx = x2 - x1
-            dy = y2 - y1
+            # titik tengah antar pohon
+            mx=(x1+x2)/2
+            my=(y1+y2)/2
 
-            yaw = math.atan2(dy, dx)
 
-            pose.pose.orientation.z = math.sin(yaw / 2.0)
-            pose.pose.orientation.w = math.cos(yaw / 2.0)
 
-            path.poses.append(pose)
+            pose=PoseStamped()
 
-            p = Point()
+            pose.header.frame_id="odom"
 
-            p.x = mx
-            p.y = my
-            p.z = 3.0
+            pose.pose.position.x=mx
 
-            marker.points.append(p)
+            pose.pose.position.y=my
 
-        self.path_pub.publish(path)
+            pose.pose.position.z=3.0
 
-        self.marker_pub.publish(marker)
+
+
+            yaw=math.atan2(
+                y2-y1,
+                x2-x1
+            )
+
+
+            pose.pose.orientation.z=math.sin(yaw/2)
+
+            pose.pose.orientation.w=math.cos(yaw/2)
+
+
+
+            path.poses.append(
+                pose
+            )
+
+
+            point=Point()
+
+            point.x=mx
+
+            point.y=my
+
+            point.z=3.0
+
+
+            marker.points.append(
+                point
+            )
+
+
+
+        self.path_pub.publish(
+            path
+        )
+
+        self.marker_pub.publish(
+            marker
+        )
+
 
         self.get_logger().info(
-            f"Published Global Path ({len(path.poses)} waypoints)"
+            f"Published Global Path {len(path.poses)} waypoints"
         )
+
 
 
 def main(args=None):
 
     rclpy.init(args=args)
 
-    node = GlobalPlanner()
+    node=GlobalPlanner()
 
     rclpy.spin(node)
 
@@ -144,5 +189,6 @@ def main(args=None):
     rclpy.shutdown()
 
 
-if __name__ == "__main__":
+
+if __name__=="__main__":
     main()
