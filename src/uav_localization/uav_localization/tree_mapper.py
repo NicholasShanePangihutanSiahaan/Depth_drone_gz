@@ -19,11 +19,12 @@ class TreeMapper(Node):
 
         super().__init__("tree_mapper")
 
+        # Jarak maksimum agar dianggap pohon yang sama
         self.distance_threshold = 1.5
 
-        self.tree_id = 1
-
         self.tree_database = []
+
+        self.next_tree_id = 1
 
         self.create_subscription(
             Point,
@@ -32,15 +33,15 @@ class TreeMapper(Node):
             10
         )
 
-        self.marker_pub = self.create_publisher(
-            MarkerArray,
-            "/tree_markers",
-            10
-        )
-
         self.pose_pub = self.create_publisher(
             PoseArray,
             "/map/tree_locations",
+            10
+        )
+
+        self.marker_pub = self.create_publisher(
+            MarkerArray,
+            "/tree_markers",
             10
         )
 
@@ -53,7 +54,10 @@ class TreeMapper(Node):
         x = msg.x
         y = msg.y
 
-        duplicate = False
+        current_time = self.get_clock().now().nanoseconds / 1e9
+
+        nearest_tree = None
+        nearest_distance = 9999.0
 
         for tree in self.tree_database:
 
@@ -62,38 +66,54 @@ class TreeMapper(Node):
                 y - tree["y"]
             )
 
-            if d < self.distance_threshold:
+            if d < nearest_distance:
+                nearest_distance = d
+                nearest_tree = tree
 
-                duplicate = True
+        # =====================================================
+        # Update pohon lama
+        # =====================================================
 
-                break
+        if nearest_tree is not None and nearest_distance < self.distance_threshold:
 
-        if duplicate:
+            nearest_tree["count"] += 1
+
+            alpha = 1.0 / nearest_tree["count"]
+
+            nearest_tree["x"] += alpha * (x - nearest_tree["x"])
+            nearest_tree["y"] += alpha * (y - nearest_tree["y"])
+
+            nearest_tree["last_seen"] = current_time
+
+            self.publish_pose_array()
+            self.publish_markers()
 
             return
 
+        # =====================================================
+        # Pohon baru
+        # =====================================================
+
         tree = {
 
-            "id": self.tree_id,
-
+            "id": self.next_tree_id,
             "x": x,
-
-            "y": y
+            "y": y,
+            "count": 1,
+            "last_seen": current_time
 
         }
 
         self.tree_database.append(tree)
 
-        self.tree_id += 1
+        self.next_tree_id += 1
 
         self.publish_pose_array()
-
         self.publish_markers()
 
         self.get_logger().info(
-
-            f"Tree #{tree['id']}  ({tree['x']:.2f}, {tree['y']:.2f})"
-
+            f"Tree {tree['id']} added "
+            f"({tree['x']:.2f}, {tree['y']:.2f})"
         )
 
     ###############################################################
@@ -103,7 +123,6 @@ class TreeMapper(Node):
         msg = PoseArray()
 
         msg.header.frame_id = "odom"
-
         msg.header.stamp = self.get_clock().now().to_msg()
 
         for tree in self.tree_database:
@@ -111,9 +130,7 @@ class TreeMapper(Node):
             pose = Pose()
 
             pose.position.x = tree["x"]
-
             pose.position.y = tree["y"]
-
             pose.position.z = 0.0
 
             pose.orientation.w = 1.0
@@ -126,50 +143,49 @@ class TreeMapper(Node):
 
     def publish_markers(self):
 
-        array = MarkerArray()
+        marker_array = MarkerArray()
 
-        ##########################################
+        # =======================================================
+        # Marker pohon
+        # =======================================================
 
         sphere = Marker()
 
         sphere.header.frame_id = "odom"
-
         sphere.header.stamp = self.get_clock().now().to_msg()
 
         sphere.ns = "trees"
-
         sphere.id = 0
 
         sphere.type = Marker.SPHERE_LIST
-
         sphere.action = Marker.ADD
 
         sphere.scale.x = 0.6
         sphere.scale.y = 0.6
         sphere.scale.z = 0.6
 
+        sphere.pose.orientation.w = 1.0
+
         sphere.color.r = 0.0
         sphere.color.g = 1.0
         sphere.color.b = 0.0
         sphere.color.a = 1.0
-
-        sphere.pose.orientation.w = 1.0
 
         for tree in self.tree_database:
 
             p = Point()
 
             p.x = tree["x"]
-
             p.y = tree["y"]
-
             p.z = 0.0
 
             sphere.points.append(p)
 
-        array.markers.append(sphere)
+        marker_array.markers.append(sphere)
 
-        ##########################################
+        # =======================================================
+        # Nomor pohon
+        # =======================================================
 
         marker_id = 1000
 
@@ -178,45 +194,38 @@ class TreeMapper(Node):
             text = Marker()
 
             text.header.frame_id = "odom"
-
             text.header.stamp = self.get_clock().now().to_msg()
 
             text.ns = "tree_id"
-
             text.id = marker_id
 
             marker_id += 1
 
             text.type = Marker.TEXT_VIEW_FACING
-
             text.action = Marker.ADD
 
             text.pose.position.x = tree["x"]
-
             text.pose.position.y = tree["y"]
-
             text.pose.position.z = 1.2
 
             text.pose.orientation.w = 1.0
 
-            text.scale.z = 0.6
+            text.scale.z = 0.5
 
-            text.color.r = 1.0
-            text.color.g = 1.0
-            text.color.b = 1.0
+            confidence = min(tree["count"] / 5.0, 1.0)
+
+            text.color.r = 1.0 - confidence
+            text.color.g = confidence
+            text.color.b = 0.0
             text.color.a = 1.0
 
-            text.text = str(tree["id"])
+            text.text = f"{tree['id']} ({tree['count']})"
 
-            array.markers.append(text)
+            marker_array.markers.append(text)
 
-        ##########################################
-
-        self.marker_pub.publish(array)
-
+        self.marker_pub.publish(marker_array)
 
 ###############################################################
-
 
 def main(args=None):
 
@@ -224,7 +233,11 @@ def main(args=None):
 
     node = TreeMapper()
 
-    rclpy.spin(node)
+    try:
+        rclpy.spin(node)
+
+    except KeyboardInterrupt:
+        pass
 
     node.destroy_node()
 
@@ -232,5 +245,4 @@ def main(args=None):
 
 
 if __name__ == "__main__":
-
     main()

@@ -8,6 +8,7 @@ from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import MapMetaData
 from geometry_msgs.msg import Pose
+
 from visualization_msgs.msg import MarkerArray
 
 
@@ -19,7 +20,7 @@ class OccupancyMapper(Node):
 
         self.width = 200
         self.height = 200
-        self.resolution = 0.5     # 0.5 meter / cell
+        self.resolution = 0.5
 
         self.origin_x = -50.0
         self.origin_y = -50.0
@@ -42,27 +43,58 @@ class OccupancyMapper(Node):
             10
         )
 
+        self.create_timer(
+            1.0,
+            self.publish_map
+        )
+
+        self.tree_count = 0
+
         self.get_logger().info("Occupancy Mapper Started")
+
+    ##############################################################
 
     def marker_callback(self, msg):
 
         self.grid.fill(0)
 
+        self.tree_count = 0
+
         for marker in msg.markers:
 
-            x = marker.pose.position.x
-            y = marker.pose.position.y
+            if marker.ns != "trees":
+                continue
 
-            ix = int((x - self.origin_x) / self.resolution)
-            iy = int((y - self.origin_y) / self.resolution)
+            for p in marker.points:
 
-            if 0 <= ix < self.width and 0 <= iy < self.height:
+                ix = int(
+                    (p.x - self.origin_x)
+                    / self.resolution
+                )
 
-                self.grid[iy][ix] = 100
+                iy = int(
+                    (p.y - self.origin_y)
+                    / self.resolution
+                )
+
+                if 0 <= ix < self.width and \
+                   0 <= iy < self.height:
+
+                    self.grid[iy, ix] = 100
+                    self.tree_count += 1
+
+    ##############################################################
+
+    def publish_map(self):
 
         occ = OccupancyGrid()
 
-        occ.header.stamp = self.get_clock().now().to_msg()
+        occ.header.stamp = (
+            self.get_clock()
+            .now()
+            .to_msg()
+        )
+
         occ.header.frame_id = "odom"
 
         info = MapMetaData()
@@ -76,7 +108,6 @@ class OccupancyMapper(Node):
         origin.position.x = self.origin_x
         origin.position.y = self.origin_y
         origin.position.z = 0.0
-
         origin.orientation.w = 1.0
 
         info.origin = origin
@@ -87,9 +118,7 @@ class OccupancyMapper(Node):
 
         self.map_pub.publish(occ)
 
-        self.get_logger().info(
-            f"Occupancy map updated ({len(msg.markers)} trees)"
-        )
+    ##############################################################
 
 
 def main(args=None):

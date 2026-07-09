@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 
+import math
 import numpy as np
 
 import rclpy
 from rclpy.node import Node
 
-from visualization_msgs.msg import Marker
-from visualization_msgs.msg import MarkerArray
-
+from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import Pose
 from geometry_msgs.msg import Point
+
+from nav_msgs.msg import Odometry
+
+from visualization_msgs.msg import Marker
 
 
 class RowDetector(Node):
@@ -17,170 +21,165 @@ class RowDetector(Node):
 
         super().__init__("row_detector")
 
+        self.tree_list = []
+
+        self.drone_x = 0.0
+        self.drone_y = 0.0
+
+        self.search_radius = 15.0
 
         self.create_subscription(
-            MarkerArray,
-            "/tree_markers",
-            self.marker_callback,
+            PoseArray,
+            "/map/tree_locations",
+            self.tree_callback,
             10
         )
 
+        self.create_subscription(
+            Odometry,
+            "/localization/odom",
+            self.odom_callback,
+            10
+        )
 
-        self.row_pub = self.create_publisher(
+        self.row_marker_pub = self.create_publisher(
             Marker,
             "/row_center",
             10
         )
 
-
-        self.get_logger().info(
-            "Row Detector Started"
+        self.row_pose_pub = self.create_publisher(
+            PoseArray,
+            "/navigation/current_row",
+            10
         )
 
+        self.create_timer(
+            0.5,
+            self.process_row
+        )
 
-    def marker_callback(self,msg):
+        self.get_logger().info("Row Detector Started")
 
+    ############################################################
 
-        tree_points=[]
+    def tree_callback(self,msg):
 
+        self.tree_list=[]
 
-        # cari marker pohon
-        for marker in msg.markers:
+        for pose in msg.poses:
 
+            self.tree_list.append(
+                (
+                    pose.position.x,
+                    pose.position.y
+                )
+            )
 
-            if marker.ns == "trees":
+    ############################################################
 
+    def odom_callback(self,msg):
 
-                for p in marker.points:
+        self.drone_x=msg.pose.pose.position.x
+        self.drone_y=msg.pose.pose.position.y
 
-                    tree_points.append(p)
+    ############################################################
 
+    def process_row(self):
 
-
-        if len(tree_points) < 5:
-
+        if len(self.tree_list)<3:
             return
 
+        nearby=[]
 
+        for tx,ty in self.tree_list:
 
-        xs=[]
+            d=math.hypot(
+                tx-self.drone_x,
+                ty-self.drone_y
+            )
 
-        ys=[]
+            if d<self.search_radius:
+                nearby.append((tx,ty))
 
+        if len(nearby)<3:
+            return
 
-        for p in tree_points:
+        ys=np.array([p[1] for p in nearby])
 
-            xs.append(p.x)
+        center_y=float(np.mean(ys))
 
-            ys.append(p.y)
+        xs=np.array([p[0] for p in nearby])
 
+        xmin=float(np.min(xs))-3.0
+        xmax=float(np.max(xs))+3.0
 
+        ########################################################
 
-        xs=np.array(xs)
+        marker=Marker()
 
-        ys=np.array(ys)
+        marker.header.frame_id="odom"
+        marker.header.stamp=self.get_clock().now().to_msg()
 
+        marker.ns="row_center"
+        marker.id=0
 
+        marker.type=Marker.LINE_STRIP
+        marker.action=Marker.ADD
 
-        #
-        # estimasi pusat barisan
-        #
+        marker.scale.x=0.20
 
-        center_y=float(
-            np.mean(ys)
-        )
+        marker.color.r=1.0
+        marker.color.g=0.0
+        marker.color.b=0.0
+        marker.color.a=1.0
 
+        ########################################################
 
+        path=PoseArray()
 
-        line=Marker()
+        path.header.frame_id="odom"
+        path.header.stamp=self.get_clock().now().to_msg()
 
-
-        line.header.frame_id="odom"
-
-        line.header.stamp=(
-            self.get_clock()
-            .now()
-            .to_msg()
-        )
-
-
-        line.ns="row_center"
-
-        line.id=0
-
-
-        line.type=Marker.LINE_STRIP
-
-        line.action=Marker.ADD
-
-
-        line.scale.x=0.25
-
-
-
-        line.color.r=1.0
-
-        line.color.g=0.0
-
-        line.color.b=0.0
-
-        line.color.a=1.0
-
-
-
-        xmin=float(np.min(xs))-5
-
-        xmax=float(np.max(xs))+5
-
-
-
-        for x in np.linspace(
-            xmin,
-            xmax,
-            40
-        ):
-
+        for x in np.linspace(xmin,xmax,30):
 
             p=Point()
 
             p.x=float(x)
-
             p.y=center_y
-
             p.z=0.0
 
+            marker.points.append(p)
 
-            line.points.append(p)
+            pose=Pose()
 
+            pose.position.x=float(x)
+            pose.position.y=center_y
+            pose.position.z=0.0
 
+            pose.orientation.w=1.0
 
-        self.row_pub.publish(line)
+            path.poses.append(pose)
 
+        self.row_marker_pub.publish(marker)
 
+        self.row_pose_pub.publish(path)
 
-        self.get_logger().info(
-            f"Row center detected y={center_y:.2f}, trees={len(tree_points)}"
-        )
-
+    ############################################################
 
 
 def main(args=None):
 
     rclpy.init(args=args)
 
-
     node=RowDetector()
 
-
     rclpy.spin(node)
-
 
     node.destroy_node()
 
     rclpy.shutdown()
 
 
-
 if __name__=="__main__":
-
     main()

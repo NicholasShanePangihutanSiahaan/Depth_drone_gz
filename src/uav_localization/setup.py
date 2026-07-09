@@ -31,7 +31,7 @@ setup(
 
     entry_points={
         "console_scripts": [
-            "ekf_localization=uav_localization.ekf_localization:main",
+            "localization_bridge=uav_localization.localization_bridge:main",
             "tree_mapper=uav_localization.tree_mapper:main",
             "row_detector=uav_localization.row_detector:main",
             "occupancy_mapper=uav_localization.occupancy_mapper:main",

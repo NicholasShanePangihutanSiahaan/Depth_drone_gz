@@ -1,62 +1,79 @@
 #!/usr/bin/env python3
 
 import rclpy
-
 from rclpy.node import Node
 
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import TransformStamped
 
 from tf2_ros import TransformBroadcaster
 
-from geometry_msgs.msg import TransformStamped
+from rclpy.qos import (
+    QoSProfile,
+    ReliabilityPolicy,
+    HistoryPolicy
+)
 
 
 class TFBroadcaster(Node):
 
     def __init__(self):
-
         super().__init__("tf_broadcaster")
 
-        self.br = TransformBroadcaster(self)
+        qos_sensor = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10
+        )
+
+        self.tf_broadcaster = TransformBroadcaster(self)
 
         self.create_subscription(
             Odometry,
             "/localization/odom",
-            self.callback,
-            10
+            self.odom_callback,
+            qos_sensor
         )
 
-    def callback(self,msg):
+        self.get_logger().info("TF Broadcaster Started")
 
-        t=TransformStamped()
+    def odom_callback(self, msg):
 
-        t.header=msg.header
+        # Abaikan apabila timestamp belum valid
+        if msg.header.stamp.sec == 0 and msg.header.stamp.nanosec == 0:
+            return
 
-        t.header.frame_id="odom"
+        transform = TransformStamped()
 
-        t.child_frame_id="base_link"
+        transform.header.stamp = msg.header.stamp
+        transform.header.frame_id = "odom"
 
-        t.transform.translation.x=msg.pose.pose.position.x
-        t.transform.translation.y=msg.pose.pose.position.y
-        t.transform.translation.z=msg.pose.pose.position.z
+        transform.child_frame_id = "base_link"
 
-        t.transform.rotation=msg.pose.pose.orientation
+        transform.transform.translation.x = msg.pose.pose.position.x
+        transform.transform.translation.y = msg.pose.pose.position.y
+        transform.transform.translation.z = msg.pose.pose.position.z
 
-        self.br.sendTransform(t)
+        transform.transform.rotation = msg.pose.pose.orientation
+
+        self.tf_broadcaster.sendTransform(transform)
 
 
-def main():
+def main(args=None):
 
-    rclpy.init()
+    rclpy.init(args=args)
 
-    node=TFBroadcaster()
+    node = TFBroadcaster()
 
-    rclpy.spin(node)
+    try:
+        rclpy.spin(node)
+
+    except KeyboardInterrupt:
+        pass
 
     node.destroy_node()
-
     rclpy.shutdown()
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
