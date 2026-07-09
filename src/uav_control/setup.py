@@ -38,6 +38,7 @@ setup(
             "yaw_controller=uav_control.yaw_controller:main",
             "obstacle_avoidance=uav_control.obstacle_avoidance:main",
             "mission_executor=uav_control.mission_executor:main",
+            "fake_uav = uav_control.fake_uav:main",
             "landing_controller=uav_control.landing_controller:main",
         ],
     },
