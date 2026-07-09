@@ -15,7 +15,10 @@ from uav_interfaces.msg import TreeArray
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
-
+from rclpy.qos import QoSProfile
+from rclpy.qos import ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy
+from rclpy.qos import HistoryPolicy
 
 class TreeMapper(Node):
 
@@ -96,7 +99,12 @@ class TreeMapper(Node):
             10
         )
 
-
+        map_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10
+        )
 
         ##################################################
         # Publishers
@@ -108,7 +116,7 @@ class TreeMapper(Node):
 
             "/map/trees",
 
-            10
+            map_qos
         )
 
 
