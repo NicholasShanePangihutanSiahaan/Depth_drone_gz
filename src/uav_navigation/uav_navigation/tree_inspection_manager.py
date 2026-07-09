@@ -47,20 +47,28 @@ class TreeInspectionManager(Node):
 
 
         ##################################################
-        # State
+        # State Machine
         ##################################################
 
-        self.state = "WAITING"
+        self.state = "WAITING_UAV"
 
+        # daftar pohon
         self.trees = []
 
+        # pose UAV sudah diterima?
+        self.have_pose = False
+
+        # pohon yang sedang diinspeksi
         self.current_tree = None
 
-        self.waypoints = None
+        # orbit waypoint yang sedang digunakan
+        self.current_waypoints = None
 
-        self.orbit_index = 0
+        # trajectory sudah dikirim?
+        self.trajectory_sent = False
 
-        self.have_pose = False
+        # trajectory sudah selesai?
+        self.trajectory_completed = False
 
 
 
@@ -106,6 +114,12 @@ class TreeInspectionManager(Node):
             10
         )
 
+        self.create_subscription(
+            String,
+            "/navigation/follower_status",
+            self.follower_callback,
+            10
+        )
 
 
         ##################################################
@@ -178,7 +192,21 @@ class TreeInspectionManager(Node):
 
         self.have_pose = True
 
+    ##################################################
+    # Path follower status
+    ##################################################
 
+    def follower_callback(self, msg):
+
+        status = msg.data
+
+        if status == "TRAJECTORY_COMPLETED":
+
+            self.get_logger().info(
+                "Trajectory completed"
+            )
+
+            self.trajectory_completed = True
 
     ##################################################
     # Distance
@@ -320,13 +348,18 @@ class TreeInspectionManager(Node):
 
 
     ##################################################
-    # Main loop
+    # Main Loop
     ##################################################
 
     def loop(self):
 
+        ##################################################
+        # Waiting UAV Pose
+        ##################################################
 
         if not self.have_pose:
+
+            self.state = "WAITING_UAV"
 
             self.publish_status(
                 "WAITING_UAV_POSE"
@@ -335,8 +368,13 @@ class TreeInspectionManager(Node):
             return
 
 
+        ##################################################
+        # Waiting Tree Map
+        ##################################################
 
-        if len(self.trees)==0:
+        if len(self.trees) == 0:
+
+            self.state = "WAITING_TREE_MAP"
 
             self.publish_status(
                 "WAITING_TREE_MAP"
@@ -345,23 +383,17 @@ class TreeInspectionManager(Node):
             return
 
 
-
         ##################################################
-        # Choose tree
+        # No active tree
         ##################################################
 
         if self.current_tree is None:
 
-
             tree = self.select_tree()
-
-
 
             if tree is None:
 
-
-                self.state="FINISHED"
-
+                self.state = "MISSION_FINISHED"
 
                 self.publish_status(
                     "MISSION_FINISHED"
@@ -370,78 +402,86 @@ class TreeInspectionManager(Node):
                 return
 
 
+            ##############################################
+            # Start new tree
+            ##############################################
 
             self.current_tree = tree
 
-
-            self.waypoints = (
+            self.current_waypoints = (
                 self.generate_orbit(tree)
             )
 
+            self.trajectory_sent = False
 
-            self.orbit_index = 0
+            self.trajectory_completed = False
 
+            self.state = "START_INSPECTION"
+
+
+        ##################################################
+        # Publish trajectory once
+        ##################################################
+
+        if (
+            self.state == "START_INSPECTION"
+            and
+            not self.trajectory_sent
+        ):
 
             self.waypoint_pub.publish(
-                self.waypoints
+                self.current_waypoints
             )
-
-
-            self.state="INSPECTING"
-
 
             self.publish_status(
-                f"INSPECT_TREE_{tree.id}"
+                f"INSPECT_TREE_{self.current_tree.id}"
             )
-
 
             self.get_logger().info(
 
-                f"Start inspection Tree {tree.id}"
+                f"Start inspection Tree {self.current_tree.id}"
 
             )
 
+            self.trajectory_sent = True
+
+            self.state = "WAIT_TRAJECTORY"
 
             return
 
 
-
         ##################################################
-        # Check waypoint progress
+        # Waiting trajectory completed
         ##################################################
 
-        target = self.waypoints.poses[
-            self.orbit_index
-        ]
+        if self.state == "WAIT_TRAJECTORY":
+
+            if not self.trajectory_completed:
+
+                self.publish_status(
+
+                    f"INSPECT_TREE_{self.current_tree.id}"
+
+                )
+
+                return
 
 
-        d = self.distance(
-            target.position.x,
-            target.position.y
-        )
+            ##############################################
+            # Orbit finished
+            ##############################################
 
+            self.finish_tree()
 
-        if d < self.finish_distance:
+            # self.current_tree = None
 
+            self.current_waypoints = None
 
-            self.orbit_index += 1
+            self.trajectory_sent = False
 
+            self.trajectory_completed = False
 
-
-            if self.orbit_index >= len(
-                self.waypoints.poses
-            ):
-
-
-                self.finish_tree()
-        self.get_logger().info(
-            f"Publishing {len(self.waypoints.poses)} orbit waypoints"
-        )
-        
-        self.waypoint_pub.publish(self.waypoints)
-
-
-
+            self.state = "SELECT_NEXT_TREE"
     ##################################################
     # Finish tree
     ##################################################
