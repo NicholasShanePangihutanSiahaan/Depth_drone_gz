@@ -5,5 +5,6 @@ float32 y
 float32 z
 
 float32 confidence
+float32 last_seen
 
 bool inspected

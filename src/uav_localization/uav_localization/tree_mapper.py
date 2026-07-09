@@ -1,31 +1,58 @@
 #!/usr/bin/env python3
 
 import math
+import time
 
 import rclpy
 from rclpy.node import Node
 
+
 from geometry_msgs.msg import Point
-from geometry_msgs.msg import Pose
-# from geometry_msgs.msg import PoseArray
+
 from uav_interfaces.msg import Tree
 from uav_interfaces.msg import TreeArray
+
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
+
 
 
 class TreeMapper(Node):
 
     def __init__(self):
 
-        super().__init__("tree_mapper")
+        super().__init__(
+            "tree_mapper"
+        )
 
-        # Jarak maksimum agar dianggap pohon yang sama
-        self.distance_threshold = 1.5
+
+        ##################################################
+        # Parameter
+        ##################################################
+
+        self.merge_distance = 1.5
+
+        self.max_confidence = 1.0
+
+        self.confidence_increment = 0.15
+
+        self.confidence_decay = 0.01
+
+
+
+        ##################################################
+        # Database
+        ##################################################
 
         self.tree_database = []
 
         self.next_tree_id = 1
+
+
+
+        ##################################################
+        # Subscriber
+        ##################################################
 
         self.create_subscription(
             Point,
@@ -34,231 +61,344 @@ class TreeMapper(Node):
             10
         )
 
-        # self.pose_pub = self.create_publisher(
-        #     PoseArray,
-        #     "/map/tree_locations",
-        #     10
-        # )
+
+        ##################################################
+        # Publisher
+        ##################################################
 
         self.tree_pub = self.create_publisher(
-           TreeArray,
-           "/map/trees",
-           10
+            TreeArray,
+            "/map/trees",
+            10
         )
+
+
         self.marker_pub = self.create_publisher(
             MarkerArray,
             "/tree_markers",
             10
         )
 
-        self.get_logger().info("Tree Mapper Started")
 
-    ###############################################################
+        ##################################################
 
-    def tree_callback(self, msg):
+        self.timer = self.create_timer(
+            5.0,
+            self.update_confidence
+        )
+
+
+        self.get_logger().info(
+            "Tree Mapper Started"
+        )
+
+
+
+    ##################################################
+    # Detection callback
+    ##################################################
+
+    def tree_callback(self,msg):
+
 
         x = msg.x
         y = msg.y
+        z = msg.z
 
-        current_time = self.get_clock().now().nanoseconds / 1e9
 
-        nearest_tree = None
-        nearest_distance = 9999.0
+        nearest = None
 
-        for tree in self.tree_database:
+        min_distance = float("inf")
 
-            d = math.hypot(
-                x - tree["x"],
-                y - tree["y"]
-            )
 
-            if d < nearest_distance:
-                nearest_distance = d
-                nearest_tree = tree
-
-        # =====================================================
-        # Update pohon lama
-        # =====================================================
-
-        if nearest_tree is not None and nearest_distance < self.distance_threshold:
-
-            nearest_tree["count"] += 1
-
-            nearest_tree["confidence"] = min(
-                nearest_tree["count"] / 10.0,
-                1.0
-            )
-
-            alpha = 1.0 / nearest_tree["count"]
-
-            nearest_tree["x"] += alpha * (x - nearest_tree["x"])
-            nearest_tree["y"] += alpha * (y - nearest_tree["y"])
-
-            nearest_tree["last_seen"] = current_time
-
-            self.publish_tree_array()
-            self.publish_markers()
-
-            return
-
-        # =====================================================
-        # Pohon baru
-        # =====================================================
-
-        tree = {
-
-            "id": self.next_tree_id,
-            "x": x,
-            "y": y,
-            "z":0.0,
-            "count": 1,            
-            "confidence":0.2,
-            "inspected":False,
-            "last_seen": current_time
-
-        }
-
-        self.tree_database.append(tree)
-
-        self.next_tree_id += 1
-
-        self.publish_tree_array()
-        self.publish_markers()
-
-        self.get_logger().info(
-            f"Tree {tree['id']} added "
-            f"({tree['x']:.2f}, {tree['y']:.2f})"
-        )
-
-    ###############################################################
-
-    def publish_tree_array(self):
-
-        msg = TreeArray()
 
         for tree in self.tree_database:
 
-            t = Tree()
 
-            t.id = tree["id"]
+            d = math.sqrt(
 
-            t.x = tree["x"]
-            t.y = tree["y"]
-            t.z = tree["z"]
+                (x-tree["x"])**2 +
 
-            t.confidence = tree["confidence"]
+                (y-tree["y"])**2
 
-            t.inspected = tree["inspected"]
+            )
+
+
+            if d < min_distance:
+
+                min_distance = d
+
+                nearest = tree
+
+
+
+        ##################################################
+        # Existing tree
+        ##################################################
+
+        if nearest and min_distance < self.merge_distance:
+
+
+            nearest["count"] += 1
+
+
+            alpha = 1.0 / nearest["count"]
+
+
+            nearest["x"] += alpha * (
+                x-nearest["x"]
+            )
+
+
+            nearest["y"] += alpha * (
+                y-nearest["y"]
+            )
+
+
+            nearest["z"] += alpha * (
+                z-nearest["z"]
+            )
+
+
+            nearest["confidence"] = min(
+
+                nearest["confidence"]
+                +
+                self.confidence_increment,
+
+                self.max_confidence
+
+            )
+
+
+            nearest["last_seen"] = time.time()
+
+
+
+        ##################################################
+        # New tree
+        ##################################################
+
+        else:
+
+
+            tree = {
+
+
+                "id":
+                self.next_tree_id,
+
+
+                "x":x,
+
+                "y":y,
+
+                "z":z,
+
+
+                "count":1,
+
+
+                "confidence":0.2,
+
+
+                "inspected":False,
+
+
+                "last_seen":
+                time.time()
+
+            }
+
+
+
+            self.tree_database.append(tree)
+
+
+            self.next_tree_id +=1
+
+
+
+            self.get_logger().info(
+
+                f"New Tree {tree['id']} "
+                f"({x:.2f},{y:.2f},{z:.2f})"
+
+            )
+
+
+
+        self.publish_tree()
+
+        self.publish_marker()
+
+
+
+    ##################################################
+    # Confidence aging
+    ##################################################
+
+    def update_confidence(self):
+
+
+        now=time.time()
+
+
+        for tree in self.tree_database:
+
+
+            dt = now-tree["last_seen"]
+
+
+            if dt > 30:
+
+
+                tree["confidence"] -= (
+                    self.confidence_decay
+                )
+
+
+
+                if tree["confidence"] <0:
+
+                    tree["confidence"]=0
+
+
+
+        self.publish_tree()
+
+
+
+    ##################################################
+    # Publish TreeArray
+    ##################################################
+
+    def publish_tree(self):
+
+
+        msg=TreeArray()
+
+
+
+        for tree in self.tree_database:
+
+
+            t=Tree()
+
+
+            t.id=tree["id"]
+
+            t.x=tree["x"]
+
+            t.y=tree["y"]
+
+            t.z=tree["z"]
+
+
+            t.confidence=tree["confidence"]
+
+            t.inspected=tree["inspected"]
+
 
             msg.trees.append(t)
 
 
+
         self.tree_pub.publish(msg)
 
-    ###############################################################
 
-    def publish_markers(self):
 
-        marker_array = MarkerArray()
+    ##################################################
+    # RVIZ visualization
+    ##################################################
 
-        # =======================================================
-        # Marker pohon
-        # =======================================================
+    def publish_marker(self):
 
-        sphere = Marker()
 
-        sphere.header.frame_id = "odom"
-        sphere.header.stamp = self.get_clock().now().to_msg()
+        markers=MarkerArray()
 
-        sphere.ns = "trees"
-        sphere.id = 0
 
-        sphere.type = Marker.SPHERE_LIST
-        sphere.action = Marker.ADD
+        sphere=Marker()
 
-        sphere.scale.x = 0.6
-        sphere.scale.y = 0.6
-        sphere.scale.z = 0.6
 
-        sphere.pose.orientation.w = 1.0
+        sphere.header.frame_id="odom"
 
-        sphere.color.r = 0.0
-        sphere.color.g = 1.0
-        sphere.color.b = 0.0
-        sphere.color.a = 1.0
+        sphere.header.stamp=self.get_clock().now().to_msg()
+
+
+        sphere.ns="trees"
+
+        sphere.id=0
+
+
+        sphere.type=Marker.SPHERE_LIST
+
+        sphere.action=Marker.ADD
+
+
+        sphere.scale.x=0.5
+
+        sphere.scale.y=0.5
+
+        sphere.scale.z=0.5
+
+
+        sphere.pose.orientation.w=1.0
+
+
 
         for tree in self.tree_database:
 
-            p = Point()
 
-            p.x = tree["x"]
-            p.y = tree["y"]
-            p.z = 0.0
+            p=Point()
+
+            p.x=tree["x"]
+
+            p.y=tree["y"]
+
+            p.z=tree["z"]
+
 
             sphere.points.append(p)
 
-        marker_array.markers.append(sphere)
 
-        # =======================================================
-        # Nomor pohon
-        # =======================================================
 
-        marker_id = 1000
+        markers.markers.append(sphere)
 
-        for tree in self.tree_database:
 
-            text = Marker()
 
-            text.header.frame_id = "odom"
-            text.header.stamp = self.get_clock().now().to_msg()
+        self.marker_pub.publish(
+            markers
+        )
 
-            text.ns = "tree_id"
-            text.id = marker_id
 
-            marker_id += 1
-
-            text.type = Marker.TEXT_VIEW_FACING
-            text.action = Marker.ADD
-
-            text.pose.position.x = tree["x"]
-            text.pose.position.y = tree["y"]
-            text.pose.position.z = 1.2
-
-            text.pose.orientation.w = 1.0
-
-            text.scale.z = 0.5
-
-            confidence = min(tree["count"] / 5.0, 1.0)
-
-            text.color.r = 1.0 - confidence
-            text.color.g = confidence
-            text.color.b = 0.0
-            text.color.a = 1.0
-
-            text.text = f"{tree['id']} ({tree['count']})"
-
-            marker_array.markers.append(text)
-
-        self.marker_pub.publish(marker_array)
-
-###############################################################
 
 def main(args=None):
 
+
     rclpy.init(args=args)
 
-    node = TreeMapper()
+
+    node=TreeMapper()
+
 
     try:
+
         rclpy.spin(node)
 
+
     except KeyboardInterrupt:
+
         pass
 
+
     node.destroy_node()
+
 
     rclpy.shutdown()
 
 
-if __name__ == "__main__":
+
+if __name__=="__main__":
+
     main()
