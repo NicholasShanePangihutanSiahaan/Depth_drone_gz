@@ -2,7 +2,6 @@
 
 
 import math
-
 import rclpy
 
 from rclpy.node import Node
@@ -13,7 +12,11 @@ from uav_interfaces.msg import TreeArray
 
 
 from geometry_msgs.msg import PoseStamped
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import Pose
+
+
+from std_msgs.msg import String
 
 
 
@@ -30,20 +33,19 @@ class TreeInspectionManager(Node):
         # Parameters
         ##################################################
 
-        # minimal confidence pohon
-        self.min_confidence = 0.2
+        self.min_confidence = 0.3
 
 
-        # jarak UAV ke pohon ketika inspeksi dianggap selesai
-        self.inspection_distance = 5.0
+        self.inspection_radius = 6.0
 
 
-        # tinggi inspeksi UAV
         self.inspection_altitude = 8.0
 
 
-        # radius posisi mengelilingi pohon
-        self.inspection_radius = 5.0
+        self.orbit_points = 8
+
+
+        self.finish_distance = 2.0
 
 
 
@@ -51,22 +53,31 @@ class TreeInspectionManager(Node):
         # State
         ##################################################
 
-        self.state = "WAITING"
+        self.state="WAITING"
 
 
-        self.trees = []
+        self.trees=[]
 
 
-        self.current_target_id = -1
+        self.current_tree=None
+
+
+        self.orbit_index=0
+
+
+        self.waypoints=[]
+
 
 
         ##################################################
         # UAV pose
         ##################################################
 
-        self.uav_x = 0.0
-        self.uav_y = 0.0
-        self.uav_z = 0.0
+        self.uav_x=0.0
+
+        self.uav_y=0.0
+
+        self.uav_z=0.0
 
 
 
@@ -74,7 +85,7 @@ class TreeInspectionManager(Node):
         # Subscriber
         ##################################################
 
-        self.tree_sub = self.create_subscription(
+        self.create_subscription(
             TreeArray,
             "/map/trees",
             self.tree_callback,
@@ -82,8 +93,7 @@ class TreeInspectionManager(Node):
         )
 
 
-
-        self.pose_sub = self.create_subscription(
+        self.create_subscription(
             PoseStamped,
             "/mavros/local_position/pose",
             self.pose_callback,
@@ -96,19 +106,21 @@ class TreeInspectionManager(Node):
         # Publisher
         ##################################################
 
-        # target untuk planner
-
-        self.target_pub = self.create_publisher(
-            Point,
-            "/mission/inspection_target",
+        self.waypoint_pub=self.create_publisher(
+            PoseArray,
+            "/mission/inspection_waypoints",
             10
         )
 
 
+        self.status_pub=self.create_publisher(
+            String,
+            "/mission/status",
+            10
+        )
 
-        # update status pohon
 
-        self.tree_update_pub = self.create_publisher(
+        self.tree_update_pub=self.create_publisher(
             Tree,
             "/map/tree_update",
             10
@@ -116,61 +128,47 @@ class TreeInspectionManager(Node):
 
 
 
-        ##################################################
-        # Timer
-        ##################################################
-
-        self.timer = self.create_timer(
+        self.timer=self.create_timer(
             1.0,
-            self.manager_loop
+            self.loop
         )
-
 
 
         self.get_logger().info(
-            "Tree Inspection Manager Started"
+            "Tree Inspection Manager Ready"
         )
 
 
 
-    ##################################################
-    # Receive tree database
     ##################################################
 
     def tree_callback(self,msg):
 
-        self.trees = msg.trees
+        self.trees=msg.trees
 
 
 
-    ##################################################
-    # Receive UAV pose
     ##################################################
 
     def pose_callback(self,msg):
 
-        self.uav_x = msg.pose.position.x
+        self.uav_x=msg.pose.position.x
 
-        self.uav_y = msg.pose.position.y
+        self.uav_y=msg.pose.position.y
 
-        self.uav_z = msg.pose.position.z
+        self.uav_z=msg.pose.position.z
 
 
 
     ##################################################
-    # Distance
+    # distance
     ##################################################
 
-    def distance(
-        self,
-        x,
-        y
-    ):
-
+    def distance(self,x,y):
 
         return math.sqrt(
 
-            (x-self.uav_x)**2 +
+            (x-self.uav_x)**2+
 
             (y-self.uav_y)**2
 
@@ -179,172 +177,232 @@ class TreeInspectionManager(Node):
 
 
     ##################################################
-    # Create safe inspection point
+    # Select tree
     ##################################################
 
-    def create_inspection_point(
-        self,
-        tree
-    ):
+    def select_tree(self):
 
 
-        dx = self.uav_x - tree.x
+        candidate=None
 
-        dy = self.uav_y - tree.y
-
-
-
-        dist = math.sqrt(
-            dx*dx +
-            dy*dy
-        )
-
-
-
-        # jika tepat di posisi pohon
-
-        if dist < 0.1:
-
-            dx = 1.0
-            dy = 0.0
-
-            dist = 1.0
-
-
-
-        scale = (
-            self.inspection_radius /
-            dist
-        )
-
-
-
-        target = Point()
-
-
-
-        target.x = (
-            tree.x +
-            dx * scale
-        )
-
-
-        target.y = (
-            tree.y +
-            dy * scale
-        )
-
-
-        target.z = (
-            self.inspection_altitude
-        )
-
-
-
-        return target
-
-
-
-    ##################################################
-    # Find nearest tree
-    ##################################################
-
-    def select_target(self):
-
-
-        nearest = None
-
-
-        nearest_distance = float("inf")
-
+        best=float("inf")
 
 
         for tree in self.trees:
 
 
-
             if tree.inspected:
-
                 continue
-
 
 
             if tree.confidence < self.min_confidence:
-
                 continue
 
 
 
-            d = self.distance(
+            d=self.distance(
                 tree.x,
                 tree.y
             )
 
 
+            if d<best:
 
-            if d < nearest_distance:
+                best=d
 
-                nearest_distance = d
-
-                nearest = tree
-
+                candidate=tree
 
 
-        return nearest
+
+        return candidate
 
 
 
     ##################################################
-    # Check inspection finished
+    # Create orbit
     ##################################################
 
-    def inspection_complete(
-        self,
-        tree
-    ):
+    def generate_orbit(self,tree):
 
 
-        d = self.distance(
-            tree.x,
-            tree.y
+        poses=PoseArray()
+
+
+        poses.header.frame_id="odom"
+
+
+
+        for i in range(self.orbit_points):
+
+
+            angle=(2*math.pi*i)/self.orbit_points
+
+
+
+            p=Pose()
+
+
+            p.position.x=(
+
+                tree.x+
+
+                self.inspection_radius*
+                math.cos(angle)
+
+            )
+
+
+            p.position.y=(
+
+                tree.y+
+
+                self.inspection_radius*
+                math.sin(angle)
+
+            )
+
+
+            p.position.z=self.inspection_altitude
+
+
+
+            p.orientation.w=1.0
+
+
+
+            poses.poses.append(p)
+
+
+
+        return poses
+
+
+
+    ##################################################
+    # Publish status
+    ##################################################
+
+    def status(self,text):
+
+        msg=String()
+
+        msg.data=text
+
+        self.status_pub.publish(msg)
+
+
+
+    ##################################################
+    # Main loop
+    ##################################################
+
+    def loop(self):
+
+
+        ############################################
+
+        if self.current_tree is None:
+
+
+            tree=self.select_tree()
+
+
+
+            if tree is None:
+
+                self.state="FINISHED"
+
+                self.status(
+                    "MISSION_FINISHED"
+                )
+
+                return
+
+
+
+            self.current_tree=tree
+
+
+            self.waypoints=self.generate_orbit(tree)
+
+
+            self.waypoint_pub.publish(
+                self.waypoints
+            )
+
+
+            self.orbit_index=0
+
+
+            self.state="INSPECTING"
+
+
+
+            self.status(
+                f"INSPECT_TREE_{tree.id}"
+            )
+
+
+            return
+
+
+
+        ############################################
+        # Check orbit progress
+        ############################################
+
+
+        if self.orbit_index >= len(
+            self.waypoints.poses
+        ):
+
+
+            self.finish_tree()
+
+            return
+
+
+
+        target=self.waypoints.poses[
+            self.orbit_index
+        ]
+
+
+
+        d=self.distance(
+            target.position.x,
+            target.position.y
         )
 
 
-
-        if d <= self.inspection_distance:
-
-            return True
+        if d < self.finish_distance:
 
 
-
-        return False
+            self.orbit_index+=1
 
 
 
     ##################################################
-    # Send tree update
-    ##################################################
 
-    def mark_tree_finished(
-        self,
-        tree
-    ):
+    def finish_tree(self):
 
 
-        update = Tree()
+        update=Tree()
 
 
-        update.id = tree.id
+        update.id=self.current_tree.id
 
-        update.x = tree.x
-        update.y = tree.y
-        update.z = tree.z
+        update.x=self.current_tree.x
+
+        update.y=self.current_tree.y
+
+        update.z=self.current_tree.z
 
 
-        update.confidence = tree.confidence
+        update.confidence=self.current_tree.confidence
 
 
-        update.inspected = True
+        update.inspected=True
 
 
 
@@ -353,182 +411,31 @@ class TreeInspectionManager(Node):
         )
 
 
-
-        self.get_logger().info(
-            f"Tree {tree.id} inspection completed"
+        self.status(
+            f"TREE_{update.id}_DONE"
         )
 
 
+        self.current_tree=None
 
-    ##################################################
-    # Main state machine
-    ##################################################
-
-    def manager_loop(self):
-
-
-        ##############################################
-        # No tree
-        ##############################################
-
-        if len(self.trees)==0:
-
-
-            self.state="WAITING"
-
-
-            return
-
-
-
-        ##############################################
-        # Already moving
-        ##############################################
-
-        if self.current_target_id != -1:
-
-
-
-            current_tree = None
-
-
-
-            for tree in self.trees:
-
-                if tree.id == self.current_target_id:
-
-                    current_tree = tree
-
-
-
-            if current_tree is None:
-
-                self.current_target_id=-1
-
-                return
-
-
-
-
-            if self.inspection_complete(
-                current_tree
-            ):
-
-
-
-                self.mark_tree_finished(
-                    current_tree
-                )
-
-
-
-                self.current_target_id=-1
-
-
-                self.state="COMPLETED"
-
-
-
-            return
-
-
-
-
-        ##############################################
-        # Select new tree
-        ##############################################
-
-        target_tree = self.select_target()
-
-
-
-        if target_tree is None:
-
-
-            self.state="FINISHED"
-
-
-            self.get_logger().info(
-                "All trees inspected"
-            )
-
-
-            return
-
-
-
-
-        ##############################################
-        # Create target point
-        ##############################################
-
-        target_point = self.create_inspection_point(
-            target_tree
-        )
-
-
-
-        self.target_pub.publish(
-            target_point
-        )
-
-
-
-        self.current_target_id = target_tree.id
-
-
-
-        self.state="MOVING"
-
-
-
-        self.get_logger().info(
-
-            f"""
-            New inspection target
-
-            Tree ID : {target_tree.id}
-
-            Tree Position:
-            ({target_tree.x:.2f},
-             {target_tree.y:.2f})
-
-            UAV Target:
-            ({target_point.x:.2f},
-             {target_point.y:.2f},
-             {target_point.z:.2f})
-            """
-
-        )
-
-
-
-
-##################################################
 
 
 def main(args=None):
 
-
     rclpy.init(args=args)
 
-
-    node = TreeInspectionManager()
+    node=TreeInspectionManager()
 
 
     try:
 
         rclpy.spin(node)
 
-
     except KeyboardInterrupt:
-
         pass
 
 
-
     node.destroy_node()
-
 
     rclpy.shutdown()
 
