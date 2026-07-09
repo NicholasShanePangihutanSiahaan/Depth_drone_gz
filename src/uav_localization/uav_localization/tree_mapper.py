@@ -7,8 +7,9 @@ from rclpy.node import Node
 
 from geometry_msgs.msg import Point
 from geometry_msgs.msg import Pose
-from geometry_msgs.msg import PoseArray
-
+# from geometry_msgs.msg import PoseArray
+from uav_interfaces.msg import Tree
+from uav_interfaces.msg import TreeArray
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
@@ -33,12 +34,17 @@ class TreeMapper(Node):
             10
         )
 
-        self.pose_pub = self.create_publisher(
-            PoseArray,
-            "/map/tree_locations",
-            10
-        )
+        # self.pose_pub = self.create_publisher(
+        #     PoseArray,
+        #     "/map/tree_locations",
+        #     10
+        # )
 
+        self.tree_pub = self.create_publisher(
+           TreeArray,
+           "/map/trees",
+           10
+        )
         self.marker_pub = self.create_publisher(
             MarkerArray,
             "/tree_markers",
@@ -78,6 +84,11 @@ class TreeMapper(Node):
 
             nearest_tree["count"] += 1
 
+            nearest_tree["confidence"] = min(
+                nearest_tree["count"] / 10.0,
+                1.0
+            )
+
             alpha = 1.0 / nearest_tree["count"]
 
             nearest_tree["x"] += alpha * (x - nearest_tree["x"])
@@ -85,7 +96,7 @@ class TreeMapper(Node):
 
             nearest_tree["last_seen"] = current_time
 
-            self.publish_pose_array()
+            self.publish_tree_array()
             self.publish_markers()
 
             return
@@ -99,7 +110,10 @@ class TreeMapper(Node):
             "id": self.next_tree_id,
             "x": x,
             "y": y,
-            "count": 1,
+            "z":0.0,
+            "count": 1,            
+            "confidence":0.2,
+            "inspected":False,
             "last_seen": current_time
 
         }
@@ -108,7 +122,7 @@ class TreeMapper(Node):
 
         self.next_tree_id += 1
 
-        self.publish_pose_array()
+        self.publish_tree_array()
         self.publish_markers()
 
         self.get_logger().info(
@@ -118,26 +132,28 @@ class TreeMapper(Node):
 
     ###############################################################
 
-    def publish_pose_array(self):
+    def publish_tree_array(self):
 
-        msg = PoseArray()
-
-        msg.header.frame_id = "odom"
-        msg.header.stamp = self.get_clock().now().to_msg()
+        msg = TreeArray()
 
         for tree in self.tree_database:
 
-            pose = Pose()
+            t = Tree()
 
-            pose.position.x = tree["x"]
-            pose.position.y = tree["y"]
-            pose.position.z = 0.0
+            t.id = tree["id"]
 
-            pose.orientation.w = 1.0
+            t.x = tree["x"]
+            t.y = tree["y"]
+            t.z = tree["z"]
 
-            msg.poses.append(pose)
+            t.confidence = tree["confidence"]
 
-        self.pose_pub.publish(msg)
+            t.inspected = tree["inspected"]
+
+            msg.trees.append(t)
+
+
+        self.tree_pub.publish(msg)
 
     ###############################################################
 
