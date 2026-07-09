@@ -1,56 +1,55 @@
 #!/usr/bin/env python3
 
+
 import math
 
 import rclpy
 from rclpy.node import Node
 
-from geometry_msgs.msg import PointStamped
+
 from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseArray
+
 
 from nav_msgs.msg import Path
-from nav_msgs.msg import Odometry
 
-from rclpy.qos import (
-    QoSProfile,
-    ReliabilityPolicy,
-    HistoryPolicy
-)
 
 
 class TrajectoryGenerator(Node):
 
     def __init__(self):
 
-        super().__init__("trajectory_generator")
-
-        qos_sensor = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10
+        super().__init__(
+            "trajectory_generator"
         )
 
-        self.current_target = None
 
-        self.current_x = 0.0
-        self.current_y = 0.0
-        self.current_z = 3.0
+        ##################################################
+        # Parameter
+        ##################################################
 
-        self.have_pose = False
+        # jarak antar interpolasi waypoint
 
-        self.create_subscription(
-            PointStamped,
-            "/navigation/target_waypoint",
-            self.target_callback,
+        self.step_distance = 0.3
+
+
+
+        ##################################################
+        # Subscriber
+        ##################################################
+
+        self.waypoint_sub = self.create_subscription(
+            PoseArray,
+            "/mission/inspection_waypoints",
+            self.waypoint_callback,
             10
         )
 
-        self.create_subscription(
-            Odometry,
-            "/localization/odom",
-            self.odom_callback,
-            qos_sensor
-        )
+
+
+        ##################################################
+        # Publisher
+        ##################################################
 
         self.trajectory_pub = self.create_publisher(
             Path,
@@ -58,99 +57,273 @@ class TrajectoryGenerator(Node):
             10
         )
 
-        self.get_logger().info("Trajectory Generator Started")
 
-    ############################################################
 
-    def odom_callback(self, msg):
+        self.get_logger().info(
+            "Trajectory Generator Started"
+        )
 
-        self.current_x = msg.pose.pose.position.x
-        self.current_y = msg.pose.pose.position.y
-        self.current_z = msg.pose.pose.position.z
 
-        self.have_pose = True
 
-    ############################################################
+    ##################################################
+    # Receive waypoint list
+    ##################################################
 
-    def target_callback(self, msg):
+    def waypoint_callback(
+        self,
+        msg
+    ):
 
-        if not self.have_pose:
+
+        if len(msg.poses)==0:
+
+            self.get_logger().warning(
+                "Empty waypoint received"
+            )
+
             return
 
-        self.current_target = msg
 
-        self.generate_trajectory()
 
-    ############################################################
+        trajectory = self.generate_path(
+            msg
+        )
 
-    def generate_trajectory(self):
 
-        tx = self.current_target.point.x
-        ty = self.current_target.point.y
-        tz = self.current_target.point.z
+        self.trajectory_pub.publish(
+            trajectory
+        )
 
-        sx = self.current_x
-        sy = self.current_y
-        sz = self.current_z
+
+        self.get_logger().info(
+            f"Trajectory generated "
+            f"{len(trajectory.poses)} points"
+        )
+
+
+
+    ##################################################
+    # Generate smooth path
+    ##################################################
+
+    def generate_path(
+        self,
+        waypoint_msg
+    ):
+
 
         path = Path()
 
-        path.header.frame_id = "odom"
-        path.header.stamp = self.get_clock().now().to_msg()
 
-        distance = math.hypot(tx - sx, ty - sy)
+        path.header.frame_id="odom"
 
-        step = 0.30
-
-        N = max(5, int(distance / step))
-
-        yaw = math.atan2(
-            ty - sy,
-            tx - sx
-        )
-
-        qz = math.sin(yaw / 2.0)
-        qw = math.cos(yaw / 2.0)
-
-        for i in range(N + 1):
-
-            s = i / float(N)
-
-            pose = PoseStamped()
-
-            pose.header.frame_id = "odom"
-
-            pose.pose.position.x = sx + (tx - sx) * s
-            pose.pose.position.y = sy + (ty - sy) * s
-            pose.pose.position.z = sz + (tz - sz) * s
-
-            pose.pose.orientation.z = qz
-            pose.pose.orientation.w = qw
-
-            path.poses.append(pose)
-
-        self.trajectory_pub.publish(path)
-
-        self.get_logger().info(
-            f"Generated trajectory : {len(path.poses)} points"
+        path.header.stamp=(
+            self.get_clock()
+            .now()
+            .to_msg()
         )
 
 
-############################################################
+
+        poses = waypoint_msg.poses
+
+
+
+        ##################################################
+        # Interpolate each segment
+        ##################################################
+
+        for i in range(
+            len(poses)-1
+        ):
+
+
+            start = poses[i]
+
+            end = poses[i+1]
+
+
+
+            dx = (
+                end.position.x -
+                start.position.x
+            )
+
+
+            dy = (
+                end.position.y -
+                start.position.y
+            )
+
+
+            dz = (
+                end.position.z -
+                start.position.z
+            )
+
+
+
+            distance = math.sqrt(
+
+                dx*dx+
+                dy*dy+
+                dz*dz
+
+            )
+
+
+
+            steps = max(
+                1,
+                int(
+                    distance /
+                    self.step_distance
+                )
+            )
+
+
+
+            yaw = math.atan2(
+                dy,
+                dx
+            )
+
+
+            qz = math.sin(
+                yaw/2.0
+            )
+
+            qw = math.cos(
+                yaw/2.0
+            )
+
+
+
+            for j in range(
+                steps
+            ):
+
+
+                ratio = (
+                    j /
+                    float(steps)
+                )
+
+
+                pose = PoseStamped()
+
+
+                pose.header.frame_id="odom"
+
+
+                pose.pose.position.x=(
+
+                    start.position.x
+                    +
+                    ratio*dx
+
+                )
+
+
+                pose.pose.position.y=(
+
+                    start.position.y
+                    +
+                    ratio*dy
+
+                )
+
+
+                pose.pose.position.z=(
+
+                    start.position.z
+                    +
+                    ratio*dz
+
+                )
+
+
+                pose.pose.orientation.z=qz
+
+                pose.pose.orientation.w=qw
+
+
+
+                path.poses.append(
+                    pose
+                )
+
+
+
+        ##################################################
+        # Add last point
+        ##################################################
+
+        last = poses[-1]
+
+
+        final_pose = PoseStamped()
+
+
+        final_pose.header.frame_id="odom"
+
+
+        final_pose.pose.position.x = (
+            last.position.x
+        )
+
+        final_pose.pose.position.y = (
+            last.position.y
+        )
+
+        final_pose.pose.position.z = (
+            last.position.z
+        )
+
+
+        final_pose.pose.orientation.w=1.0
+
+
+
+        path.poses.append(
+            final_pose
+        )
+
+
+
+        return path
+
+
+
 
 
 def main(args=None):
 
+
     rclpy.init(args=args)
 
-    node = TrajectoryGenerator()
 
-    rclpy.spin(node)
+    node=TrajectoryGenerator()
+
+
+    try:
+
+        rclpy.spin(node)
+
+
+    except KeyboardInterrupt:
+
+        pass
+
+
 
     node.destroy_node()
+
 
     rclpy.shutdown()
 
 
-if __name__ == "__main__":
+
+if __name__=="__main__":
+
     main()
