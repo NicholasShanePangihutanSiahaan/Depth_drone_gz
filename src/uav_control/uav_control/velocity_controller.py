@@ -1,49 +1,77 @@
 #!/usr/bin/env python3
 
+
 import math
 
 import rclpy
-
 from rclpy.node import Node
+
 
 from geometry_msgs.msg import Point
 from geometry_msgs.msg import PoseStamped
+
+
 from geometry_msgs.msg import TwistStamped
 
-from rclpy.qos import QoSProfile
-from rclpy.qos import ReliabilityPolicy
-from rclpy.qos import HistoryPolicy
 
 
 class VelocityController(Node):
 
     def __init__(self):
 
-        super().__init__("velocity_controller")
-
-        qos_sensor = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10
+        super().__init__(
+            "velocity_controller"
         )
 
-        self.current_pose = None
-        self.target_point = None
 
-        # ---------- Controller Gain ----------
+        ##################################################
+        # Parameter
+        ##################################################
+
+        # proportional gain
+
         self.kp_xy = 0.8
-        self.kp_z = 0.6
 
-        # ---------- Velocity Limit ----------
-        self.max_vel_xy = 2.0
-        self.max_vel_z = 1.0
+        self.kp_z = 0.8
+
+
+
+        # velocity limit
+
+        self.max_velocity_xy = 3.0
+
+        self.max_velocity_z = 1.5
+
+
+
+        # waypoint dianggap tercapai
+
+        self.goal_threshold = 0.5
+
+
+
+        ##################################################
+        # State
+        ##################################################
+
+        self.current_pose = None
+
+        self.target = None
+
+
+
+        ##################################################
+        # Subscriber
+        ##################################################
 
         self.pose_sub = self.create_subscription(
             PoseStamped,
             "/mavros/local_position/pose",
             self.pose_callback,
-            qos_sensor
+            10
         )
+
+
 
         self.target_sub = self.create_subscription(
             Point,
@@ -52,94 +80,237 @@ class VelocityController(Node):
             10
         )
 
-        self.vel_pub = self.create_publisher(
+
+
+        ##################################################
+        # Publisher
+        ##################################################
+
+        self.velocity_pub = self.create_publisher(
             TwistStamped,
             "/mavros/setpoint_velocity/cmd_vel",
             10
         )
+
+
+
+        ##################################################
 
         self.timer = self.create_timer(
             0.05,
             self.control_loop
         )
 
-        self.get_logger().info("Velocity Controller Started")
 
-    #####################################################
+        self.get_logger().info(
+            "Velocity Controller Started"
+        )
 
-    def pose_callback(self, msg):
 
-        self.current_pose = msg.pose.position
 
-    #####################################################
+    ##################################################
+    # UAV pose
+    ##################################################
 
-    def target_callback(self, msg):
+    def pose_callback(
+        self,
+        msg
+    ):
 
-        self.target_point = msg
+        self.current_pose = msg.pose
 
-    #####################################################
 
-    def saturate(self, value, limit):
 
-        if value > limit:
-            return limit
+    ##################################################
+    # Target waypoint
+    ##################################################
 
-        if value < -limit:
-            return -limit
+    def target_callback(
+        self,
+        msg
+    ):
+
+        self.target = msg
+
+
+
+    ##################################################
+    # Limit velocity
+    ##################################################
+
+    def limit(
+        self,
+        value,
+        maximum
+    ):
+
+
+        if value > maximum:
+
+            return maximum
+
+
+        if value < -maximum:
+
+            return -maximum
+
 
         return value
 
-    #####################################################
+
+
+    ##################################################
+    # Control loop
+    ##################################################
 
     def control_loop(self):
 
+
         if self.current_pose is None:
+
             return
 
-        if self.target_point is None:
+
+
+        if self.target is None:
+
             return
 
-        ex = self.target_point.x - self.current_pose.x
-        ey = self.target_point.y - self.current_pose.y
-        ez = self.target_point.z - self.current_pose.z
 
-        vx = self.kp_xy * ex
-        vy = self.kp_xy * ey
-        vz = self.kp_z * ez
 
-        vx = self.saturate(vx, self.max_vel_xy)
-        vy = self.saturate(vy, self.max_vel_xy)
-        vz = self.saturate(vz, self.max_vel_z)
+        ##################################################
+        # Position error
+        ##################################################
+
+        ex = (
+            self.target.x -
+            self.current_pose.position.x
+        )
+
+
+        ey = (
+            self.target.y -
+            self.current_pose.position.y
+        )
+
+
+        ez = (
+            self.target.z -
+            self.current_pose.position.z
+        )
+
+
+
+        distance = math.sqrt(
+
+            ex*ex+
+            ey*ey+
+            ez*ez
+
+        )
+
+
+
+        ##################################################
+        # Create velocity command
+        ##################################################
 
         cmd = TwistStamped()
 
-        cmd.header.stamp = self.get_clock().now().to_msg()
 
-        cmd.twist.linear.x = vx
-        cmd.twist.linear.y = vy
-        cmd.twist.linear.z = vz
-
-        cmd.twist.angular.x = 0.0
-        cmd.twist.angular.y = 0.0
-        cmd.twist.angular.z = 0.0
-
-        self.vel_pub.publish(cmd)
+        cmd.header.stamp = (
+            self.get_clock()
+            .now()
+            .to_msg()
+        )
 
 
-############################################################
+        cmd.header.frame_id = (
+            "base_link"
+        )
+
+
+
+        ##################################################
+        # Stop near waypoint
+        ##################################################
+
+        if distance < self.goal_threshold:
+
+
+            cmd.twist.linear.x = 0.0
+
+            cmd.twist.linear.y = 0.0
+
+            cmd.twist.linear.z = 0.0
+
+
+
+        else:
+
+
+            vx = self.kp_xy * ex
+
+            vy = self.kp_xy * ey
+
+            vz = self.kp_z * ez
+
+
+
+            cmd.twist.linear.x = self.limit(
+                vx,
+                self.max_velocity_xy
+            )
+
+
+            cmd.twist.linear.y = self.limit(
+                vy,
+                self.max_velocity_xy
+            )
+
+
+            cmd.twist.linear.z = self.limit(
+                vz,
+                self.max_velocity_z
+            )
+
+
+
+        self.velocity_pub.publish(
+            cmd
+        )
+
+
+
+##################################################
+
 
 def main(args=None):
 
+
     rclpy.init(args=args)
+
 
     node = VelocityController()
 
-    rclpy.spin(node)
+
+    try:
+
+        rclpy.spin(node)
+
+
+    except KeyboardInterrupt:
+
+        pass
+
+
 
     node.destroy_node()
 
     rclpy.shutdown()
 
 
-if __name__ == "__main__":
+
+if __name__=="__main__":
+
     main()
