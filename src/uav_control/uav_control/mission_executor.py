@@ -1,28 +1,62 @@
 #!/usr/bin/env python3
 
-import math
 
 import rclpy
 
 from rclpy.node import Node
 
+
+from std_msgs.msg import String
 from std_msgs.msg import Bool
-from geometry_msgs.msg import Point
+
+
 from geometry_msgs.msg import PoseStamped
+
 
 
 class MissionExecutor(Node):
 
     def __init__(self):
 
-        super().__init__("mission_executor")
+        super().__init__(
+            "mission_executor"
+        )
 
-        self.current_pose = None
-        self.current_goal = None
 
-        self.state = "WAITING"
+        ##################################################
+        # State
+        ##################################################
 
-        self.goal_tolerance = 1.0
+        self.state = "INIT"
+
+
+        self.mission_started = False
+
+        self.mission_finished = False
+
+
+        ##################################################
+        # UAV State
+        ##################################################
+
+        self.current_x = 0.0
+        self.current_y = 0.0
+        self.current_z = 0.0
+
+
+
+        ##################################################
+        # Subscribers
+        ##################################################
+
+
+        self.status_sub = self.create_subscription(
+            String,
+            "/mission/status",
+            self.status_callback,
+            10
+        )
+
 
         self.pose_sub = self.create_subscription(
             PoseStamped,
@@ -31,18 +65,19 @@ class MissionExecutor(Node):
             10
         )
 
-        self.goal_sub = self.create_subscription(
-            Point,
-            "/navigation/target_point",
-            self.goal_callback,
+
+
+        ##################################################
+        # Publishers
+        ##################################################
+
+
+        self.takeoff_pub = self.create_publisher(
+            Bool,
+            "/mission/takeoff",
             10
         )
 
-        self.goal_pub = self.create_publisher(
-            Point,
-            "/mission/current_goal",
-            10
-        )
 
         self.land_pub = self.create_publisher(
             Bool,
@@ -50,90 +85,229 @@ class MissionExecutor(Node):
             10
         )
 
-        self.timer = self.create_timer(
-            0.2,
-            self.control_loop
+
+        self.return_home_pub = self.create_publisher(
+            Bool,
+            "/mission/return_home",
+            10
         )
 
-        self.get_logger().info("Mission Executor Started")
 
-    def pose_callback(self, msg):
+        self.mission_pub = self.create_publisher(
+            String,
+            "/mission/executor_status",
+            10
+        )
 
-        self.current_pose = msg.pose
 
-    def goal_callback(self, msg):
 
-        self.current_goal = msg
+        ##################################################
 
-        if self.state == "WAITING":
+        self.timer = self.create_timer(
+            1.0,
+            self.loop
+        )
 
-            self.state = "NAVIGATING"
 
-            self.get_logger().info("Mission Started")
+        self.get_logger().info(
+            "Mission Executor Ready"
+        )
 
-    def distance_to_goal(self):
 
-        if self.current_pose is None:
-            return None
 
-        if self.current_goal is None:
-            return None
+    ##################################################
+    # Callbacks
+    ##################################################
 
-        dx = self.current_goal.x - self.current_pose.position.x
-        dy = self.current_goal.y - self.current_pose.position.y
 
-        return math.sqrt(dx * dx + dy * dy)
+    def status_callback(self,msg):
 
-    def control_loop(self):
+        status = msg.data
 
-        if self.state == "WAITING":
-            return
 
-        if self.state == "NAVIGATING":
+        self.get_logger().info(
+            f"Mission status : {status}"
+        )
 
-            self.goal_pub.publish(self.current_goal)
 
-            d = self.distance_to_goal()
+        #############################################
+        # Mission start
+        #############################################
 
-            if d is None:
-                return
+        if "INSPECT_TREE" in status:
 
-            if d < self.goal_tolerance:
+            self.mission_started=True
 
-                self.get_logger().info("Waypoint reached")
+            self.state="INSPECTION"
 
-                self.state = "LAND"
 
-        elif self.state == "LAND":
 
-            msg = Bool()
+        #############################################
+        # Mission finished
+        #############################################
 
-            msg.data = True
+        if status=="MISSION_FINISHED":
 
-            self.land_pub.publish(msg)
+            self.state="RETURN_HOME"
 
-            self.get_logger().info("Mission Complete")
 
-            self.state = "FINISHED"
 
-        elif self.state == "FINISHED":
+    def pose_callback(self,msg):
 
-            pass
+        self.current_x = (
+            msg.pose.position.x
+        )
+
+        self.current_y = (
+            msg.pose.position.y
+        )
+
+        self.current_z = (
+            msg.pose.position.z
+        )
+
+
+
+    ##################################################
+    # Main supervisor
+    ##################################################
+
+
+    def loop(self):
+
+
+        msg=String()
+
+
+        #############################################
+
+        if self.state=="INIT":
+
+
+            msg.data="WAITING_FOR_MISSION"
+
+
+        #############################################
+
+        elif self.state=="INSPECTION":
+
+
+            msg.data="INSPECTING"
+
+
+        #############################################
+
+        elif self.state=="RETURN_HOME":
+
+
+            self.return_home()
+
+
+            msg.data="RETURN_HOME"
+
+
+            self.state="LAND"
+
+
+
+        #############################################
+
+        elif self.state=="LAND":
+
+
+            self.land()
+
+
+            msg.data="LANDING"
+
+
+            self.state="FINISHED"
+
+
+
+        #############################################
+
+        elif self.state=="FINISHED":
+
+
+            msg.data="MISSION_COMPLETE"
+
+
+
+        self.mission_pub.publish(msg)
+
+
+
+    ##################################################
+    # Commands
+    ##################################################
+
+
+    def return_home(self):
+
+
+        cmd=Bool()
+
+        cmd.data=True
+
+
+        self.return_home_pub.publish(cmd)
+
+
+        self.get_logger().info(
+            "Return home command sent"
+        )
+
+
+
+    def land(self):
+
+
+        cmd=Bool()
+
+        cmd.data=True
+
+
+        self.land_pub.publish(cmd)
+
+
+        self.get_logger().info(
+            "Landing command sent"
+        )
+
+
+
+
+##################################################
 
 
 def main(args=None):
 
+
     rclpy.init(args=args)
 
-    node = MissionExecutor()
 
-    rclpy.spin(node)
+    node=MissionExecutor()
+
+
+    try:
+
+        rclpy.spin(node)
+
+
+    except KeyboardInterrupt:
+
+        pass
+
+
 
     node.destroy_node()
+
 
     rclpy.shutdown()
 
 
-if __name__ == "__main__":
+
+if __name__=="__main__":
 
     main()

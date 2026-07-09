@@ -4,14 +4,13 @@ import math
 import time
 
 import rclpy
-from rclpy.node import Node
 
+from rclpy.node import Node
 
 from geometry_msgs.msg import Point
 
 from uav_interfaces.msg import Tree
 from uav_interfaces.msg import TreeArray
-
 
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
@@ -34,11 +33,12 @@ class TreeMapper(Node):
         self.frame_id = "odom"
 
 
-        # jarak maksimum pohon dianggap sama
+        # maksimum jarak agar dianggap pohon yang sama
         self.merge_distance = 1.5
 
 
-        # confidence
+        # confidence model
+
         self.max_confidence = 1.0
 
         self.new_tree_confidence = 0.2
@@ -48,7 +48,8 @@ class TreeMapper(Node):
         self.confidence_decay = 0.01
 
 
-        # lama tidak terlihat
+        # waktu hilang sebelum confidence turun
+
         self.timeout = 30.0
 
 
@@ -56,19 +57,6 @@ class TreeMapper(Node):
         ##################################################
         # Database
         ##################################################
-
-        # format:
-        #
-        # {
-        #   id:
-        #   x:
-        #   y:
-        #   z:
-        #   confidence:
-        #   inspected:
-        #   count:
-        #   last_seen:
-        # }
 
         self.tree_database = {}
 
@@ -92,7 +80,6 @@ class TreeMapper(Node):
             self.tree_callback,
 
             10
-
         )
 
 
@@ -107,7 +94,6 @@ class TreeMapper(Node):
             self.tree_update_callback,
 
             10
-
         )
 
 
@@ -123,7 +109,6 @@ class TreeMapper(Node):
             "/map/trees",
 
             10
-
         )
 
 
@@ -134,7 +119,6 @@ class TreeMapper(Node):
             "/tree_markers",
 
             10
-
         )
 
 
@@ -148,7 +132,6 @@ class TreeMapper(Node):
             5.0,
 
             self.update_confidence
-
         )
 
 
@@ -160,7 +143,7 @@ class TreeMapper(Node):
 
 
     ##################################################
-    # New tree detection
+    # Receive tree detection
     ##################################################
 
     def tree_callback(self,msg):
@@ -179,13 +162,13 @@ class TreeMapper(Node):
 
 
         ##################################################
-        # Search existing tree
+        # Search nearest tree
         ##################################################
 
         for tree_id,tree in self.tree_database.items():
 
 
-            d = math.sqrt(
+            distance = math.sqrt(
 
                 (x-tree["x"])**2 +
 
@@ -194,16 +177,16 @@ class TreeMapper(Node):
             )
 
 
-            if d < nearest_distance:
+            if distance < nearest_distance:
 
-                nearest_distance = d
+                nearest_distance = distance
 
                 nearest_id = tree_id
 
 
 
         ##################################################
-        # Update existing tree
+        # Existing tree
         ##################################################
 
         if (
@@ -223,8 +206,12 @@ class TreeMapper(Node):
             tree["count"] += 1
 
 
+
             alpha = 1.0 / tree["count"]
 
+
+
+            # update posisi
 
             tree["x"] += alpha * (
                 x-tree["x"]
@@ -242,17 +229,25 @@ class TreeMapper(Node):
 
 
 
-            tree["confidence"] = min(
+            ##################################################
+            # Confidence hanya naik jika belum inspected
+            ##################################################
 
-                tree["confidence"]
+            if not tree["inspected"]:
 
-                +
 
-                self.confidence_increment,
+                tree["confidence"] = min(
 
-                self.max_confidence
+                    tree["confidence"]
 
-            )
+                    +
+
+                    self.confidence_increment,
+
+                    self.max_confidence
+
+                )
+
 
 
             tree["last_seen"] = time.time()
@@ -275,6 +270,7 @@ class TreeMapper(Node):
 
 
             tree_id = self.next_tree_id
+
 
 
             self.tree_database[tree_id] = {
@@ -306,6 +302,7 @@ class TreeMapper(Node):
             }
 
 
+
             self.next_tree_id += 1
 
 
@@ -334,6 +331,13 @@ class TreeMapper(Node):
 
         if msg.id not in self.tree_database:
 
+
+            self.get_logger().warning(
+
+                f"Unknown tree ID {msg.id}"
+
+            )
+
             return
 
 
@@ -342,10 +346,24 @@ class TreeMapper(Node):
 
 
 
-        tree["inspected"] = msg.inspected
+        ##################################################
+        # Update full information
+        ##################################################
+
+        tree["x"] = msg.x
+
+        tree["y"] = msg.y
+
+        tree["z"] = msg.z
 
 
         tree["confidence"] = msg.confidence
+
+
+        tree["inspected"] = msg.inspected
+
+
+        tree["last_seen"] = time.time()
 
 
 
@@ -378,7 +396,17 @@ class TreeMapper(Node):
         for tree in self.tree_database.values():
 
 
-            elapsed = now-tree["last_seen"]
+            ##################################################
+            # Jangan decay pohon selesai inspeksi
+            ##################################################
+
+            if tree["inspected"]:
+
+                continue
+
+
+
+            elapsed = now - tree["last_seen"]
 
 
 
@@ -395,11 +423,14 @@ class TreeMapper(Node):
 
                 if tree["confidence"] < 0:
 
-                    tree["confidence"]=0
+
+                    tree["confidence"] = 0
 
 
 
         self.publish_tree()
+
+        self.publish_marker()
 
 
 
@@ -413,10 +444,12 @@ class TreeMapper(Node):
         msg = TreeArray()
 
 
+
         for tree in self.tree_database.values():
 
 
             t = Tree()
+
 
 
             t.id = tree["id"]
@@ -456,7 +489,7 @@ class TreeMapper(Node):
 
 
         ##################################################
-        # Tree sphere
+        # Sphere marker
         ##################################################
 
         sphere = Marker()
@@ -471,39 +504,41 @@ class TreeMapper(Node):
         )
 
 
-        sphere.ns="trees"
+        sphere.ns = "trees"
 
-        sphere.id=0
-
-
-        sphere.type=Marker.SPHERE_LIST
-
-        sphere.action=Marker.ADD
+        sphere.id = 0
 
 
+        sphere.type = Marker.SPHERE_LIST
 
-        sphere.scale.x=0.5
-
-        sphere.scale.y=0.5
-
-        sphere.scale.z=0.5
+        sphere.action = Marker.ADD
 
 
 
-        sphere.pose.orientation.w=1.0
+        sphere.scale.x = 0.5
+
+        sphere.scale.y = 0.5
+
+        sphere.scale.z = 0.5
+
+
+
+        sphere.pose.orientation.w = 1.0
 
 
 
         for tree in self.tree_database.values():
 
 
-            p=Point()
+            p = Point()
 
-            p.x=tree["x"]
 
-            p.y=tree["y"]
+            p.x = tree["x"]
 
-            p.z=tree["z"]
+            p.y = tree["y"]
+
+            p.z = tree["z"]
+
 
 
             sphere.points.append(p)
@@ -515,23 +550,23 @@ class TreeMapper(Node):
 
 
         ##################################################
-        # Tree ID text
+        # Text marker
         ##################################################
 
-        marker_id=1000
+        marker_id = 1000
 
 
 
         for tree in self.tree_database.values():
 
 
-            text=Marker()
+            text = Marker()
 
 
-            text.header.frame_id=self.frame_id
+            text.header.frame_id = self.frame_id
 
 
-            text.header.stamp=(
+            text.header.stamp = (
 
                 self.get_clock()
                 .now()
@@ -540,43 +575,56 @@ class TreeMapper(Node):
             )
 
 
-            text.ns="tree_id"
+            text.ns = "tree_id"
 
-            text.id=marker_id
-
-            marker_id+=1
+            text.id = marker_id
 
 
-
-            text.type=Marker.TEXT_VIEW_FACING
-
-            text.action=Marker.ADD
+            marker_id += 1
 
 
 
-            text.pose.position.x=tree["x"]
-
-            text.pose.position.y=tree["y"]
-
-            text.pose.position.z=1.5
+            text.type = Marker.TEXT_VIEW_FACING
 
 
-
-            text.pose.orientation.w=1.0
+            text.action = Marker.ADD
 
 
 
-            text.scale.z=0.5
+            text.pose.position.x = tree["x"]
+
+            text.pose.position.y = tree["y"]
+
+            text.pose.position.z = 1.5
 
 
 
-            text.text=(
+            text.pose.orientation.w = 1.0
 
-                f"{tree['id']} "
 
-                f"C:{tree['confidence']:.1f}"
+
+            text.scale.z = 0.5
+
+
+
+            status = (
+                "DONE"
+                if tree["inspected"]
+                else "NEW"
+            )
+
+
+
+            text.text = (
+
+                f"ID:{tree['id']} "
+
+                f"C:{tree['confidence']:.2f} "
+
+                f"{status}"
 
             )
+
 
 
             markers.markers.append(text)
@@ -595,7 +643,8 @@ def main(args=None):
     rclpy.init(args=args)
 
 
-    node=TreeMapper()
+    node = TreeMapper()
+
 
 
     try:
@@ -616,6 +665,6 @@ def main(args=None):
 
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
 
     main()
