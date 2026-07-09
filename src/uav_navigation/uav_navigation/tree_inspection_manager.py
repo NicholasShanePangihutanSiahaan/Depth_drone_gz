@@ -42,7 +42,7 @@ class TreeInspectionManager(Node):
 
         self.orbit_points = 8
 
-        self.finish_distance = 2.0
+        # self.finish_distance = 2.0
 
 
 
@@ -513,6 +513,14 @@ class TreeInspectionManager(Node):
         self.tree_update_pub.publish(
             update
         )
+            # update database lokal
+        for tree in self.trees:
+
+            if tree.id == update.id:
+
+                tree.inspected = True
+
+                break
 
 
         self.publish_status(

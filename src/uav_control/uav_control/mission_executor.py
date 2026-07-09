@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
 
-
 import rclpy
-
 from rclpy.node import Node
 
-
-from std_msgs.msg import String
-from std_msgs.msg import Bool
-
-
+from std_msgs.msg import String, Bool
 from geometry_msgs.msg import PoseStamped
-
 
 
 class MissionExecutor(Node):
@@ -23,32 +16,31 @@ class MissionExecutor(Node):
         )
 
 
-        ##################################################
-        # State
-        ##################################################
+        ###################################
+        # STATE
+        ###################################
 
         self.state = "INIT"
 
 
-        self.mission_started = False
-
-        self.mission_finished = False
-
-
-        ##################################################
-        # UAV State
-        ##################################################
+        ###################################
+        # UAV POSITION
+        ###################################
 
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_z = 0.0
 
 
+        self.home_x = None
+        self.home_y = None
+        self.home_z = None
 
-        ##################################################
-        # Subscribers
-        ##################################################
 
+
+        ###################################
+        # SUBSCRIBER
+        ###################################
 
         self.status_sub = self.create_subscription(
             String,
@@ -67,21 +59,13 @@ class MissionExecutor(Node):
 
 
 
-        ##################################################
-        # Publishers
-        ##################################################
-
+        ###################################
+        # COMMAND PUBLISHER
+        ###################################
 
         self.takeoff_pub = self.create_publisher(
             Bool,
             "/mission/takeoff",
-            10
-        )
-
-
-        self.land_pub = self.create_publisher(
-            Bool,
-            "/mission/land",
             10
         )
 
@@ -93,7 +77,14 @@ class MissionExecutor(Node):
         )
 
 
-        self.mission_pub = self.create_publisher(
+        self.land_pub = self.create_publisher(
+            Bool,
+            "/mission/land",
+            10
+        )
+
+
+        self.executor_pub = self.create_publisher(
             String,
             "/mission/executor_status",
             10
@@ -101,7 +92,7 @@ class MissionExecutor(Node):
 
 
 
-        ##################################################
+        ###################################
 
         self.timer = self.create_timer(
             1.0,
@@ -110,14 +101,37 @@ class MissionExecutor(Node):
 
 
         self.get_logger().info(
-            "Mission Executor Ready"
+            "Mission Executor Started"
         )
 
 
 
-    ##################################################
-    # Callbacks
-    ##################################################
+    ###################################
+    # CALLBACK
+    ###################################
+
+
+    def pose_callback(self,msg):
+
+        self.current_x = msg.pose.position.x
+        self.current_y = msg.pose.position.y
+        self.current_z = msg.pose.position.z
+
+
+
+        # simpan home pertama kali
+
+        if self.home_x is None:
+
+            self.home_x = self.current_x
+            self.home_y = self.current_y
+            self.home_z = self.current_z
+
+
+            self.get_logger().info(
+                f"Home saved : {self.home_x},{self.home_y},{self.home_z}"
+            )
+
 
 
     def status_callback(self,msg):
@@ -130,128 +144,143 @@ class MissionExecutor(Node):
         )
 
 
-        #############################################
-        # Mission start
-        #############################################
+        if status=="START":
 
-        if "INSPECT_TREE" in status:
+            self.state="TAKEOFF"
 
-            self.mission_started=True
+
+
+        elif status=="INSPECT_TREE":
 
             self.state="INSPECTION"
 
 
 
-        #############################################
-        # Mission finished
-        #############################################
-
-        if status=="MISSION_FINISHED":
+        elif status=="MISSION_FINISHED":
 
             self.state="RETURN_HOME"
 
 
 
-    def pose_callback(self,msg):
 
-        self.current_x = (
-            msg.pose.position.x
-        )
-
-        self.current_y = (
-            msg.pose.position.y
-        )
-
-        self.current_z = (
-            msg.pose.position.z
-        )
-
-
-
-    ##################################################
-    # Main supervisor
-    ##################################################
+    ###################################
+    # MAIN FSM
+    ###################################
 
 
     def loop(self):
 
+        output = String()
 
-        msg=String()
 
 
-        #############################################
+        ################################
 
         if self.state=="INIT":
 
+            output.data="WAITING"
 
-            msg.data="WAITING_FOR_MISSION"
 
 
-        #############################################
+        ################################
+
+        elif self.state=="TAKEOFF":
+
+
+            self.send_takeoff()
+
+
+            output.data="TAKEOFF"
+
+
+            # setelah command
+            # lanjut inspection
+
+            self.state="INSPECTION"
+
+
+
+        ################################
 
         elif self.state=="INSPECTION":
 
 
-            msg.data="INSPECTING"
+            output.data="INSPECTING"
 
 
-        #############################################
+
+        ################################
 
         elif self.state=="RETURN_HOME":
 
 
-            self.return_home()
+            self.send_return_home()
 
 
-            msg.data="RETURN_HOME"
+            output.data="RETURN_HOME"
 
 
             self.state="LAND"
 
 
 
-        #############################################
+        ################################
 
         elif self.state=="LAND":
 
 
-            self.land()
+            self.send_land()
 
 
-            msg.data="LANDING"
+            output.data="LANDING"
 
 
             self.state="FINISHED"
 
 
 
-        #############################################
+        ################################
 
         elif self.state=="FINISHED":
 
-
-            msg.data="MISSION_COMPLETE"
-
-
-
-        self.mission_pub.publish(msg)
+            output.data="MISSION_COMPLETE"
 
 
 
-    ##################################################
-    # Commands
-    ##################################################
+        self.executor_pub.publish(output)
 
 
-    def return_home(self):
 
 
-        cmd=Bool()
+    ###################################
+    # COMMAND
+    ###################################
 
-        cmd.data=True
+
+    def send_takeoff(self):
+
+        msg=Bool()
+
+        msg.data=True
 
 
-        self.return_home_pub.publish(cmd)
+        self.takeoff_pub.publish(msg)
+
+
+        self.get_logger().info(
+            "Takeoff command sent"
+        )
+
+
+
+    def send_return_home(self):
+
+        msg=Bool()
+
+        msg.data=True
+
+
+        self.return_home_pub.publish(msg)
 
 
         self.get_logger().info(
@@ -260,15 +289,14 @@ class MissionExecutor(Node):
 
 
 
-    def land(self):
+    def send_land(self):
+
+        msg=Bool()
+
+        msg.data=True
 
 
-        cmd=Bool()
-
-        cmd.data=True
-
-
-        self.land_pub.publish(cmd)
+        self.land_pub.publish(msg)
 
 
         self.get_logger().info(
@@ -278,14 +306,9 @@ class MissionExecutor(Node):
 
 
 
-##################################################
-
-
 def main(args=None):
 
-
     rclpy.init(args=args)
-
 
     node=MissionExecutor()
 
@@ -294,15 +317,12 @@ def main(args=None):
 
         rclpy.spin(node)
 
-
     except KeyboardInterrupt:
 
         pass
 
 
-
     node.destroy_node()
-
 
     rclpy.shutdown()
 
