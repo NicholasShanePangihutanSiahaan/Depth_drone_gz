@@ -13,33 +13,41 @@ import cv2
 import numpy as np
 
 
-
 class TreeDetector(Node):
 
     def __init__(self):
 
-        super().__init__(
-            "tree_detector"
-        )
-
+        super().__init__("tree_detector")
 
         self.bridge = CvBridge()
 
+        # ---------- PARAMETERS ----------
+
+        self.lower = np.array([5, 60, 20], dtype=np.uint8)
+        self.upper = np.array([25, 255, 180], dtype=np.uint8)
+
+        self.min_area = 250
+
+        self.min_aspect_ratio = 2.0
+
+        self.kernel = np.ones((5, 5), np.uint8)
+
+        self.show_debug = True
+
+        # ---------- ROS ----------
 
         self.sub = self.create_subscription(
             Image,
-            "/plantation_uav/zed2i/left/image_rect_color",
+            "/zed2i/left/image_rect_color",
             self.image_callback,
             10
         )
 
-
-        self.pub = self.create_publisher(
+        self.pixel_pub = self.create_publisher(
             Point,
             "/perception/tree_pixel",
             10
         )
-
 
         self.detect_pub = self.create_publisher(
             Bool,
@@ -47,109 +55,160 @@ class TreeDetector(Node):
             10
         )
 
-
-        self.get_logger().info(
-            "Tree detector running"
-        )
+        self.get_logger().info("Tree Detector Started")
 
 
+    def image_callback(self, msg):
 
-    def image_callback(self,msg):
-
-        image=self.bridge.imgmsg_to_cv2(
+        image = self.bridge.imgmsg_to_cv2(
             msg,
-            "bgr8"
+            desired_encoding="bgr8"
         )
 
-
-        hsv=cv2.cvtColor(
+        hsv = cv2.cvtColor(
             image,
             cv2.COLOR_BGR2HSV
         )
 
-
-        lower=np.array(
-            [25,40,20]
-        )
-
-        upper=np.array(
-            [95,255,255]
-        )
-
-
-        mask=cv2.inRange(
+        mask = cv2.inRange(
             hsv,
-            lower,
-            upper
+            self.lower,
+            self.upper
         )
 
+        mask = cv2.morphologyEx(
+            mask,
+            cv2.MORPH_OPEN,
+            self.kernel
+        )
 
-        contours,_=cv2.findContours(
+        mask = cv2.morphologyEx(
+            mask,
+            cv2.MORPH_CLOSE,
+            self.kernel
+        )
+
+        contours, _ = cv2.findContours(
             mask,
             cv2.RETR_EXTERNAL,
             cv2.CHAIN_APPROX_SIMPLE
         )
 
-
-        found=False
-
+        best = None
+        best_score = -1
 
         for c in contours:
 
+            area = cv2.contourArea(c)
 
-            area=cv2.contourArea(c)
+            if area < self.min_area:
+                continue
 
+            x, y, w, h = cv2.boundingRect(c)
 
-            if area > 500:
+            if w == 0:
+                continue
 
+            aspect = h / float(w)
 
-                x,y,w,h=cv2.boundingRect(c)
+            if aspect < self.min_aspect_ratio:
+                continue
 
+            score = area
 
-                center_x=x+w/2
-                center_y=y+h/2
+            if score > best_score:
 
+                best_score = score
 
-                p=Point()
+                best = (x, y, w, h, area, aspect)
 
-                p.x=center_x
-                p.y=center_y
-                p.z=0
+        detected = Bool()
 
+        if best is None:
 
-                self.pub.publish(p)
+            detected.data = False
 
+            self.detect_pub.publish(detected)
 
-                found=True
+            if self.show_debug:
 
-                break
+                cv2.imshow("mask", mask)
+                cv2.imshow("tree_detector", image)
+                cv2.waitKey(1)
 
+            return
 
+        x, y, w, h, area, aspect = best
 
-        flag=Bool()
+        center_x = float(x + w / 2.0)
+        center_y = float(y + h / 2.0)
 
-        flag.data=found
+        point = Point()
 
+        point.x = center_x
+        point.y = center_y
+        point.z = 0.0
 
-        self.detect_pub.publish(flag)
+        self.pixel_pub.publish(point)
 
+        detected.data = True
 
+        self.detect_pub.publish(detected)
+
+        self.get_logger().info(
+            f"Tree detected | "
+            f"Area={area:.1f} "
+            f"Aspect={aspect:.2f} "
+            f"Center=({center_x:.1f},{center_y:.1f})"
+        )
+
+        if self.show_debug:
+
+            cv2.rectangle(
+                image,
+                (x, y),
+                (x + w, y + h),
+                (0, 255, 0),
+                2
+            )
+
+            cv2.circle(
+                image,
+                (int(center_x), int(center_y)),
+                5,
+                (0, 0, 255),
+                -1
+            )
+
+            cv2.putText(
+                image,
+                f"A={int(area)}",
+                (x, y - 8),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 0, 0),
+                2
+            )
+
+            cv2.imshow("mask", mask)
+            cv2.imshow("tree_detector", image)
+            cv2.waitKey(1)
 
 
 def main(args=None):
 
     rclpy.init(args=args)
 
-    node=TreeDetector()
+    node = TreeDetector()
 
     rclpy.spin(node)
 
-
     node.destroy_node()
+
+    cv2.destroyAllWindows()
 
     rclpy.shutdown()
 
 
-
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

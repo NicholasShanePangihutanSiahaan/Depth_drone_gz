@@ -10,6 +10,12 @@ from rclpy.node import Node
 from geometry_msgs.msg import Point
 from geometry_msgs.msg import PoseStamped
 
+from rclpy.qos import (
+    QoSProfile,
+    ReliabilityPolicy,
+    HistoryPolicy,
+    DurabilityPolicy
+)
 
 from geometry_msgs.msg import TwistStamped
 
@@ -23,7 +29,15 @@ class VelocityController(Node):
             "velocity_controller"
         )
 
+        qos_sensor = QoSProfile(
 
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+
+            history=HistoryPolicy.KEEP_LAST,
+
+            depth=10
+
+        )
         ##################################################
         # Parameter
         ##################################################
@@ -68,7 +82,7 @@ class VelocityController(Node):
             PoseStamped,
             "/mavros/local_position/pose",
             self.pose_callback,
-            10
+            qos_sensor
         )
 
 

@@ -5,6 +5,12 @@ import math
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import (
+    QoSProfile,
+    ReliabilityPolicy,
+    HistoryPolicy,
+    DurabilityPolicy
+)
 
 
 from geometry_msgs.msg import PoseStamped
@@ -24,7 +30,15 @@ class PathFollower(Node):
             "path_follower"
         )
 
+        qos_sensor = QoSProfile(
 
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+
+            history=HistoryPolicy.KEEP_LAST,
+
+            depth=10
+
+        )
         ##################################################
         # Parameters
         ##################################################
@@ -65,7 +79,7 @@ class PathFollower(Node):
             PoseStamped,
             "/mavros/local_position/pose",
             self.pose_callback,
-            10
+            qos_sensor
         )
 
 

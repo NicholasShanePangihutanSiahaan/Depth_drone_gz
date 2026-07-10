@@ -78,7 +78,7 @@ class TreeMapper(Node):
 
             Point,
 
-            "/perception/tree_target",
+            "/perception/tree_position_camera",
 
             self.tree_callback,
 
@@ -100,7 +100,7 @@ class TreeMapper(Node):
         )
 
         map_qos = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
+            reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=10

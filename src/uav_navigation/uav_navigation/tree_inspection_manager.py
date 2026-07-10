@@ -29,7 +29,15 @@ class TreeInspectionManager(Node):
             "tree_inspection_manager"
         )
 
+        qos_sensor = QoSProfile(
 
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+
+            history=HistoryPolicy.KEEP_LAST,
+
+            depth=10
+
+        )
         ##################################################
         # Parameter
         ##################################################
@@ -87,7 +95,7 @@ class TreeInspectionManager(Node):
         ##################################################
 
         map_qos = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
+            reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
@@ -111,7 +119,7 @@ class TreeInspectionManager(Node):
             PoseStamped,
             "/mavros/local_position/pose",
             self.pose_callback,
-            10
+            qos_sensor
         )
 
         self.create_subscription(

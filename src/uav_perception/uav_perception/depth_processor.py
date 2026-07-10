@@ -39,7 +39,7 @@ class DepthProcessor(Node):
 
         self.depth_sub=self.create_subscription(
             Image,
-            "/plantation_uav/zed2i/depth",
+            "/zed2i/depth/depth_registered",
             self.depth_callback,
             10
         )
