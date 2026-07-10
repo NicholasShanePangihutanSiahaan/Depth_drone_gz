@@ -4,7 +4,7 @@ from rclpy.qos import DurabilityPolicy
 from rclpy.qos import HistoryPolicy
 
 qos_tree = QoSProfile(
-    reliability=ReliabilityPolicy.RELIABLE,
+    reliability=ReliabilityPolicy.BEST_EFFORT,
     durability=DurabilityPolicy.VOLATILE,
     history=HistoryPolicy.KEEP_LAST,
     depth=10
