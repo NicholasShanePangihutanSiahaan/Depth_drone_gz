@@ -102,6 +102,15 @@ class TreeLocalizer(Node):
         point.y=Y
         point.z=Z
 
+        self.get_logger().info(
+            f"""
+        [TREE LOCALIZER]
+        pixel=({self.pixel.x:.2f},{self.pixel.y:.2f})
+        depth={Z:.2f}
+        camera_position=
+        ({X:.2f},{Y:.2f},{Z:.2f})
+        """
+        )
 
         self.pub.publish(point)
 

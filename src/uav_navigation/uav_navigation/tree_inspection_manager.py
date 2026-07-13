@@ -476,8 +476,8 @@ class TreeInspectionManager(Node):
                 self.current_waypoints
             )
             self.get_logger().info(
-                "[MISSION] Inspection waypoint published"
-            )
+            "[MISSION] Inspection waypoint published"
+        )
 
             self.publish_status(
                 f"INSPECT_TREE_{self.current_tree.id}"

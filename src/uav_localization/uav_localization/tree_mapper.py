@@ -74,17 +74,12 @@ class TreeMapper(Node):
 
         # hasil deteksi perception
 
-        self.create_subscription(
-
+        self.sub = self.create_subscription(
             Point,
-
             "/perception/tree_position_camera",
-
             self.tree_callback,
-
             10
         )
-
 
         # hasil inspeksi
 
