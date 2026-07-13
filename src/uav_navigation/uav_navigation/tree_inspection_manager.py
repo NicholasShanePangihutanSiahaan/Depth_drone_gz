@@ -206,6 +206,12 @@ class TreeInspectionManager(Node):
 
         self.uav_z = msg.pose.position.z
 
+        self.get_logger().info(
+            f"[UAV POSE] "
+            f"x={self.uav_x:.2f} "
+            f"y={self.uav_y:.2f} "
+            f"z={self.uav_z:.2f}"
+        )
 
         self.have_pose = True
 
@@ -399,7 +405,9 @@ class TreeInspectionManager(Node):
         ##################################################
         # Waiting UAV Pose
         ##################################################
-
+        self.get_logger().info(
+            f"[STATE] {self.state}"
+        )
         if not self.have_pose:
 
             self.state = "WAITING_UAV"

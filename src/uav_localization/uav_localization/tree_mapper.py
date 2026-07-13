@@ -156,7 +156,15 @@ class TreeMapper(Node):
         y = msg.y
         z = msg.z
 
+        if not math.isfinite(x) or \
+        not math.isfinite(y) or \
+        not math.isfinite(z):
 
+            self.get_logger().warning(
+                "Invalid tree position ignored"
+            )
+
+            return
 
         nearest_id = None
 
