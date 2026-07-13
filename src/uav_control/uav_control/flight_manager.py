@@ -2,7 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
-
+from std_msgs.msg import String
 from std_msgs.msg import Bool
 
 from mavros_msgs.srv import (
@@ -19,21 +19,23 @@ from geometry_msgs.msg import PoseStamped
 class FlightManager(Node):
 
     def __init__(self):
-
+        self.current_alt = 0.0
+        self.takeoff_requested = False
+        self.arm_requested = False
         super().__init__(
             "flight_manager"
         )
 
+        self.flight_state = "IDLE"
 
+        self.takeoff_altitude = 8.0
+
+        self.hover_tolerance = 0.2
+
+        self.request_land = False
         self.current_state = None
 
         self.current_alt = 0.0
-
-
-        self.arm_done = False
-        self.takeoff_done = False
-
-
 
         #
         # Subscriber
@@ -61,8 +63,18 @@ class FlightManager(Node):
             self.takeoff_callback,
             10
         )
+        self.land_sub = self.create_subscription(
+            Bool,
+            "/mission/land",
+            self.land_callback,
+            10
+        )
 
-
+        self.flight_status_pub = self.create_publisher(
+            String,
+            "/flight/status",
+            10
+        )
         #
         # MAVROS service
         #
@@ -91,7 +103,7 @@ class FlightManager(Node):
         )
 
 
-        self.request_takeoff=False
+        self.flight_command = "NONE"
 
 
         self.get_logger().info(
@@ -110,16 +122,26 @@ class FlightManager(Node):
 
         self.current_alt = msg.pose.position.z
 
-
-
-    def takeoff_callback(self,msg):
+    def land_callback(self, msg):
 
         if msg.data:
 
-            self.request_takeoff=True
+            self.flight_command = "LAND"
+
+    def publish_status(self,status):
+
+        msg = String()
+
+        msg.data = status
+
+        self.flight_status_pub.publish(msg)
+    def takeoff_callback(self,msg):
+
+        if msg.data:
+            self.flight_command = "TAKEOFF"
 
             self.get_logger().info(
-                "Takeoff requested"
+                "Mission requested TAKEOFF"
             )
 
 
@@ -136,6 +158,9 @@ class FlightManager(Node):
 
             req.custom_mode="GUIDED"
 
+            if not self.mode_client.wait_for_service(timeout_sec=1.0):
+
+                return
 
             self.mode_client.call_async(req)
 
@@ -148,7 +173,7 @@ class FlightManager(Node):
 
     def arm(self):
 
-        if self.arm_done:
+        if self.current_state.armed:
             return
 
 
@@ -156,6 +181,9 @@ class FlightManager(Node):
 
         req.value=True
 
+        if not self.arm_client.wait_for_service(timeout_sec=1.0):
+        
+            return
 
         future=self.arm_client.call_async(req)
 
@@ -164,34 +192,43 @@ class FlightManager(Node):
             self.arm_callback
         )
 
+    def arm_callback(self, future):
 
+        try:
 
-    def arm_callback(self,future):
+            result = future.result()
 
-        result=future.result()
+            if result.success:
 
+                self.get_logger().info(f"Arm response = {result.success}")
 
-        if result.success:
+            else:
 
-            self.arm_done=True
+                self.arm_requested = False
 
-            self.get_logger().info(
-                "ARM SUCCESS"
-            )
+        except Exception:
 
+            self.arm_requested = False
+            self.get_logger().error(str(e))
 
+    def reached_hover(self):
+
+        return (
+            abs(
+                self.current_alt -
+                self.takeoff_altitude
+            ) < self.hover_tolerance
+        )
 
     def takeoff(self):
 
-        if self.takeoff_done:
-            return
-
-
         req=CommandTOL.Request()
 
-        req.altitude=5.0
+        req.altitude = self.takeoff_altitude
 
-
+        if not self.takeoff_client.wait_for_service(timeout_sec=1.0):
+        
+            return
         future=self.takeoff_client.call_async(req)
 
 
@@ -199,72 +236,110 @@ class FlightManager(Node):
             self.takeoff_callback_done
         )
 
-
-
     def takeoff_callback_done(self,future):
 
-        result=future.result()
+        try:
 
+            result = future.result()
 
-        if result.success:
+            if result.success:
 
-            self.takeoff_done=True
+                self.flight_state = "CLIMBING"
 
-            self.get_logger().info(
-                "TAKEOFF SUCCESS"
-            )
+                self.get_logger().info("Takeoff accepted")
 
+            else:
 
+                self.takeoff_requested = False
+
+        except Exception:
+
+            self.takeoff_requested = False
 
     def loop(self):
 
-        if not self.request_takeoff:
+
+        self.get_logger().info(
+
+            f"[FLIGHT] {self.flight_state}"
+
+        )
+
+        if self.flight_command == "NONE":
             return
 
 
         if not self.current_state:
             return
 
+        if self.flight_state == "IDLE":
 
-        #
-        # Step 1 GUIDED
-        #
+            if self.flight_command == "TAKEOFF":
 
-        if self.current_state.mode != "GUIDED":
+                self.flight_state = "WAIT_GUIDED"
 
-            self.set_guided()
+                self.publish_status("IDLE -> GUIDED")
 
-            return
+                return
+            
+        elif self.flight_state == "WAIT_GUIDED":
 
+            if self.current_state.mode != "GUIDED":
 
+                self.set_guided()
 
-        #
-        # Step 2 ARM
-        #
+            else:
 
-        if not self.current_state.armed:
+                self.publish_status("GUIDED")
 
-            self.arm()
-
-            return
-
+                self.flight_state = "WAIT_ARM"
 
 
-        #
-        # Step 3 TAKEOFF
-        #
+        elif self.flight_state == "WAIT_ARM":
 
-        if not self.takeoff_done:
+            if self.current_state.armed:
 
-            self.takeoff()
+                self.publish_status("ARMED")
 
-            return
+                self.flight_state = "WAIT_TAKEOFF"
+
+            elif not self.arm_requested:
+
+                self.arm()
+
+                self.arm_requested = True
+        
+        elif self.flight_state == "WAIT_TAKEOFF":
+
+            if not self.takeoff_requested:
+
+                self.takeoff()
+
+                self.takeoff_requested = True
 
 
+        elif self.flight_state == "CLIMBING":
 
-        self.get_logger().info(
-            f"HOVER ALT={self.current_alt:.2f}"
-        )
+            self.get_logger().info(
+
+                f"Altitude {self.current_alt:.2f}"
+
+            )
+
+            if self.reached_hover():
+
+                self.publish_status("HOVER")
+
+                self.get_logger().info(
+                    f"Reached hover altitude {self.current_alt:.2f}"
+                )
+
+        elif self.flight_state == "HOVER":
+            self.get_logger().info(
+                f"HOVER ALT={self.current_alt:.2f}"
+            )
+            pass
+
 
 
 

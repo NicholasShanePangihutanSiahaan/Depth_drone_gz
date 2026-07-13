@@ -44,17 +44,17 @@ class VelocityController(Node):
 
         # proportional gain
 
-        self.kp_xy = 0.8
+        self.kp_xy = 0.3
 
-        self.kp_z = 0.8
+        self.kp_z = 0.3
 
 
 
         # velocity limit
 
-        self.max_velocity_xy = 3.0
+        self.max_velocity_xy = 0.6
 
-        self.max_velocity_z = 1.5
+        self.max_velocity_z = 0.5
 
 
 

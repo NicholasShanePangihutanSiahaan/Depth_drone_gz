@@ -5,6 +5,9 @@ float32 y
 float32 z
 
 float32 confidence
-float32 last_seen
 
 bool inspected
+
+bool validated
+
+uint8 orbit_count

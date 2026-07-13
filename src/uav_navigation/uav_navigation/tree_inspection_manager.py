@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import math
-
+import time
 import rclpy
 from rclpy.node import Node
 
@@ -23,8 +23,14 @@ from std_msgs.msg import String
 
 class TreeInspectionManager(Node):
 
-    def __init__(self):
 
+    def __init__(self):
+        self.orbit_start_time = None
+        self.target_locked = False
+
+        # self.validation_count = 0
+
+        self.required_orbit = 1
         super().__init__(
             "tree_inspection_manager"
         )
@@ -44,9 +50,9 @@ class TreeInspectionManager(Node):
 
         self.min_confidence = 0.3
 
-        self.inspection_radius = 6.0
+        self.inspection_radius = 3.0
 
-        self.inspection_altitude = 8.0
+        self.inspection_altitude = 5.0
 
         self.orbit_points = 8
 
@@ -79,6 +85,9 @@ class TreeInspectionManager(Node):
         self.trajectory_completed = False
 
 
+        self.orbit_start_time=None
+
+        self.target_locked=False
 
         ##################################################
         # UAV Pose
@@ -176,7 +185,22 @@ class TreeInspectionManager(Node):
 
     def tree_callback(self,msg):
 
-        self.trees = msg.trees
+        if not self.target_locked:
+            self.trees = msg.trees
+            return
+
+        for incoming in msg.trees:
+
+            for i, tree in enumerate(self.trees):
+
+                if tree.id == incoming.id:
+                    self.trees[i] = incoming
+                    break
+            if self.target_locked:
+
+                return
+
+        self.trees=msg.trees
 
 
         self.get_logger().info(
@@ -438,8 +462,11 @@ class TreeInspectionManager(Node):
         # No active tree
         ##################################################
 
-        if self.current_tree is None:
-
+        if (
+            self.current_tree is None
+            and
+            not self.target_locked
+        ):
             tree = self.select_tree()
 
             if tree is None:
@@ -451,14 +478,15 @@ class TreeInspectionManager(Node):
                 )
 
                 return
+            
+            self.current_tree = tree
 
+            self.target_locked = True
 
             ##############################################
             # Start new tree
             ##############################################
-
-            self.current_tree = tree
-
+            
             self.current_waypoints = (
                 self.generate_orbit(tree)
             )
@@ -483,6 +511,7 @@ class TreeInspectionManager(Node):
             self.waypoint_pub.publish(
                 self.current_waypoints
             )
+            self.orbit_start_time = time.time()
             self.get_logger().info(
             "[MISSION] Inspection waypoint published"
         )
@@ -525,7 +554,19 @@ class TreeInspectionManager(Node):
             # Orbit finished
             ##############################################
 
-            self.finish_tree()
+            if self.trajectory_completed:
+
+                if self.check_orbit_valid():
+
+                    self.finish_tree()
+
+                else:
+
+                    self.get_logger().warn(
+                        "Orbit invalid. Regenerate orbit."
+                    )
+
+                self.target_locked=False
 
             # self.current_tree = None
 
@@ -535,10 +576,33 @@ class TreeInspectionManager(Node):
 
             self.trajectory_completed = False
 
-            self.state = "SELECT_NEXT_TREE"
+            self.state = "SELECT_TREE"
     ##################################################
     # Finish tree
     ##################################################
+    def check_orbit_valid(self):
+
+
+        if self.orbit_start_time is None:
+            return False
+
+
+        elapsed=time.time()-self.orbit_start_time
+
+        self.get_logger().info(
+            f"Orbit duration = {elapsed:.1f}s"
+        )
+
+        if elapsed < 30:
+
+            self.get_logger().info(
+            "Orbit too short"
+            )
+
+            return False
+
+
+        return True
 
     def finish_tree(self):
 
@@ -562,8 +626,10 @@ class TreeInspectionManager(Node):
 
         update.inspected = True
 
-
-
+        update.validated = True
+        update.inspected = True
+        update.orbit_count = 1
+        
         self.tree_update_pub.publish(
             update
         )
