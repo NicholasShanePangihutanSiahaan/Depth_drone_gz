@@ -149,6 +149,10 @@ class PathFollower(Node):
 
         self.current_index = 0
 
+        self.get_logger().info(
+            f"[FOLLOWER] Received trajectory "
+            f"{len(self.path)} points"
+        )
 
         if len(self.path)>0:
 
@@ -223,7 +227,12 @@ class PathFollower(Node):
 
         self.target_pub.publish(msg)
 
-
+        self.get_logger().info(
+            f"[TARGET] "
+            f"x={msg.x:.2f} "
+            f"y={msg.y:.2f} "
+            f"z={msg.z:.2f}"
+        )
 
     ##################################################
     # Publish status

@@ -25,6 +25,7 @@ class VelocityController(Node):
 
     def __init__(self):
 
+        self.counter=0
         super().__init__(
             "velocity_controller"
         )
@@ -179,6 +180,9 @@ class VelocityController(Node):
 
     def control_loop(self):
 
+        self.get_logger().info(
+            "[CONTROL LOOP] running"
+        )
 
         if self.current_pose is None:
 
@@ -288,7 +292,17 @@ class VelocityController(Node):
                 self.max_velocity_z
             )
 
+        self.counter +=1
 
+
+        if self.counter % 20 == 0:
+
+            self.get_logger().info(
+                f"[VELOCITY] "
+                f"vx={cmd.twist.linear.x:.2f} "
+                f"vy={cmd.twist.linear.y:.2f} "
+                f"vz={cmd.twist.linear.z:.2f}"
+            )
 
         self.velocity_pub.publish(
             cmd

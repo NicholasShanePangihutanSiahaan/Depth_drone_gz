@@ -183,6 +183,15 @@ class TreeInspectionManager(Node):
             f"Received {len(self.trees)} trees"
         )
 
+        for tree in self.trees:
+
+            self.get_logger().info(
+                f"Tree ID={tree.id} "
+                f"pos=({tree.x:.2f},{tree.y:.2f},{tree.z:.2f}) "
+                f"confidence={tree.confidence:.2f} "
+                f"inspected={tree.inspected}"
+            )
+
 
 
     ##################################################
@@ -271,7 +280,19 @@ class TreeInspectionManager(Node):
 
                 candidate = tree
 
+        if candidate:
 
+            self.get_logger().info(
+                f"[SELECT TREE] "
+                f"Selected tree {candidate.id} "
+                f"distance={best:.2f} m"
+            )
+
+        else:
+
+            self.get_logger().info(
+                "[SELECT TREE] No available tree"
+            )
 
         return candidate
 
@@ -335,7 +356,21 @@ class TreeInspectionManager(Node):
 
             poses.poses.append(pose)
 
+        self.get_logger().info(
+            f"[ORBIT] Generated {len(poses.poses)} orbit points "
+            f"radius={self.inspection_radius} "
+            f"altitude={self.inspection_altitude}"
+        )
 
+
+        for i,p in enumerate(poses.poses):
+
+            self.get_logger().info(
+                f"Orbit {i}: "
+                f"x={p.position.x:.2f} "
+                f"y={p.position.y:.2f} "
+                f"z={p.position.z:.2f}"
+            )
 
         return poses
 
@@ -439,6 +474,9 @@ class TreeInspectionManager(Node):
 
             self.waypoint_pub.publish(
                 self.current_waypoints
+            )
+            self.get_logger().info(
+                "[MISSION] Inspection waypoint published"
             )
 
             self.publish_status(

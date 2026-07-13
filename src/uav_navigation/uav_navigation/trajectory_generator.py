@@ -83,7 +83,10 @@ class TrajectoryGenerator(Node):
 
             return
 
-
+        self.get_logger().info(
+            f"[TRAJECTORY] Received "
+            f"{len(msg.poses)} waypoints"
+        )
 
         trajectory = self.generate_path(
             msg
@@ -93,7 +96,11 @@ class TrajectoryGenerator(Node):
         self.trajectory_pub.publish(
             trajectory
         )
-
+        
+        self.get_logger().info(
+            f"[TRAJECTORY] Published "
+            f"{len(trajectory.poses)} trajectory points"
+        )
 
         self.get_logger().info(
             f"Trajectory generated "
