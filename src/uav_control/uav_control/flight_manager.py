@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from unittest import result
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -11,12 +13,20 @@ from mavros_msgs.srv import (
     CommandTOL
 )
 
+from rclpy.qos import QoSProfile
+from rclpy.qos import ReliabilityPolicy
+from rclpy.qos import HistoryPolicy
 from mavros_msgs.msg import State
 
 from geometry_msgs.msg import PoseStamped
-
+sensor_qos = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=10
+)
 
 class FlightManager(Node):
+
 
     def __init__(self):
         self.current_alt = 0.0
@@ -53,7 +63,7 @@ class FlightManager(Node):
             PoseStamped,
             "/mavros/local_position/pose",
             self.pose_callback,
-            10
+            sensor_qos
         )
 
 
@@ -69,7 +79,8 @@ class FlightManager(Node):
             self.land_callback,
             10
         )
-
+        
+        
         self.flight_status_pub = self.create_publisher(
             String,
             "/flight/status",
@@ -181,6 +192,8 @@ class FlightManager(Node):
 
         req.value=True
 
+        self.get_logger().info("Calling ARM service")
+
         if not self.arm_client.wait_for_service(timeout_sec=1.0):
         
             return
@@ -201,12 +214,12 @@ class FlightManager(Node):
             if result.success:
 
                 self.get_logger().info(f"Arm response = {result.success}")
-
+            
             else:
 
                 self.arm_requested = False
 
-        except Exception:
+        except Exception as e:
 
             self.arm_requested = False
             self.get_logger().error(str(e))
@@ -226,6 +239,11 @@ class FlightManager(Node):
 
         req.altitude = self.takeoff_altitude
 
+        self.get_logger().info(
+                f"Calling TAKEOFF altitude={req.altitude}"
+            )
+
+
         if not self.takeoff_client.wait_for_service(timeout_sec=1.0):
         
             return
@@ -242,19 +260,23 @@ class FlightManager(Node):
 
             result = future.result()
 
+            self.get_logger().info(
+                f"TAKEOFF response success={result.success} result={result.result}"
+            )
             if result.success:
 
-                self.flight_state = "CLIMBING"
+                self.flight_state = "WAIT_CLIMB"
 
-                self.get_logger().info("Takeoff accepted")
+                # self.get_logger().info("Takeoff accepted")
 
             else:
 
                 self.takeoff_requested = False
 
-        except Exception:
+        except Exception as e:
 
             self.takeoff_requested = False
+            self.get_logger().error(str(e))
 
     def loop(self):
 
@@ -287,6 +309,7 @@ class FlightManager(Node):
             if self.current_state.mode != "GUIDED":
 
                 self.set_guided()
+                return
 
             else:
 
@@ -303,20 +326,42 @@ class FlightManager(Node):
 
                 self.flight_state = "WAIT_TAKEOFF"
 
-            elif not self.arm_requested:
+                self.arm_requested = False
 
-                self.arm()
+            else:
 
-                self.arm_requested = True
+                if not self.arm_requested:
+
+                    self.get_logger().info("Sending ARM request")
+
+                    self.arm()
+
+                    self.arm_requested = True
         
         elif self.flight_state == "WAIT_TAKEOFF":
 
             if not self.takeoff_requested:
 
+                self.get_logger().info(
+                    f"Sending TAKEOFF request altitude={self.takeoff_altitude}"
+                )
                 self.takeoff()
 
                 self.takeoff_requested = True
 
+        elif self.flight_state == "WAIT_CLIMB":
+
+            self.get_logger().info(
+                f"Waiting climb altitude={self.current_alt:.2f}"
+            )
+
+            if self.current_alt > 0.3:
+
+                self.get_logger().info(
+                    "Drone has started climbing"
+                )
+
+                self.flight_state = "CLIMBING"
 
         elif self.flight_state == "CLIMBING":
 

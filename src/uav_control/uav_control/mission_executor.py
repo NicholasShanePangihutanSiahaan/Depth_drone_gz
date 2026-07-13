@@ -28,6 +28,8 @@ class MissionExecutor(Node):
         ############################################
         self.mission_status = ""
         
+        self.takeoff_sent = False
+
         self.state = "INIT"
 
         self.current_pose = None
@@ -138,13 +140,17 @@ class MissionExecutor(Node):
         
         if self.state=="INIT":
 
-            msg=Bool()
+            if self.flight_status != "GUIDED":
 
-            msg.data=True
+                msg = Bool()
+                msg.data = True
+                self.takeoff_pub.publish(msg)
+                self.takeoff_sent = True
+                self.get_logger().info("Publishing TAKEOFF request")
 
-            self.takeoff_pub.publish(msg)
+            else:
 
-            self.state="WAIT_HOVER"
+                self.state = "WAIT_HOVER"
 
         ###################################################
 
