@@ -1,346 +1,272 @@
 #!/usr/bin/env python3
 
+import math
+
 import rclpy
 from rclpy.node import Node
 
-from std_msgs.msg import String, Bool
+from std_msgs.msg import String
+from std_msgs.msg import Bool
+
 from geometry_msgs.msg import PoseStamped
-from rclpy.qos import (
-    QoSProfile,
-    ReliabilityPolicy,
-    HistoryPolicy,
-    DurabilityPolicy
-)
+from geometry_msgs.msg import Pose
+from geometry_msgs.msg import PoseArray
+
+from mavros_msgs.msg import State
+
+from mavros_msgs.srv import CommandBool
+from mavros_msgs.srv import SetMode
+
+from rclpy.qos import QoSProfile
+from rclpy.qos import ReliabilityPolicy
+from rclpy.qos import HistoryPolicy
+
 
 class MissionExecutor(Node):
 
     def __init__(self):
 
-        super().__init__(
-            "mission_executor"
-        )
+        super().__init__("mission_executor")
 
-        qos_sensor = QoSProfile(
-
+        qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
-
             history=HistoryPolicy.KEEP_LAST,
-
             depth=10
-
         )
-        ###################################
-        # STATE
-        ###################################
+
+        ############################################
 
         self.state = "INIT"
 
+        self.current_pose = None
 
-        ###################################
-        # UAV POSITION
-        ###################################
+        self.current_state = State()
 
-        self.current_x = 0.0
-        self.current_y = 0.0
-        self.current_z = 0.0
+        self.home_saved = False
 
+        ############################################
+        # subscriber
+        ############################################
 
-        self.home_x = None
-        self.home_y = None
-        self.home_z = None
-
-
-
-        ###################################
-        # SUBSCRIBER
-        ###################################
-
-        self.status_sub = self.create_subscription(
-            String,
-            "/mission/status",
-            self.status_callback,
-            10
-        )
-
-
-        self.pose_sub = self.create_subscription(
+        self.create_subscription(
             PoseStamped,
             "/mavros/local_position/pose",
             self.pose_callback,
-            qos_sensor
+            qos
         )
 
-
-
-        ###################################
-        # COMMAND PUBLISHER
-        ###################################
-
-        self.takeoff_pub = self.create_publisher(
-            Bool,
-            "/mission/takeoff",
+        self.create_subscription(
+            State,
+            "/mavros/state",
+            self.state_callback,
             10
         )
 
+        ############################################
+        # publisher
+        ############################################
 
-        self.return_home_pub = self.create_publisher(
-            Bool,
-            "/mission/return_home",
-            10
-        )
-
-
-        self.land_pub = self.create_publisher(
-            Bool,
-            "/mission/land",
-            10
-        )
-
-
-        self.executor_pub = self.create_publisher(
+        self.status_pub = self.create_publisher(
             String,
             "/mission/executor_status",
             10
         )
 
+        self.wp_pub = self.create_publisher(
+            PoseArray,
+            "/mission/inspection_waypoints",
+            10
+        )
 
+        ############################################
+        # service
+        ############################################
 
-        ###################################
+        self.arm_client = self.create_client(
+            CommandBool,
+            "/mavros/cmd/arming"
+        )
+
+        self.mode_client = self.create_client(
+            SetMode,
+            "/mavros/set_mode"
+        )
+
+        ############################################
 
         self.timer = self.create_timer(
             1.0,
             self.loop
         )
 
+        self.get_logger().info("Mission Executor Started")
 
-        self.get_logger().info(
-            "Mission Executor Started"
-        )
+    #######################################################
 
+    def pose_callback(self, msg):
 
+        self.current_pose = msg.pose
 
-    ###################################
-    # CALLBACK
-    ###################################
+        if not self.home_saved:
 
+            self.home = msg.pose.position
 
-    def pose_callback(self,msg):
-
-        self.current_x = msg.pose.position.x
-        self.current_y = msg.pose.position.y
-        self.current_z = msg.pose.position.z
-
-
-
-        # simpan home pertama kali
-
-        if self.home_x is None:
-
-            self.home_x = self.current_x
-            self.home_y = self.current_y
-            self.home_z = self.current_z
-
+            self.home_saved = True
 
             self.get_logger().info(
-                f"Home saved : {self.home_x},{self.home_y},{self.home_z}"
+                f"Home : {self.home.x:.2f}, {self.home.y:.2f}, {self.home.z:.2f}"
             )
 
+    #######################################################
 
+    def state_callback(self, msg):
 
-    def status_callback(self,msg):
+        self.current_state = msg
 
-        status = msg.data
+    #######################################################
 
+    def arm(self):
 
-        self.get_logger().info(
-            f"Mission status : {status}"
-        )
+        if self.current_state.armed:
+            return True
 
+        if not self.arm_client.wait_for_service(timeout_sec=1.0):
+            return False
 
-        if status=="START":
+        req = CommandBool.Request()
+        req.value = True
 
-            self.state="TAKEOFF"
+        future = self.arm_client.call_async(req)
 
+        self.get_logger().info("Arming...")
 
+        return True
 
-        elif status=="INSPECT_TREE":
+    #######################################################
 
-            self.state="INSPECTION"
+    def guided(self):
 
+        if self.current_state.mode == "GUIDED":
+            return True
 
+        if not self.mode_client.wait_for_service(timeout_sec=1.0):
+            return False
 
-        elif status=="MISSION_FINISHED":
+        req = SetMode.Request()
 
-            self.state="RETURN_HOME"
+        req.custom_mode = "GUIDED"
 
+        future = self.mode_client.call_async(req)
 
+        self.get_logger().info("GUIDED mode...")
 
+        return True
 
-    ###################################
-    # MAIN FSM
-    ###################################
+    #######################################################
 
+    def publish_inspection(self):
+
+        msg = PoseArray()
+
+        msg.header.frame_id = "map"
+
+        altitude = 3.0
+
+        points = [
+
+            (5.0,0.0),
+            (5.0,5.0),
+            (0.0,5.0),
+            (0.0,0.0)
+
+        ]
+
+        for x,y in points:
+
+            p = Pose()
+
+            p.position.x = x
+            p.position.y = y
+            p.position.z = altitude
+
+            p.orientation.w = 1.0
+
+            msg.poses.append(p)
+
+        self.wp_pub.publish(msg)
+
+        self.get_logger().info("Inspection waypoint published")
+
+    #######################################################
 
     def loop(self):
 
-        output = String()
+        status = String()
 
+        ###################################################
 
+        if self.current_pose is None:
 
-        ################################
+            return
 
-        if self.state=="INIT":
+        ###################################################
 
-            output.data="WAITING"
+        if self.state == "INIT":
 
+            self.guided()
 
+            self.arm()
 
-        ################################
+            status.data = "ARMING"
 
-        elif self.state=="TAKEOFF":
+            if self.current_state.mode == "GUIDED" and self.current_state.armed:
 
+                self.state = "TAKEOFF"
 
-            self.send_takeoff()
+        ###################################################
 
+        elif self.state == "TAKEOFF":
 
-            output.data="TAKEOFF"
+            if self.current_pose.position.z >= 2.8:
 
+                self.state = "MISSION"
 
-            # setelah command
-            # lanjut inspection
+            status.data = "TAKEOFF"
 
-            self.state="INSPECTION"
+        ###################################################
 
+        elif self.state == "MISSION":
 
+            self.publish_inspection()
 
-        ################################
+            status.data = "MISSION"
 
-        elif self.state=="INSPECTION":
+            self.state = "WAIT"
 
+        ###################################################
 
-            output.data="INSPECTING"
+        elif self.state == "WAIT":
 
+            status.data = "FOLLOW_PATH"
 
+        ###################################################
 
-        ################################
-
-        elif self.state=="RETURN_HOME":
-
-
-            self.send_return_home()
-
-
-            output.data="RETURN_HOME"
-
-
-            self.state="LAND"
-
-
-
-        ################################
-
-        elif self.state=="LAND":
-
-
-            self.send_land()
-
-
-            output.data="LANDING"
-
-
-            self.state="FINISHED"
-
-
-
-        ################################
-
-        elif self.state=="FINISHED":
-
-            output.data="MISSION_COMPLETE"
-
-
-
-        self.executor_pub.publish(output)
-
-
-
-
-    ###################################
-    # COMMAND
-    ###################################
-
-
-    def send_takeoff(self):
-
-        msg=Bool()
-
-        msg.data=True
-
-
-        self.takeoff_pub.publish(msg)
-
-
-        self.get_logger().info(
-            "Takeoff command sent"
-        )
-
-
-
-    def send_return_home(self):
-
-        msg=Bool()
-
-        msg.data=True
-
-
-        self.return_home_pub.publish(msg)
-
-
-        self.get_logger().info(
-            "Return home command sent"
-        )
-
-
-
-    def send_land(self):
-
-        msg=Bool()
-
-        msg.data=True
-
-
-        self.land_pub.publish(msg)
-
-
-        self.get_logger().info(
-            "Landing command sent"
-        )
-
-
+        self.status_pub.publish(status)
 
 
 def main(args=None):
 
     rclpy.init(args=args)
 
-    node=MissionExecutor()
+    node = MissionExecutor()
 
-
-    try:
-
-        rclpy.spin(node)
-
-    except KeyboardInterrupt:
-
-        pass
-
+    rclpy.spin(node)
 
     node.destroy_node()
 
     rclpy.shutdown()
 
 
-
-if __name__=="__main__":
+if __name__ == "__main__":
 
     main()
