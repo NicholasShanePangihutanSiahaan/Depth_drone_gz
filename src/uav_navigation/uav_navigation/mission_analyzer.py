@@ -71,10 +71,6 @@ class MissionAnalyzer(Node):
 
         self.total_distance = 0.0
 
-        self.previous_x = None
-        self.previous_y = None
-        self.previous_z = None
-
         self.trees = []
 
         self.total_tree = 0
@@ -106,8 +102,6 @@ class MissionAnalyzer(Node):
         self.waypoint_history = []
 
         self.average_speed = 0.0
-
-        self.coverage = 0.0
 
         plt.ion()
 
@@ -153,7 +147,7 @@ class MissionAnalyzer(Node):
         )
 
         self.timer = self.create_timer(
-            0.20,
+            0.5,
             self.update
         )
 
@@ -177,48 +171,17 @@ class MissionAnalyzer(Node):
 
         self.path_time.append(elapsed)
 
-        if self.previous_x is not None:
+        if self.previous_pose is not None:
 
-            dx = self.uav_x - self.previous_x
-            dy = self.uav_y - self.previous_y
-            dz = self.uav_z - self.previous_z
+            dx = msg.pose.position.x - self.previous_pose.position.x
+            dy = msg.pose.position.y - self.previous_pose.position.y
+            dz = msg.pose.position.z - self.previous_pose.position.z
 
-            distance = math.sqrt(
-                dx * dx +
-                dy * dy +
-                dz * dz
+            self.total_distance += math.sqrt(
+                dx*dx + dy*dy + dz*dz
             )
 
-            self.total_distance += distance
-
-            if self.previous_pose is not None:
-
-                dx = (
-                    msg.pose.position.x -
-                    self.previous_pose.position.x
-                )
-
-                dy = (
-                    msg.pose.position.y -
-                    self.previous_pose.position.y
-                )
-
-                dz = (
-                    msg.pose.position.z -
-                    self.previous_pose.position.z
-                )
-
-                self.total_distance += math.sqrt(
-                    dx*dx +
-                    dy*dy +
-                    dz*dz
-                )
-
-            self.previous_pose = msg.pose
-
-        self.previous_x = self.uav_x
-        self.previous_y = self.uav_y
-        self.previous_z = self.uav_z
+        self.previous_pose = msg.pose
 
         if elapsed > 0.0:
 
@@ -247,6 +210,33 @@ class MissionAnalyzer(Node):
             f"[MISSION] {status}"
         )
 
+    def tree_callback(self, msg):
+
+        self.trees = msg.trees
+
+        self.total_tree = len(msg.trees)
+
+        self.inspected_tree = sum(
+            1 for t in msg.trees
+            if t.inspected
+        )
+
+        self.validated_tree = sum(
+            1 for t in msg.trees
+            if t.validated
+        )
+
+        if self.total_tree > 0:
+
+            self.coverage = (
+                self.inspected_tree /
+                self.total_tree
+            ) * 100.0
+
+        else:
+
+            self.coverage = 0.0
+
     def follower_callback(self, msg):
 
         status = msg.data
@@ -269,6 +259,10 @@ class MissionAnalyzer(Node):
             )
         )
 
+        if status == "WAYPOINT_REACHED":
+
+            self.completed_waypoints += 1
+
         if status == "TRAJECTORY_COMPLETED":
 
             self.completed_trajectory += 1
@@ -278,6 +272,12 @@ class MissionAnalyzer(Node):
             f"[FOLLOWER] {status}"
 
         )
+
+    def update(self):
+
+        self.calculate_statistics()
+
+        self.draw_map()
 
     def waypoint_callback(self, msg):
 
@@ -414,31 +414,15 @@ class MissionAnalyzer(Node):
 
         self.get_logger().info("========================================")
 
-    ##################################################
-    # Draw Mission Map
-    ##################################################
-
     def draw_map(self):
 
-        ##################################################
-        # Clear Figure
-        ##################################################
-
         self.axis.clear()
-
-        ##################################################
-        # Title
-        ##################################################
 
         self.axis.set_title(
             "UAV Mission Analysis",
             fontsize=16,
             fontweight="bold"
         )
-
-        ##################################################
-        # Axis
-        ##################################################
 
         self.axis.set_xlabel("X (m)")
         self.axis.set_ylabel("Y (m)")
@@ -450,10 +434,6 @@ class MissionAnalyzer(Node):
             adjustable="box"
         )
 
-        ##################################################
-        # UAV Trajectory
-        ##################################################
-
         if len(self.path_x) > 1:
 
             self.axis.plot(
@@ -463,10 +443,6 @@ class MissionAnalyzer(Node):
                 linewidth=2,
                 label="Trajectory"
             )
-
-        ##################################################
-        # UAV Position
-        ##################################################
 
         if self.have_pose:
 
@@ -478,14 +454,16 @@ class MissionAnalyzer(Node):
                 marker="o",
                 label="UAV"
             )
-
-        ##################################################
-        # Trees
-        ##################################################
-
+        self.axis.scatter(
+            0,
+            0,
+            marker="*",
+            s=180,
+            color="gold",
+            label="Home"
+)
+        
         for tree in self.trees:
-
-            ##################################################
 
             if tree.inspected:
 
@@ -499,8 +477,6 @@ class MissionAnalyzer(Node):
 
                 color = "black"
 
-            ##################################################
-
             self.axis.scatter(
                 tree.x,
                 tree.y,
@@ -508,18 +484,12 @@ class MissionAnalyzer(Node):
                 s=60
             )
 
-            ##################################################
-
             self.axis.text(
                 tree.x,
                 tree.y + 0.3,
                 str(tree.id),
                 fontsize=8
             )
-
-        ##################################################
-        # Current Orbit
-        ##################################################
 
         if self.current_waypoints is not None:
 
@@ -555,10 +525,6 @@ class MissionAnalyzer(Node):
                     label="Inspection Orbit"
                 )
 
-        ##################################################
-        # Statistics
-        ##################################################
-
         mission_time = (
             time.time() -
             self.start_time
@@ -593,23 +559,11 @@ class MissionAnalyzer(Node):
 
         )
 
-        ##################################################
-        # Legend
-        ##################################################
-
         self.axis.legend()
-
-        ##################################################
-        # Refresh
-        ##################################################
 
         self.figure.canvas.draw()
 
         self.figure.canvas.flush_events()
-
-    ##################################################
-    # Save Mission Result
-    ##################################################
 
     def save_csv(self):
 
@@ -622,10 +576,6 @@ class MissionAnalyzer(Node):
         with open(filename, "w", newline="") as csvfile:
 
             writer = csv.writer(csvfile)
-
-            ##################################################
-            # Summary
-            ##################################################
 
             writer.writerow(["Mission Summary"])
 
@@ -661,10 +611,6 @@ class MissionAnalyzer(Node):
 
             writer.writerow([])
 
-            ##################################################
-            # Trajectory
-            ##################################################
-
             writer.writerow(
                 [
                     "Trajectory"
@@ -690,10 +636,6 @@ class MissionAnalyzer(Node):
                 )
 
             writer.writerow([])
-
-            ##################################################
-            # Tree Database
-            ##################################################
 
             writer.writerow(
                 [
@@ -729,10 +671,6 @@ class MissionAnalyzer(Node):
             f"CSV saved : {filename}"
         )
 
-    ##################################################
-    # Save Figure
-    ##################################################
-
     def save_png(self):
 
         filename = (
@@ -757,37 +695,21 @@ class MissionAnalyzer(Node):
 
         )
 
-    ##################################################
-    # Shutdown
-    ##################################################
-
     def shutdown(self):
 
         self.get_logger().info(
             "Saving mission result..."
         )
 
-        ##################################################
-
         self.calculate_statistics()
-
-        ##################################################
 
         self.draw_map()
 
-        ##################################################
-
         self.save_csv()
-
-        ##################################################
 
         self.save_png()
 
-        ##################################################
-
         plt.close(self.figure)
-
-        ##################################################
 
         self.get_logger().info(
             "Mission Analyzer Shutdown"

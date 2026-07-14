@@ -30,6 +30,8 @@ setup(
 
             'mission_controller=uav_navigation.mission_controller:main',
 
+            'mission_analyzer=uav_navigation.mission_analyzer:main',
+
             'tree_inspection_manager = uav_navigation.tree_inspection_manager:main',
 
             'trajectory_generator=uav_navigation.trajectory_generator:main',

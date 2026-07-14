@@ -37,7 +37,7 @@ class FlightManager(Node):
         )
 
         self.flight_state = "IDLE"
-
+        self.arm_request_pending = False
         self.takeoff_altitude = 8.0
 
         self.hover_tolerance = 0.2
@@ -206,7 +206,8 @@ class FlightManager(Node):
         )
 
     def arm_callback(self, future):
-
+ 
+        self.arm_request_pending=False
         try:
 
             result = future.result()
@@ -327,12 +328,15 @@ class FlightManager(Node):
                 self.flight_state = "WAIT_TAKEOFF"
 
                 self.arm_requested = False
+                self.arm_request_pending = False
+
 
             else:
 
                 if not self.arm_requested:
 
                     self.get_logger().info("Sending ARM request")
+                    self.arm_request_pending = True
 
                     self.arm()
 
