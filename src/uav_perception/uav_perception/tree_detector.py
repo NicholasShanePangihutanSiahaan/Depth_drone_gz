@@ -20,8 +20,7 @@ class TreeDetector(Node):
         super().__init__("tree_detector")
 
         self.bridge = CvBridge()
-
-        # ---------- PARAMETERS ----------
+        self.depth_image = None
 
         self.lower = np.array([5, 60, 20], dtype=np.uint8)
         self.upper = np.array([25, 255, 180], dtype=np.uint8)
@@ -55,8 +54,61 @@ class TreeDetector(Node):
             10
         )
 
+        self.depth_sub = self.create_subscription(
+            Image,
+            "/zed2i/depth/depth_registered",
+            self.depth_callback,
+            10
+        )
+
         self.get_logger().info("Tree Detector Started")
 
+    def depth_callback(self, msg):
+
+        self.depth_image = self.bridge.imgmsg_to_cv2(
+            msg,
+            desired_encoding="32FC1"
+        )
+
+    def calculate_depth(self, x, y, w, h):
+
+        if self.depth_image is None:
+            return None
+
+        margin_x = int(w * 0.25)
+        margin_y = int(h * 0.25)
+
+        x1 = max(0, x + margin_x)
+        y1 = max(0, y + margin_y)
+
+        x2 = min(
+            self.depth_image.shape[1],
+            x + w - margin_x
+        )
+
+        y2 = min(
+            self.depth_image.shape[0],
+            y + h - margin_y
+        )
+
+        roi = self.depth_image[
+            y1:y2,
+            x1:x2
+        ]
+
+        if x2 <= x1 or y2 <= y1:
+            return None
+
+        roi = roi[np.isfinite(roi)]
+
+        roi = roi[(roi > 0.2) & (roi < 20.0)]
+
+        if roi.size == 0:
+            return None
+
+        depth = np.median(roi)
+
+        return float(depth)
 
     def image_callback(self, msg):
 
@@ -114,7 +166,7 @@ class TreeDetector(Node):
             if aspect < self.min_aspect_ratio:
                 continue
 
-            score = area
+            score = area * aspect
 
             if score > best_score:
 
@@ -139,26 +191,39 @@ class TreeDetector(Node):
             return
 
         x, y, w, h, area, aspect = best
-
+        
         center_x = float(x + w / 2.0)
         center_y = float(y + h / 2.0)
 
+        depth = self.calculate_depth(
+            x,
+            y,
+            w,
+            h
+        )
+
+        if depth is None:
+        
+            detected.data = False
+        
+            self.detect_pub.publish(detected)
+        
+            return
+        
         point = Point()
 
         point.x = center_x
         point.y = center_y
-        point.z = 0.0
+        point.z = depth
 
         self.pixel_pub.publish(point)
 
         detected.data = True
-
         self.detect_pub.publish(detected)
-
         self.get_logger().info(
             f"Tree detected | "
             f"Area={area:.1f} "
-            f"Aspect={aspect:.2f} "
+            f"depth={depth:.2f} m "
             f"Center=({center_x:.1f},{center_y:.1f})"
         )
 
@@ -168,7 +233,7 @@ class TreeDetector(Node):
                 image,
                 (x, y),
                 (x + w, y + h),
-                (0, 255, 0),
+                (255,0,255),
                 2
             )
 
@@ -182,11 +247,11 @@ class TreeDetector(Node):
 
             cv2.putText(
                 image,
-                f"A={int(area)}",
-                (x, y - 8),
+                f"{depth:.2f} m",
+                (x, y - 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
-                (255, 0, 0),
+                (0, 255, 255),
                 2
             )
 
