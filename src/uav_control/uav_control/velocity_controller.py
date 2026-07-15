@@ -1,83 +1,54 @@
 #!/usr/bin/env python3
 
-
 import math
-
 import rclpy
 from rclpy.node import Node
 
+from geometry_msgs.msg import PoseStamped, TwistStamped
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
-from geometry_msgs.msg import Point
-from geometry_msgs.msg import PoseStamped
-
-from rclpy.qos import (
-    QoSProfile,
-    ReliabilityPolicy,
-    HistoryPolicy,
-    DurabilityPolicy
-)
-
-from geometry_msgs.msg import TwistStamped
-
-
+def quaternion_to_yaw(qx, qy, qz, qw):
+    """Konversi Quaternion ke sudut Yaw (Euler)"""
+    siny_cosp = 2.0 * (qw * qz + qx * qy)
+    cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+    return math.atan2(siny_cosp, cosy_cosp)
 
 class VelocityController(Node):
-
     def __init__(self):
-
-        super().__init__(
-            "velocity_controller"
-        )
+        super().__init__("velocity_controller")
 
         qos_sensor = QoSProfile(
-
             reliability=ReliabilityPolicy.BEST_EFFORT,
-
             history=HistoryPolicy.KEEP_LAST,
-
             depth=10
-
         )
-        ##################################################
-        # Parameter
-        ##################################################
 
-        # proportional gain
-
-        self.kp_xy = 0.3
-
+        # ==================================================
+        # Parameter Proportional Gain (Translasi & Rotasi)
+        # ==================================================
+        self.kp_xy = 0.5            # Diperbesar sedikit agar lebih responsif
         self.kp_z = 0.3
+        self.kp_yaw = 0.8           # Gain untuk rotasi Yaw (Heading)
 
+        # ==================================================
+        # Parameter Limit Kecepatan (Maksimum)
+        # ==================================================
+        self.max_velocity_xy = 1.0  # m/s
+        self.max_velocity_z = 0.5   # m/s
+        self.max_velocity_yaw = 0.5 # rad/s (Sekitar 30 derajat per detik)
 
+        self.goal_threshold = 0.5   # meter (Jarak dianggap sampai)
 
-        # velocity limit
-
-        self.max_velocity_xy = 0.6
-
-        self.max_velocity_z = 0.5
-
-
-
-        # waypoint dianggap tercapai
-
-        self.goal_threshold = 0.5
-
-
-
-        ##################################################
+        # ==================================================
         # State
-        ##################################################
-
+        # ==================================================
         self.current_pose = None
+        self.target_pose = None
 
-        self.target = None
-
-
-
-        ##################################################
-        # Subscriber
-        ##################################################
-
+        # ==================================================
+        # Subscriber & Publisher
+        # ==================================================
+        # Membaca posisi UAV saat ini
         self.pose_sub = self.create_subscription(
             PoseStamped,
             "/mavros/local_position/pose",
@@ -85,254 +56,110 @@ class VelocityController(Node):
             qos_sensor
         )
 
-
-
+        # Membaca target AMAN dari Vortex Avoidance (Sekarang membaca PoseStamped, bukan Point)
         self.target_sub = self.create_subscription(
-            Point,
-            "/control/target_point",
+            PoseStamped,
+            "/control/safe_target_pose",
             self.target_callback,
             10
         )
 
-
-
-        ##################################################
-        # Publisher
-        ##################################################
-
+        # Mengirim Twist (Kecepatan) ke MAVROS
         self.velocity_pub = self.create_publisher(
             TwistStamped,
             "/mavros/setpoint_velocity/cmd_vel",
             10
         )
 
+        # Loop berjalan pada 20Hz (0.05 detik)
+        self.timer = self.create_timer(0.05, self.control_loop)
 
+        self.get_logger().info("Velocity Controller (Dengan Yaw/Heading Control) Aktif")
 
-        ##################################################
+    def pose_callback(self, msg):
+        self.current_pose = msg
 
-        self.timer = self.create_timer(
-            0.05,
-            self.control_loop
-        )
+    def target_callback(self, msg):
+        self.target_pose = msg
 
-
-        self.get_logger().info(
-            "Velocity Controller Started"
-        )
-
-
-
-    ##################################################
-    # UAV pose
-    ##################################################
-
-    def pose_callback(
-        self,
-        msg
-    ):
-
-        self.current_pose = msg.pose
-
-
-
-    ##################################################
-    # Target waypoint
-    ##################################################
-
-    def target_callback(
-        self,
-        msg
-    ):
-
-        self.target = msg
-
-
-
-    ##################################################
-    # Limit velocity
-    ##################################################
-
-    def limit(
-        self,
-        value,
-        maximum
-    ):
-
-
-        if value > maximum:
-
-            return maximum
-
-
-        if value < -maximum:
-
-            return -maximum
-
-
+    def limit(self, value, maximum):
+        """Membatasi nilai agar tidak melebihi kecepatan maksimum"""
+        if value > maximum: return maximum
+        if value < -maximum: return -maximum
         return value
 
-
-
-    ##################################################
-    # Control loop
-    ##################################################
-
     def control_loop(self):
-
-        self.get_logger().info(
-            "[CONTROL LOOP] running"
-        )
-
-        if self.current_pose is None:
-
+        if self.current_pose is None or self.target_pose is None:
             return
+        if self.current_pose.pose.position.z < 1.5:
+                    return
+        # ==================================================
+        # 1. Kalkulasi Error Posisi (X, Y, Z)
+        # ==================================================
+        ex = self.target_pose.pose.position.x - self.current_pose.pose.position.x
+        ey = self.target_pose.pose.position.y - self.current_pose.pose.position.y
+        ez = self.target_pose.pose.position.z - self.current_pose.pose.position.z
+        
+        distance = math.sqrt(ex*ex + ey*ey + ez*ez)
 
+        # ==================================================
+        # 2. Kalkulasi Error Sudut (Yaw)
+        # ==================================================
+        curr_qx = self.current_pose.pose.orientation.x
+        curr_qy = self.current_pose.pose.orientation.y
+        curr_qz = self.current_pose.pose.orientation.z
+        curr_qw = self.current_pose.pose.orientation.w
+        current_yaw = quaternion_to_yaw(curr_qx, curr_qy, curr_qz, curr_qw)
 
+        tgt_qx = self.target_pose.pose.orientation.x
+        tgt_qy = self.target_pose.pose.orientation.y
+        tgt_qz = self.target_pose.pose.orientation.z
+        tgt_qw = self.target_pose.pose.orientation.w
+        target_yaw = quaternion_to_yaw(tgt_qx, tgt_qy, tgt_qz, tgt_qw)
 
-        if self.target is None:
+        # Selisih sudut
+        e_yaw = target_yaw - current_yaw
 
-            return
+        # Normalisasi error sudut agar selalu mencari rute putaran terpendek (-PI hingga PI)
+        while e_yaw > math.pi: e_yaw -= 2.0 * math.pi
+        while e_yaw < -math.pi: e_yaw += 2.0 * math.pi
 
-
-
-        ##################################################
-        # Position error
-        ##################################################
-
-        ex = (
-            self.target.x -
-            self.current_pose.position.x
-        )
-
-
-        ey = (
-            self.target.y -
-            self.current_pose.position.y
-        )
-
-
-        ez = (
-            self.target.z -
-            self.current_pose.position.z
-        )
-
-
-
-        distance = math.sqrt(
-
-            ex*ex+
-            ey*ey+
-            ez*ez
-
-        )
-
-
-
-        ##################################################
-        # Create velocity command
-        ##################################################
-
+        # ==================================================
+        # 3. Meracik Komando Kecepatan (Twist)
+        # ==================================================
         cmd = TwistStamped()
+        cmd.header.stamp = self.get_clock().now().to_msg()
+        cmd.header.frame_id = "base_link"
 
-
-        cmd.header.stamp = (
-            self.get_clock()
-            .now()
-            .to_msg()
-        )
-
-
-        cmd.header.frame_id = (
-            "base_link"
-        )
-
-
-
-        ##################################################
-        # Stop near waypoint
-        ##################################################
-
+        # Kontrol Translasi (Linear XYZ)
         if distance < self.goal_threshold:
-
-
             cmd.twist.linear.x = 0.0
-
             cmd.twist.linear.y = 0.0
-
             cmd.twist.linear.z = 0.0
-
-
-
         else:
+            cmd.twist.linear.x = self.limit(self.kp_xy * ex, self.max_velocity_xy)
+            cmd.twist.linear.y = self.limit(self.kp_xy * ey, self.max_velocity_xy)
+            cmd.twist.linear.z = self.limit(self.kp_z * ez, self.max_velocity_z)
 
+        # Kontrol Rotasi (Angular Yaw) - Tetap aktif mengoreksi sudut meski posisi sudah sampai
+        cmd.twist.angular.x = 0.0
+        cmd.twist.angular.y = 0.0
+        cmd.twist.angular.z = self.limit(self.kp_yaw * e_yaw, self.max_velocity_yaw)
 
-            vx = self.kp_xy * ex
-
-            vy = self.kp_xy * ey
-
-            vz = self.kp_z * ez
-
-
-
-            cmd.twist.linear.x = self.limit(
-                vx,
-                self.max_velocity_xy
-            )
-
-
-            cmd.twist.linear.y = self.limit(
-                vy,
-                self.max_velocity_xy
-            )
-
-
-            cmd.twist.linear.z = self.limit(
-                vz,
-                self.max_velocity_z
-            )
-
-        self.velocity_pub.publish(
-            cmd
-        )
-
-        self.get_logger().info(
-            f"[VELOCITY] "
-            f"vx={cmd.twist.linear.x:.2f} "
-            f"vy={cmd.twist.linear.y:.2f} "
-            f"vz={cmd.twist.linear.z:.2f}"
-        )
-
-
-
-##################################################
-
+        # ==================================================
+        # 4. Publikasi Perintah ke MAVROS
+        # ==================================================
+        self.velocity_pub.publish(cmd)
 
 def main(args=None):
-
-
     rclpy.init(args=args)
-
-
     node = VelocityController()
-
-
     try:
-
         rclpy.spin(node)
-
-
     except KeyboardInterrupt:
-
         pass
-
-
-
     node.destroy_node()
-
     rclpy.shutdown()
 
-
-
-if __name__=="__main__":
-
+if __name__ == "__main__":
     main()

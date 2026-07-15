@@ -435,7 +435,7 @@ class TreeMapper(Node):
                 if tree["confidence"] < 0:
 
 
-                    tree["confidence"] = 0
+                    tree["confidence"] = 0.0
 
 
 

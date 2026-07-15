@@ -38,7 +38,7 @@ class FlightManager(Node):
 
         self.flight_state = "IDLE"
         self.arm_request_pending = False
-        self.takeoff_altitude = 8.0
+        self.takeoff_altitude = 4.0
 
         self.hover_tolerance = 0.2
 

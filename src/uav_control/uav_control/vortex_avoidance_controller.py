@@ -27,7 +27,7 @@ class VortexAvoidanceController(Node):
         # ==========================================
         # Parameter Medan Pusaran (Vortex & Potential Field)
         # ==========================================
-        self.safety_radius = 3.0       # Batas aman drone bereaksi (meter)
+        self.safety_radius = 1.5       # Batas aman drone bereaksi (meter)
         self.repulsive_gain = 1.5      # Kekuatan gaya tolak menjauhi halangan
         self.vortex_gain = 2.0         # Kekuatan gaya geser/meliuk (tangensial)
         self.attraction_gain = 1.0     # Tarikan ke tujuan asli
