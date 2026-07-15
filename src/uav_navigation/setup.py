@@ -34,6 +34,8 @@ setup(
 
             'tree_inspection_manager = uav_navigation.tree_inspection_manager:main',
 
+            'dynamic_orbit_controller=uav_navigation.dynamic_orbit_controller:main',
+
             'trajectory_generator=uav_navigation.trajectory_generator:main',
 
         ],

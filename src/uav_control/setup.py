@@ -39,6 +39,8 @@ setup(
             "obstacle_avoidance=uav_control.obstacle_avoidance:main",
             "mission_executor=uav_control.mission_executor:main",
             "fake_uav = uav_control.fake_uav:main", 
+            "vortex_avoidance_controller = uav_control.vortex_avoidance_controller:main",
+            "mission_state_machine = uav_control.mission_state_machine:main",
             'flight_manager = uav_control.flight_manager:main',
             "landing_controller=uav_control.landing_controller:main",
         ],
