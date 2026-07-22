@@ -3,7 +3,7 @@
 import math
 import rclpy
 from rclpy.node import Node
-
+from uav_control.mission_params import MissionConfig
 from geometry_msgs.msg import PoseStamped, Point
 from std_msgs.msg import Bool, String
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
@@ -29,10 +29,10 @@ class DynamicOrbitController(Node):
         # ==========================================
         # Parameter Orbit Dinamis
         # ==========================================
-        self.orbit_radius = 2.5       # Jarak ideal dari pohon (meter)
-        self.orbit_altitude = 5.0     # Ketinggian orbit standar (meter)
-        self.orbit_velocity = 1.0     # Kecepatan rotasi angular ekuivalen linear (m/s)
-        self.yaw_offset = math.pi / 4 # Offset 45 derajat (0.785 radian)
+        self.orbit_radius = MissionConfig.ORBIT_RADIUS       # Jarak ideal dari pohon (meter)
+        self.orbit_altitude = MissionConfig.ORBIT_ALTITUDE     # Ketinggian orbit standar (meter)
+        self.orbit_velocity = MissionConfig.ORBIT_VELOCITY     # Kecepatan rotasi angular ekuivalen linear (m/s)
+        self.yaw_offset = MissionConfig.YAW_OFFSET # Offset 45 derajat (0.785 radian)
 
         # ==========================================
         # Variabel State
