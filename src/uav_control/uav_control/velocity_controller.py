@@ -125,6 +125,14 @@ class VelocityController(Node):
         while e_yaw < -math.pi: e_yaw += 2.0 * math.pi
 
         # ==================================================
+        # 2.5 Konversi Error Posisi ke Frame Lokal (Body Frame)
+        # ==================================================
+        # 'ex' dan 'ey' adalah error di peta dunia (Global Odom).
+        # Kita harus memutarnya menggunakan current_yaw agar sesuai dengan arah moncong drone.
+        local_ex = (ex * math.cos(current_yaw)) + (ey * math.sin(current_yaw))
+        local_ey = (-ex * math.sin(current_yaw)) + (ey * math.cos(current_yaw))
+
+        # ==================================================
         # 3. Meracik Komando Kecepatan (Twist)
         # ==================================================
         cmd = TwistStamped()
@@ -137,11 +145,12 @@ class VelocityController(Node):
             cmd.twist.linear.y = 0.0
             cmd.twist.linear.z = 0.0
         else:
-            cmd.twist.linear.x = self.limit(self.kp_xy * ex, self.max_velocity_xy)
-            cmd.twist.linear.y = self.limit(self.kp_xy * ey, self.max_velocity_xy)
+            # Gunakan local_ex dan local_ey yang sudah diputar agar geraknya akurat
+            cmd.twist.linear.x = self.limit(self.kp_xy * local_ex, self.max_velocity_xy)
+            cmd.twist.linear.y = self.limit(self.kp_xy * local_ey, self.max_velocity_xy)
             cmd.twist.linear.z = self.limit(self.kp_z * ez, self.max_velocity_z)
 
-        # Kontrol Rotasi (Angular Yaw) - Tetap aktif mengoreksi sudut meski posisi sudah sampai
+        # Kontrol Rotasi (Angular Yaw) - Tetap aktif mengoreksi sudut
         cmd.twist.angular.x = 0.0
         cmd.twist.angular.y = 0.0
         cmd.twist.angular.z = self.limit(self.kp_yaw * e_yaw, self.max_velocity_yaw)
