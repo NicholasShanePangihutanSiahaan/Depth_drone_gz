@@ -7,7 +7,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from geometry_msgs.msg import PoseStamped, Point
 from std_msgs.msg import Bool, String, Float32
-from uav_interfaces.msg import TreeArray
+from uav_interfaces.msg import TreeArray, Tree
 
 def euler_to_quaternion(roll, pitch, yaw):
     qx = math.sin(roll/2) * math.cos(pitch/2) * math.cos(yaw/2) - math.cos(roll/2) * math.sin(pitch/2) * math.sin(yaw/2)
@@ -94,6 +94,8 @@ class MissionStateMachine(Node):
         # Command navigasi lokal
         self.local_goal_pub = self.create_publisher(PoseStamped, "/navigation/local_goal", 10)
         self.fsm_status_pub = self.create_publisher(String, "/mission/fsm_state", 10)
+        # Publisher untuk memperbarui status pohon ke Tree Mapper
+        self.tree_update_pub = self.create_publisher(Tree, "/map/tree_update", 10)
 
         # Timer FSM berjalan pada 10 Hz
         self.timer = self.create_timer(0.1, self.fsm_loop)
@@ -253,15 +255,33 @@ class MissionStateMachine(Node):
 
         elif self.state == "WAIT_ORBIT":
             if self.orbit_status == "ORBIT_COMPLETED":
+                # 1. Matikan perintah orbit
                 stop_msg = Bool(); stop_msg.data = False
                 self.orbit_start_pub.publish(stop_msg)
                 
+                # 2. UPDATE MAPPER: Tandai pohon ini SUDAH DIINSPEKSI
+                if self.target_tree is not None:
+                    update_msg = Tree()
+                    update_msg.id = self.target_tree.id
+                    update_msg.x = self.target_tree.x
+                    update_msg.y = self.target_tree.y
+                    update_msg.z = self.target_tree.z
+                    update_msg.confidence = self.target_tree.confidence
+                    
+                    # INI KUNCI UTAMANYA:
+                    update_msg.inspected = True 
+                    
+                    self.tree_update_pub.publish(update_msg)
+                    self.get_logger().info(f"Pohon ID:{self.target_tree.id} ditandai SELESAI (Inspected).")
+
+                # 3. Update posisi terakhir untuk acuan lorong
                 self.last_tree_x = self.target_tree.x
                 self.last_tree_y = self.target_tree.y
                 
+                # 4. Kosongkan target dan kembali mencari
                 self.target_tree = None
                 self.state = "EXPLORE_ROW"
-                self.get_logger().info("Orbit selesai. Kembali menyusuri lorong.")
+                self.get_logger().info("Orbit selesai. Kembali menyusuri lorong mencari pohon baru.")
 
         elif self.state == "END_OF_ROW":
             retreat_x = self.last_tree_x - (self.approach_safe_dist * self.explore_dir_x)
