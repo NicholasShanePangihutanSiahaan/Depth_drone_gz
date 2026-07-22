@@ -4,7 +4,7 @@ import math
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-
+from uav_control.mission_params import MissionConfig
 from geometry_msgs.msg import PoseStamped, Point
 from std_msgs.msg import Bool, String, Float32
 from uav_interfaces.msg import TreeArray, Tree
@@ -34,12 +34,12 @@ class MissionStateMachine(Node):
         # ==========================================
         # Parameter Strategi Kebun 
         # ==========================================
-        self.explore_speed = 1.0          
-        self.crab_speed = 0.5             
-        self.end_of_row_dist = 10.0       
-        self.end_of_farm_dist = 20.0      
-        self.approach_safe_dist = 2.0     
-        self.flight_altitude = 5.0        
+        self.explore_speed = MissionConfig.EXPLORE_SPEED  # Kecepatan menyusuri lorong (m/s)          
+        self.crab_speed = MissionConfig.CRAB_SPEED
+        self.end_of_row_dist = MissionConfig.END_OF_ROW_DIST
+        self.end_of_farm_dist = MissionConfig.END_OF_FARM_DIST
+        self.approach_safe_dist = MissionConfig.APPROACH_SAFE_DIST
+        self.flight_altitude = MissionConfig.FLIGHT_ALTITUDE
 
         # ==========================================
         # Variabel State & Navigasi
