@@ -92,9 +92,10 @@ class VelocityController(Node):
         if self.current_pose is None or self.target_pose is None:
             return
         if self.current_pose.pose.position.z < 1.5:
-                    return
+            return
+
         # ==================================================
-        # 1. Kalkulasi Error Posisi (X, Y, Z)
+        # 1. Kalkulasi Error Posisi GLOBAL (X, Y, Z)
         # ==================================================
         ex = self.target_pose.pose.position.x - self.current_pose.pose.position.x
         ey = self.target_pose.pose.position.y - self.current_pose.pose.position.y
@@ -117,47 +118,44 @@ class VelocityController(Node):
         tgt_qw = self.target_pose.pose.orientation.w
         target_yaw = quaternion_to_yaw(tgt_qx, tgt_qy, tgt_qz, tgt_qw)
 
-        # Selisih sudut
         e_yaw = target_yaw - current_yaw
-
-        # Normalisasi error sudut agar selalu mencari rute putaran terpendek (-PI hingga PI)
         while e_yaw > math.pi: e_yaw -= 2.0 * math.pi
         while e_yaw < -math.pi: e_yaw += 2.0 * math.pi
-
-        # ==================================================
-        # 2.5 Konversi Error Posisi ke Frame Lokal (Body Frame)
-        # ==================================================
-        # 'ex' dan 'ey' adalah error di peta dunia (Global Odom).
-        # Kita harus memutarnya menggunakan current_yaw agar sesuai dengan arah moncong drone.
-        local_ex = (ex * math.cos(current_yaw)) + (ey * math.sin(current_yaw))
-        local_ey = (-ex * math.sin(current_yaw)) + (ey * math.cos(current_yaw))
 
         # ==================================================
         # 3. Meracik Komando Kecepatan (Twist)
         # ==================================================
         cmd = TwistStamped()
         cmd.header.stamp = self.get_clock().now().to_msg()
-        cmd.header.frame_id = "base_link"
+        # MAVROS ArduPilot mengevaluasi ini sebagai Global ENU
+        cmd.header.frame_id = "odom" 
 
-        # Kontrol Translasi (Linear XYZ)
         if distance < self.goal_threshold:
             cmd.twist.linear.x = 0.0
             cmd.twist.linear.y = 0.0
             cmd.twist.linear.z = 0.0
         else:
-            # Gunakan local_ex dan local_ey yang sudah diputar agar geraknya akurat
-            cmd.twist.linear.x = self.limit(self.kp_xy * local_ex, self.max_velocity_xy)
-            cmd.twist.linear.y = self.limit(self.kp_xy * local_ey, self.max_velocity_xy)
-            cmd.twist.linear.z = self.limit(self.kp_z * ez, self.max_velocity_z)
+            # Hitung kecepatan mentah
+            vx = self.kp_xy * ex
+            vy = self.kp_xy * ey
+            
+            # NORMALISASI VEKTOR (Wajib untuk Orbit)
+            # Ini memastikan arah vektor (sudut panah) tidak rusak meskipun kecepatannya dibatasi
+            v_mag = math.sqrt(vx**2 + vy**2)
+            if v_mag > self.max_velocity_xy:
+                scale = self.max_velocity_xy / v_mag
+                vx *= scale
+                vy *= scale
+                
+            cmd.twist.linear.x = float(vx)
+            cmd.twist.linear.y = float(vy)
+            cmd.twist.linear.z = float(self.limit(self.kp_z * ez, self.max_velocity_z))
 
-        # Kontrol Rotasi (Angular Yaw) - Tetap aktif mengoreksi sudut
+        # Kontrol Rotasi (Angular Yaw)
         cmd.twist.angular.x = 0.0
         cmd.twist.angular.y = 0.0
-        cmd.twist.angular.z = self.limit(self.kp_yaw * e_yaw, self.max_velocity_yaw)
+        cmd.twist.angular.z = float(self.limit(self.kp_yaw * e_yaw, self.max_velocity_yaw))
 
-        # ==================================================
-        # 4. Publikasi Perintah ke MAVROS
-        # ==================================================
         self.velocity_pub.publish(cmd)
 
 def main(args=None):
