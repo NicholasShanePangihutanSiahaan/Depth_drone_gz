@@ -11,7 +11,7 @@ class MissionConfig:
     # ==========================================
     # 1. Parameter Misi & Eksplorasi (mission_state_machine.py)
     # ==========================================
-    FLIGHT_ALTITUDE = 5.0        # meter
+    FLIGHT_ALTITUDE = 3.0        # meter
     EXPLORE_SPEED = 1.0          # m/s
     CRAB_SPEED = 0.5             # m/s
     END_OF_ROW_DIST = 10.0       # meter
