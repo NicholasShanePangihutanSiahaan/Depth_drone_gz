@@ -45,6 +45,7 @@ class MissionStateMachine(Node):
         # Variabel State & Navigasi
         # ==========================================
         self.state = "INIT"
+        self.retry_counter = 0
         self.orbit_status = "IDLE"
         self.current_pose = None
         self.trees = []
@@ -163,6 +164,7 @@ class MissionStateMachine(Node):
             mode_msg = String(); mode_msg.data = "GUIDED"
             self.cmd_mode_pub.publish(mode_msg)
             self.state = "WAIT_GUIDED"
+            self.retry_counter = 0
             self.get_logger().info("Meminta transisi ke mode GUIDED...")
 
         elif self.state == "WAIT_GUIDED":
@@ -170,14 +172,29 @@ class MissionStateMachine(Node):
                 arm_msg = Bool(); arm_msg.data = True
                 self.cmd_arm_pub.publish(arm_msg)
                 self.state = "WAIT_ARM"
+                self.retry_counter = 0
                 self.get_logger().info("Mode GUIDED aktif. Meminta Arming Motor...")
+            else:
+                self.retry_counter += 1
+                if self.retry_counter > 20:  # Ulangi perintah setiap 2 detik (20 x 0.1s)
+                    mode_msg = String(); mode_msg.data = "GUIDED"
+                    self.cmd_mode_pub.publish(mode_msg)
+                    self.retry_counter = 0
 
         elif self.state == "WAIT_ARM":
             if self.is_armed:
                 takeoff_msg = Float32(); takeoff_msg.data = self.flight_altitude
                 self.cmd_takeoff_pub.publish(takeoff_msg)
                 self.state = "WAIT_TAKEOFF"
+                self.retry_counter = 0
                 self.get_logger().info(f"Motor Bersenjata (Armed). Takeoff ke ketinggian {self.flight_altitude}m...")
+            else:
+                self.retry_counter += 1
+                if self.retry_counter > 20:  # Ulangi perintah setiap 2 detik
+                    arm_msg = Bool(); arm_msg.data = True
+                    self.cmd_arm_pub.publish(arm_msg)
+                    self.get_logger().info("Mencoba Arming ulang... (Menunggu Pre-arm good dari ArduPilot)")
+                    self.retry_counter = 0
 
         elif self.state == "WAIT_TAKEOFF":
             if self.is_hovering:
@@ -204,22 +221,24 @@ class MissionStateMachine(Node):
                     self.get_logger().info("Lorong Habis. Bersiap pindah lorong.")
 
         elif self.state == "APPROACH_TREE":
-            dist_to_tree = self.distance(cx, cy, self.target_tree.x, self.target_tree.y)
-            
             # Hitung sudut arah (yaw) dari drone menuju pohon
             target_yaw = math.atan2(self.target_tree.y - cy, self.target_tree.x - cx)
             
-            if dist_to_tree > self.approach_safe_dist:
-                # KALKULASI TITIK PENGEREMAN
-                # Mundurkan target sejauh 2 meter (approach_safe_dist) dari pusat pohon
-                stop_x = self.target_tree.x - (self.approach_safe_dist * math.cos(target_yaw))
-                stop_y = self.target_tree.y - (self.approach_safe_dist * math.sin(target_yaw))
-                
-                # Kirim koordinat titik pengereman, BUKAN pusat pohon
+            # 1. Kalkulasi TITIK PENGEREMAN (2 meter di depan pohon)
+            stop_x = self.target_tree.x - (self.approach_safe_dist * math.cos(target_yaw))
+            stop_y = self.target_tree.y - (self.approach_safe_dist * math.sin(target_yaw))
+            
+            # 2. Hitung jarak drone ke TITIK PENGEREMAN (bukan ke pohon)
+            dist_to_stop = self.distance(cx, cy, stop_x, stop_y)
+            
+            # 3. Logika Bebas Deadlock
+            # Karena velocity_controller akan mengerem di jarak 0.5m dari titik target,
+            # FSM cukup menunggu sampai drone berada di jarak 0.6m dari titik pengereman.
+            if dist_to_stop > 0.6:
                 self.publish_goal(stop_x, stop_y, target_yaw)
             else:
                 self.state = "START_ORBIT"
-                self.get_logger().info("Jarak aman (2m) tercapai. Memulai orbit.")
+                self.get_logger().info("Titik pengereman tercapai. Memulai orbit.")
 
         elif self.state == "START_ORBIT":
             target_msg = Point()
