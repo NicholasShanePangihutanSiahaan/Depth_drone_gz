@@ -3,7 +3,7 @@
 import math
 import rclpy
 from rclpy.node import Node
-
+from uav_control.mission_params import MissionConfig
 from geometry_msgs.msg import PoseStamped, Point
 from std_msgs.msg import String
 from uav_interfaces.msg import TreeArray
@@ -27,12 +27,12 @@ class VortexAvoidanceController(Node):
         # ==========================================
         # Parameter Medan Pusaran (Vortex & Potential Field)
         # ==========================================
-        self.safety_radius = 1.5       # Batas aman drone bereaksi (meter)
-        self.repulsive_gain = 1.5      # Kekuatan gaya tolak menjauhi halangan
-        self.vortex_gain = 2.0         # Kekuatan gaya geser/meliuk (tangensial)
-        self.attraction_gain = 1.0     # Tarikan ke tujuan asli
+        self.safety_radius = MissionConfig.SAFETY_RADIUS       # Batas aman drone bereaksi (meter)
+        self.repulsive_gain = MissionConfig.REPULSIVE_GAIN      # Kekuatan gaya tolak menjauhi halangan
+        self.vortex_gain = MissionConfig.VORTEX_GAIN         # Kekuatan gaya geser/meliuk (tangensial)
+        self.attraction_gain = MissionConfig.ATTRACTION_GAIN     # Tarikan ke tujuan asli
         
-        self.max_shift = 2.0           # Batas maksimal pergeseran vektor (m)
+        self.max_shift = MissionConfig.MAX_SHIFT           # Batas maksimal pergeseran vektor (m)
 
         # ==========================================
         # Variabel State
