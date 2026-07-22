@@ -1,38 +1,85 @@
-import os
-from glob import glob
-from setuptools import setup
+from launch import LaunchDescription
+from launch_ros.actions import Node
 
-package_name = 'beehive_drone'
+def generate_launch_description():
+    pkg_name = 'beehive_drone'
 
-setup(
-    name=package_name,
-    version='0.0.0',
-    packages=[package_name],
-    data_files=[
-        ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
-        ('share/' + package_name, ['package.xml']),
-        # DAFTARKAN FOLDER LAUNCH DI SINI:
-        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
-    ],
-    install_requires=['setuptools'],
-    zip_safe=True,
-    maintainer='shane',
-    maintainer_email='shane@todo.todo',
-    description='Autonomous Plantation Drone Navigation System',
-    license='TODO: License declaration',
-    tests_require=['pytest'],
-    entry_points={
-        'console_scripts': [
-            # DAFTARKAN SEMUA NODE DI SINI (nama_eksekusi = nama_folder.nama_file:main)
-            'mission_state_machine = beehive_drone.mission_state_machine:main',
-            'dynamic_orbit_controller = beehive_drone.dynamic_orbit_controller:main',
-            'velocity_controller = beehive_drone.velocity_controller:main',
-            'vortex_avoidance_controller = beehive_drone.vortex_avoidance_controller:main',
-            'tree_detector = beehive_drone.tree_detector:main',
-            'tree_mapper = beehive_drone.tree_mapper:main',
-            'tree_localizer = beehive_drone.tree_localizer:main',
-            'flight_manager = beehive_drone.flight_manager:main',
-            'mission_analyzer = beehive_drone.mission_analyzer:main',
-        ],
-    },
-)   
+    # 1. Perception & Mapping Nodes
+    detector_node = Node(
+        package=pkg_name,
+        executable='tree_detector',
+        name='tree_detector',
+        output='screen'
+    )
+    
+    localizer_node = Node(
+        package=pkg_name,
+        executable='tree_localizer',
+        name='tree_localizer',
+        output='screen'
+    )
+
+    mapper_node = Node(
+        package=pkg_name,
+        executable='tree_mapper',
+        name='tree_mapper',
+        output='screen'
+    )
+
+    # 2. Navigation & Control Nodes
+    velocity_node = Node(
+        package=pkg_name,
+        executable='velocity_controller',
+        name='velocity_controller',
+        output='screen'
+    )
+
+    vortex_node = Node(
+        package=pkg_name,
+        executable='vortex_avoidance_controller',
+        name='vortex_avoidance_controller',
+        output='screen'
+    )
+
+    orbit_node = Node(
+        package=pkg_name,
+        executable='dynamic_orbit_controller',
+        name='dynamic_orbit_controller',
+        output='screen'
+    )
+
+    # 3. Hardware Abstraction Layer (HAL) & Analyzer
+    # INI YANG SEBELUMNYA HILANG
+    flight_manager_node = Node(
+        package=pkg_name,
+        executable='flight_manager',
+        name='flight_manager',
+        output='screen'
+    )
+    
+    analyzer_node = Node(
+        package=pkg_name,
+        executable='mission_analyzer',
+        name='mission_analyzer',
+        output='screen'
+    )
+
+    # 4. The Brain (FSM)
+    fsm_node = Node(
+        package=pkg_name,
+        executable='mission_state_machine',
+        name='mission_state_machine',
+        output='screen'
+    )
+
+    return LaunchDescription([
+        detector_node,
+        localizer_node,
+        mapper_node,
+        velocity_node,
+        vortex_node,
+        orbit_node,
+        flight_manager_node,
+        analyzer_node,
+        fsm_node
+    ])

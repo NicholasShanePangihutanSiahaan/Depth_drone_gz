@@ -245,39 +245,56 @@ class MissionStateMachine(Node):
                 self.get_logger().info("Titik pengereman tercapai. Hovering 4 detik untuk stabilisasi...")
         
         elif self.state == "VERIFY_TREE":
-            # 1. Perintahkan drone untuk mengunci posisinya saat ini (Hover)
-            # Menghadap lurus ke arah pohon
+            # 1. Tahan posisi (Hovering) menghadap arah pohon target
             target_yaw = math.atan2(self.target_tree.y - cy, self.target_tree.x - cx)
             self.publish_goal(cx, cy, target_yaw)
             
-            # 2. Tambahkan timer (berjalan di 10 Hz)
             self.hover_timer += 1
             
-            # Tunggu selama 10 siklus (10 * 0.1 detik = 1.0 detik)
-            if self.hover_timer >= 10:
-                closest_tree = None
-                min_err = float('inf')
+            # Setelah 40 siklus (4 detik hovering stabil)
+            if self.hover_timer >= 40:
                 
-                # CARI ULANG: Cari pohon di database Mapper yang posisinya 
-                # paling mendekati target_tree awal kita
+                # --- CARI POHON BERDASARKAN ID ASLI SECARA KETAT ---
+                target_matched_tree = None
                 for tree in self.trees:
-                    if not tree.inspected:
-                        err = self.distance(self.target_tree.x, self.target_tree.y, tree.x, tree.y)
-                        if err < min_err:
-                            min_err = err
-                            closest_tree = tree
+                    if tree.id == self.target_tree.id:
+                        target_matched_tree = tree
+                        break
                 
-                # VERIFIKASI: Jika pohon terdekat berada dalam radius 2 meter dari target awal,
-                # berarti itu pohon asli yang koordinatnya sudah diperbaiki (Pohon 30).
-                if closest_tree is not None and min_err < 2.0:
-                    self.target_tree = closest_tree  # Update dengan koordinat yang presisi
-                    self.state = "START_ORBIT"
-                    self.get_logger().info(f"Verifikasi sukses (Pohon ID:{closest_tree.id}). Memulai orbit.")
+                # Cek 1: Apakah ID pohon tersebut masih ada di database mapper?
+                if target_matched_tree is not None:
+                    
+                    # Cek 2: HITUNG JARAK RIILL AKTUAL DARI DRONE KE POHON TERSEBUT
+                    actual_dist_to_tree = self.distance(cx, cy, target_matched_tree.x, target_matched_tree.y)
+                    
+                    # Syarat Mutlak: Jarak riil drone ke pohon HARUS benar-benar di sekitar 2 meter.
+                    # Jika jaraknya jauh (misal 5 meter atau nyasar ke pohon lain), berarti itu hantu!
+                    if 1.5 <= actual_dist_to_tree <= 2.5:
+                        self.target_tree = target_matched_tree  
+                        self.state = "START_ORBIT"
+                        self.get_logger().info(f"Verifikasi sukses! Pohon ID:{target_matched_tree.id} valid di jarak {actual_dist_to_tree:.2f}m. Memulai orbit.")
+                    else:
+                        self.get_logger().warn(f"Pohon ID:{target_matched_tree.id} gagal verifikasi. Jarak aktual nyasar di {actual_dist_to_tree:.2f}m. Dihapus!")
+                        
+                        # Hapus pohon hantu dari database
+                        update_msg = Tree()
+                        update_msg.id = self.target_matched_tree.id if 'target_matched_tree' in locals() and target_matched_tree else self.target_tree.id
+                        update_msg.confidence = -1.0 
+                        self.tree_update_pub.publish(update_msg)
+                        
+                        self.target_tree = None
+                        self.state = "EXPLORE_ROW"
+                        
                 else:
-                    # Jika tidak ada pohon dalam radius 2 meter, itu adalah Pohon Hantu (False Positive)
+                    self.get_logger().warn("Pohon Hantu hilang dari peta saat hovering! Membatalkan orbit.")
+                    if self.target_tree is not None:
+                        update_msg = Tree()
+                        update_msg.id = self.target_tree.id
+                        update_msg.confidence = -1.0 
+                        self.tree_update_pub.publish(update_msg)
+                    
                     self.target_tree = None
                     self.state = "EXPLORE_ROW"
-                    self.get_logger().warn("Pohon Hantu terdeteksi! Membatalkan orbit dan lanjut mencari.")
                     
         elif self.state == "START_ORBIT":
             target_msg = Point()

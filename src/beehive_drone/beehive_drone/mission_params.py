@@ -17,11 +17,12 @@ class MissionConfig:
     END_OF_ROW_DIST = 10.0       # meter
     END_OF_FARM_DIST = 20.0      # meter
     APPROACH_SAFE_DIST = 2.0     # meter
+    HOVERING_PERIODE = 30.0      # periode dikali 1.0 adalah waktu hovering sebelum loitering
 
     # ==========================================
     # 2. Parameter Orbit (dynamic_orbit_controller.py)
     # ==========================================
-    ORBIT_RADIUS = 2.0           # meter (Diperkecil dari 2.5 agar aman dari rintangan)
+    ORBIT_RADIUS = 3.0           # meter (Diperkecil dari 2.5 agar aman dari rintangan)
     ORBIT_ALTITUDE = FLIGHT_ALTITUDE 
     ORBIT_VELOCITY = 1.0         # m/s
     YAW_OFFSET = math.pi / 4     # radian (45 derajat)
