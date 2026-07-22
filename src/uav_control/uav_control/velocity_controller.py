@@ -3,7 +3,7 @@
 import math
 import rclpy
 from rclpy.node import Node
-
+from uav_control.mission_params import MissionConfig
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
@@ -26,18 +26,18 @@ class VelocityController(Node):
         # ==================================================
         # Parameter Proportional Gain (Translasi & Rotasi)
         # ==================================================
-        self.kp_xy = 0.5            # Diperbesar sedikit agar lebih responsif
-        self.kp_z = 0.3
-        self.kp_yaw = 0.8           # Gain untuk rotasi Yaw (Heading)
+        self.kp_xy = MissionConfig.KP_XY            # Diperbesar sedikit agar lebih responsif
+        self.kp_z = MissionConfig.KP_Z
+        self.kp_yaw = MissionConfig.KP_YAW           # Gain untuk rotasi Yaw (Heading)
 
         # ==================================================
         # Parameter Limit Kecepatan (Maksimum)
         # ==================================================
-        self.max_velocity_xy = 1.0  # m/s
-        self.max_velocity_z = 0.5   # m/s
-        self.max_velocity_yaw = 0.5 # rad/s (Sekitar 30 derajat per detik)
+        self.max_velocity_xy = MissionConfig.MAX_VELOCITY_XY  # m/s
+        self.max_velocity_z = MissionConfig.MAX_VELOCITY_Z   # m/s
+        self.max_velocity_yaw = MissionConfig.MAX_VELOCITY_YAW # rad/s (Sekitar 30 derajat per detik)
 
-        self.goal_threshold = 0.5   # meter (Jarak dianggap sampai)
+        self.goal_threshold = MissionConfig.GOAL_THRESHOLD   # meter (Jarak dianggap sampai)
 
         # ==================================================
         # State
