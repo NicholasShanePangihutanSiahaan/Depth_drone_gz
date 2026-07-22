@@ -46,6 +46,7 @@ class MissionStateMachine(Node):
         # ==========================================
         self.state = "INIT"
         self.retry_counter = 0
+        self.hover_timer = 0
         self.orbit_status = "IDLE"
         self.current_pose = None
         self.trees = []
@@ -239,8 +240,29 @@ class MissionStateMachine(Node):
             if dist_to_stop > 0.6:
                 self.publish_goal(stop_x, stop_y, target_yaw)
             else:
-                self.state = "START_ORBIT"
-                self.get_logger().info("Titik pengereman tercapai. Memulai orbit.")
+                self.state = "VERIFY_TREE"
+                self.hover_timer = 0
+                self.get_logger().info("Titik pengereman tercapai. Hovering 4 detik untuk stabilisasi...")
+        
+        elif self.state == "VERIFY_TREE":
+            # 1. Perintahkan drone untuk mengunci posisinya saat ini (Hover)
+            # Menghadap lurus ke arah pohon
+            target_yaw = math.atan2(self.target_tree.y - cy, self.target_tree.x - cx)
+            self.publish_goal(cx, cy, target_yaw)
+            
+            # 2. Tambahkan timer (berjalan di 10 Hz)
+            self.hover_timer += 1
+            
+            # Tunggu selama 10 siklus (10 * 0.1 detik = 1.0 detik)
+            if self.hover_timer >= 10:
+                # Cek ulang apakah database pohon mengonfirmasi pohon masih ada di jarak aman
+                # (Mencegah false positive dari kamera yang tiba-tiba hilang)
+                if self.target_tree is not None:
+                    self.state = "START_ORBIT"
+                    self.get_logger().info("Posisi stabil dan valid. Memulai orbit.")
+                else:
+                    self.state = "EXPLORE_ROW"
+                    self.get_logger().warn("Pohon hilang dari deteksi! Membatalkan orbit.")
 
         elif self.state == "START_ORBIT":
             target_msg = Point()
