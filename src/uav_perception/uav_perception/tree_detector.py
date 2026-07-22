@@ -75,8 +75,8 @@ class TreeDetector(Node):
         if self.depth_image is None:
             return None
 
-        margin_x = int(w * 0.25)
-        margin_y = int(h * 0.25)
+        margin_x = int(w * 0.40)
+        margin_y = int(h * 0.40)
 
         x1 = max(0, x + margin_x)
         y1 = max(0, y + margin_y)
