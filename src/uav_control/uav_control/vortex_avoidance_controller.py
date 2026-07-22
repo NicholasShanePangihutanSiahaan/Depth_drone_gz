@@ -102,9 +102,15 @@ class VortexAvoidanceController(Node):
 
         # 2. Vektor Tarikan (Attractive Vector) ke Tujuan Asli
         # Dihitung relatif terhadap posisi drone saat ini
-        att_dx = (target_x - cx) * self.attraction_gain
-        att_dy = (target_y - cy) * self.attraction_gain
-
+        dist_to_goal = math.sqrt((target_x - cx)**2 + (target_y - cy)**2)
+        if dist_to_goal > 0.1:
+            # NORMALISASI VEKTOR: Tarikan selalu konstan (kekuatannya = attraction_gain)
+            # Tidak peduli sejauh apa pun targetnya, tarikan tidak akan pernah membesar.
+            att_dx = ((target_x - cx) / dist_to_goal) * self.attraction_gain
+            att_dy = ((target_y - cy) / dist_to_goal) * self.attraction_gain
+        else:
+            att_dx = 0.0
+            att_dy = 0.0
         # 3. Kalkulasi Vektor Penolakan (Repulsive) & Pusaran (Vortex)
         rep_dx = 0.0
         rep_dy = 0.0
