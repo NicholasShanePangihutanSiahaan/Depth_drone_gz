@@ -255,15 +255,30 @@ class MissionStateMachine(Node):
             
             # Tunggu selama 10 siklus (10 * 0.1 detik = 1.0 detik)
             if self.hover_timer >= 10:
-                # Cek ulang apakah database pohon mengonfirmasi pohon masih ada di jarak aman
-                # (Mencegah false positive dari kamera yang tiba-tiba hilang)
-                if self.target_tree is not None:
+                closest_tree = None
+                min_err = float('inf')
+                
+                # CARI ULANG: Cari pohon di database Mapper yang posisinya 
+                # paling mendekati target_tree awal kita
+                for tree in self.trees:
+                    if not tree.inspected:
+                        err = self.distance(self.target_tree.x, self.target_tree.y, tree.x, tree.y)
+                        if err < min_err:
+                            min_err = err
+                            closest_tree = tree
+                
+                # VERIFIKASI: Jika pohon terdekat berada dalam radius 2 meter dari target awal,
+                # berarti itu pohon asli yang koordinatnya sudah diperbaiki (Pohon 30).
+                if closest_tree is not None and min_err < 2.0:
+                    self.target_tree = closest_tree  # Update dengan koordinat yang presisi
                     self.state = "START_ORBIT"
-                    self.get_logger().info("Posisi stabil dan valid. Memulai orbit.")
+                    self.get_logger().info(f"Verifikasi sukses (Pohon ID:{closest_tree.id}). Memulai orbit.")
                 else:
+                    # Jika tidak ada pohon dalam radius 2 meter, itu adalah Pohon Hantu (False Positive)
+                    self.target_tree = None
                     self.state = "EXPLORE_ROW"
-                    self.get_logger().warn("Pohon hilang dari deteksi! Membatalkan orbit.")
-
+                    self.get_logger().warn("Pohon Hantu terdeteksi! Membatalkan orbit dan lanjut mencari.")
+                    
         elif self.state == "START_ORBIT":
             target_msg = Point()
             target_msg.x = self.target_tree.x
