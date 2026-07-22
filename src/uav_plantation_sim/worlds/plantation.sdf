@@ -65,14 +65,14 @@
     <model name="soil_lanes">
       <static>true</static>
       <link name="lanes">
-        <visual name="lane_m26_25"><pose>0 -26.25 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.30 0.20 0.11 1</ambient><diffuse>0.43 0.29 0.16 1</diffuse></material></visual>
-        <visual name="lane_m18_75"><pose>0 -18.75 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.30 0.20 0.11 1</ambient><diffuse>0.43 0.29 0.16 1</diffuse></material></visual>
-        <visual name="lane_m11_25"><pose>0 -11.25 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.30 0.20 0.11 1</ambient><diffuse>0.43 0.29 0.16 1</diffuse></material></visual>
-        <visual name="lane_m3_75"><pose>0 -3.75 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.30 0.20 0.11 1</ambient><diffuse>0.43 0.29 0.16 1</diffuse></material></visual>
-        <visual name="lane_3_75"><pose>0 3.75 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.30 0.20 0.11 1</ambient><diffuse>0.43 0.29 0.16 1</diffuse></material></visual>
-        <visual name="lane_11_25"><pose>0 11.25 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.30 0.20 0.11 1</ambient><diffuse>0.43 0.29 0.16 1</diffuse></material></visual>
-        <visual name="lane_18_75"><pose>0 18.75 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.30 0.20 0.11 1</ambient><diffuse>0.43 0.29 0.16 1</diffuse></material></visual>
-        <visual name="lane_26_25"><pose>0 26.25 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.30 0.20 0.11 1</ambient><diffuse>0.43 0.29 0.16 1</diffuse></material></visual>
+        <visual name="lane_m26_25"><pose>0 -26.25 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_m18_75"><pose>0 -18.75 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_m11_25"><pose>0 -11.25 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_m3_75"><pose>0 -3.75 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_3_75"><pose>0 3.75 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_11_25"><pose>0 11.25 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_18_75"><pose>0 18.75 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_26_25"><pose>0 26.25 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
       </link>
     </model>
 
