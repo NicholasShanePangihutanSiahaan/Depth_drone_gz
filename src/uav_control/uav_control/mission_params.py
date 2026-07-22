@@ -45,3 +45,13 @@ class MissionConfig:
     MAX_VELOCITY_Z = 0.5         # m/s
     MAX_VELOCITY_YAW = 0.5       # rad/s
     GOAL_THRESHOLD = 0.5         # meter
+
+    # ==========================================
+    # 5. Parameter Pemetaan Pohon (tree_mapper.py)
+    # ==========================================
+    TREE_MERGE_DISTANCE = 3.0           # meter (Jarak minimum untuk menggabungkan pohon yang sama)
+    TREE_MAX_CONFIDENCE = 1.0           # Maksimum confidence untuk pohon
+    TREE_NEW_CONFIDENCE = 0.2      # Confidence awal untuk pohon baru
+    TREE_CONFIDENCE_INCREMENT = 0.15    # Penambahan confidence setiap deteksi
+    TREE_CONFIDENCE_DECAY = 0.01         # Penurunan confidence setiap deteksi hilang
+    TREE_TIMEOUT = 30.0                 # detik
