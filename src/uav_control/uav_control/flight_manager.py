@@ -1,418 +1,153 @@
 #!/usr/bin/env python3
 
-from unittest import result
-
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
-from std_msgs.msg import Bool
-
-from mavros_msgs.srv import (
-    CommandBool,
-    SetMode,
-    CommandTOL
-)
-
-from rclpy.qos import QoSProfile
-from rclpy.qos import ReliabilityPolicy
-from rclpy.qos import HistoryPolicy
-from mavros_msgs.msg import State
-
+from std_msgs.msg import String, Bool, Float32
 from geometry_msgs.msg import PoseStamped
-sensor_qos = QoSProfile(
-    reliability=ReliabilityPolicy.BEST_EFFORT,
-    history=HistoryPolicy.KEEP_LAST,
-    depth=10
-)
+from mavros_msgs.msg import State
+from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 class FlightManager(Node):
-
-
     def __init__(self):
+        super().__init__("flight_manager")
+
+        self.current_state = State()
         self.current_alt = 0.0
-        self.takeoff_requested = False
-        self.arm_requested = False
-        super().__init__(
-            "flight_manager"
-        )
-
-        self.flight_state = "IDLE"
-        self.arm_request_pending = False
-        self.takeoff_altitude = 4.0
-
+        self.target_takeoff_alt = 0.0
         self.hover_tolerance = 0.2
 
-        self.request_land = False
-        self.current_state = None
-
-        self.current_alt = 0.0
-
-        #
-        # Subscriber
-        #
-
+        # ==========================================
+        # 1. MAVROS SUBSCRIBERS (Membaca dari Pixhawk)
+        # ==========================================
+        qos_sensor = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10
+        )
         self.state_sub = self.create_subscription(
-            State,
-            "/mavros/state",
-            self.state_callback,
-            10
+            State, "/mavros/state", self.state_callback, 10
         )
-
-
         self.pose_sub = self.create_subscription(
-            PoseStamped,
-            "/mavros/local_position/pose",
-            self.pose_callback,
-            sensor_qos
+            PoseStamped, "/mavros/local_position/pose", self.pose_callback, qos_sensor
         )
 
-
-        self.command_sub = self.create_subscription(
-            Bool,
-            "/mission/takeoff",
-            self.takeoff_callback,
-            10
+        # ==========================================
+        # 2. COMMAND SUBSCRIBERS (Menerima dari State Machine)
+        # ==========================================
+        self.cmd_mode_sub = self.create_subscription(
+            String, "/flight/cmd/set_mode", self.cmd_mode_cb, 10
         )
-        self.land_sub = self.create_subscription(
-            Bool,
-            "/mission/land",
-            self.land_callback,
-            10
+        self.cmd_arm_sub = self.create_subscription(
+            Bool, "/flight/cmd/set_arm", self.cmd_arm_cb, 10
         )
-        
-        
-        self.flight_status_pub = self.create_publisher(
-            String,
-            "/flight/status",
-            10
+        self.cmd_takeoff_sub = self.create_subscription(
+            Float32, "/flight/cmd/takeoff", self.cmd_takeoff_cb, 10
         )
-        #
-        # MAVROS service
-        #
-
-        self.arm_client = self.create_client(
-            CommandBool,
-            "/mavros/cmd/arming"
+        self.cmd_land_sub = self.create_subscription(
+            Bool, "/flight/cmd/land", self.cmd_land_cb, 10
         )
 
+        # ==========================================
+        # 3. TELEMETRY PUBLISHERS (Melapor ke State Machine)
+        # ==========================================
+        self.pub_armed = self.create_publisher(Bool, "/flight/telemetry/is_armed", 10)
+        self.pub_mode = self.create_publisher(String, "/flight/telemetry/current_mode", 10)
+        self.pub_alt = self.create_publisher(Float32, "/flight/telemetry/altitude", 10)
+        self.pub_hover = self.create_publisher(Bool, "/flight/telemetry/is_hovering", 10)
 
-        self.mode_client = self.create_client(
-            SetMode,
-            "/mavros/set_mode"
-        )
+        # ==========================================
+        # 4. MAVROS SERVICE CLIENTS
+        # ==========================================
+        self.mode_client = self.create_client(SetMode, "/mavros/set_mode")
+        self.arm_client = self.create_client(CommandBool, "/mavros/cmd/arming")
+        self.takeoff_client = self.create_client(CommandTOL, "/mavros/cmd/takeoff")
+        self.land_client = self.create_client(CommandTOL, "/mavros/cmd/land")
 
+        # Timer berjalan pada 10Hz (0.1s) murni untuk mempublikasikan status sensor
+        self.timer = self.create_timer(0.1, self.publish_telemetry)
 
-        self.takeoff_client = self.create_client(
-            CommandTOL,
-            "/mavros/cmd/takeoff"
-        )
+        self.get_logger().info("Flight Manager (HAL) Started - Menunggu Perintah Misi")
 
+    # --- Callbacks Pembacaan Sensor ---
+    def state_callback(self, msg):
+        self.current_state = msg
 
-        self.timer = self.create_timer(
-            1.0,
-            self.loop
-        )
-
-
-        self.flight_command = "NONE"
-
-
-        self.get_logger().info(
-            "Flight Manager Started"
-        )
-
-
-
-    def state_callback(self,msg):
-
-        self.current_state=msg
-
-
-
-    def pose_callback(self,msg):
-
+    def pose_callback(self, msg):
         self.current_alt = msg.pose.position.z
 
-    def land_callback(self, msg):
-
-        if msg.data:
-
-            self.flight_command = "LAND"
-
-    def publish_status(self,status):
-
-        msg = String()
-
-        msg.data = status
-
-        self.flight_status_pub.publish(msg)
-    def takeoff_callback(self,msg):
-
-        if msg.data:
-            self.flight_command = "TAKEOFF"
-
-            self.get_logger().info(
-                "Mission requested TAKEOFF"
-            )
-
-
-
-    def set_guided(self):
-
-        if not self.current_state:
+    # --- Callbacks Perintah FSM ---
+    def cmd_mode_cb(self, msg):
+        mode = msg.data
+        if self.current_state.mode == mode:
             return
-
-
-        if self.current_state.mode != "GUIDED":
-
-            req=SetMode.Request()
-
-            req.custom_mode="GUIDED"
-
-            if not self.mode_client.wait_for_service(timeout_sec=1.0):
-
-                return
-
+        
+        req = SetMode.Request()
+        req.custom_mode = mode
+        if self.mode_client.wait_for_service(timeout_sec=1.0):
             self.mode_client.call_async(req)
+            self.get_logger().info(f"Eksekusi Ganti Mode: {mode}")
 
-
-            self.get_logger().info(
-                "GUIDED mode requested"
-            )
-
-
-
-    def arm(self):
-
-        if self.current_state.armed:
+    def cmd_arm_cb(self, msg):
+        state = msg.data
+        if self.current_state.armed == state:
             return
-
-
-        req=CommandBool.Request()
-
-        req.value=True
-
-        self.get_logger().info("Calling ARM service")
-
-        if not self.arm_client.wait_for_service(timeout_sec=1.0):
-        
-            return
-
-        future=self.arm_client.call_async(req)
-
-
-        future.add_done_callback(
-            self.arm_callback
-        )
-
-    def arm_callback(self, future):
- 
-        self.arm_request_pending=False
-        try:
-
-            result = future.result()
-
-            if result.success:
-
-                self.get_logger().info(f"Arm response = {result.success}")
             
-            else:
+        req = CommandBool.Request()
+        req.value = state
+        if self.arm_client.wait_for_service(timeout_sec=1.0):
+            self.arm_client.call_async(req)
+            self.get_logger().info(f"Eksekusi Arming: {state}")
 
-                self.arm_requested = False
-
-        except Exception as e:
-
-            self.arm_requested = False
-            self.get_logger().error(str(e))
-
-    def reached_hover(self):
-
-        return (
-            abs(
-                self.current_alt -
-                self.takeoff_altitude
-            ) < self.hover_tolerance
-        )
-
-    def takeoff(self):
-
-        req=CommandTOL.Request()
-
-        req.altitude = self.takeoff_altitude
-
-        self.get_logger().info(
-                f"Calling TAKEOFF altitude={req.altitude}"
-            )
-
-
-        if not self.takeoff_client.wait_for_service(timeout_sec=1.0):
+    def cmd_takeoff_cb(self, msg):
+        self.target_takeoff_alt = msg.data
+        req = CommandTOL.Request()
+        req.altitude = self.target_takeoff_alt
         
-            return
-        future=self.takeoff_client.call_async(req)
+        if self.takeoff_client.wait_for_service(timeout_sec=1.0):
+            self.takeoff_client.call_async(req)
+            self.get_logger().info(f"Eksekusi Takeoff ke ketinggian {self.target_takeoff_alt}m")
 
+    def cmd_land_cb(self, msg):
+        if msg.data:
+            req = CommandTOL.Request()
+            if self.land_client.wait_for_service(timeout_sec=1.0):
+                self.land_client.call_async(req)
+                self.get_logger().info("Eksekusi Landing")
 
-        future.add_done_callback(
-            self.takeoff_callback_done
-        )
+    # --- Pengiriman Umpan Balik (Telemetry) ---
+    def publish_telemetry(self):
+        msg_arm = Bool()
+        msg_arm.data = self.current_state.armed
+        self.pub_armed.publish(msg_arm)
 
-    def takeoff_callback_done(self,future):
+        msg_mode = String()
+        msg_mode.data = self.current_state.mode
+        self.pub_mode.publish(msg_mode)
 
-        try:
-
-            result = future.result()
-
-            self.get_logger().info(
-                f"TAKEOFF response success={result.success} result={result.result}"
-            )
-            if result.success:
-
-                self.flight_state = "WAIT_CLIMB"
-
-                # self.get_logger().info("Takeoff accepted")
-
-            else:
-
-                self.takeoff_requested = False
-
-        except Exception as e:
-
-            self.takeoff_requested = False
-            self.get_logger().error(str(e))
-
-    def loop(self):
-
-
-        self.get_logger().info(
-
-            f"[FLIGHT] {self.flight_state}"
-
-        )
-
-        if self.flight_command == "NONE":
-            return
-
-
-        if not self.current_state:
-            return
-
-        if self.flight_state == "IDLE":
-
-            if self.flight_command == "TAKEOFF":
-
-                self.flight_state = "WAIT_GUIDED"
-
-                self.publish_status("IDLE -> GUIDED")
-
-                return
-            
-        elif self.flight_state == "WAIT_GUIDED":
-
-            if self.current_state.mode != "GUIDED":
-
-                self.set_guided()
-                return
-
-            else:
-
-                self.publish_status("GUIDED")
-
-                self.flight_state = "WAIT_ARM"
-
-
-        elif self.flight_state == "WAIT_ARM":
-
-            if self.current_state.armed:
-
-                self.publish_status("ARMED")
-
-                self.flight_state = "WAIT_TAKEOFF"
-
-                self.arm_requested = False
-                self.arm_request_pending = False
-
-
-            else:
-
-                if not self.arm_requested:
-
-                    self.get_logger().info("Sending ARM request")
-                    self.arm_request_pending = True
-
-                    self.arm()
-
-                    self.arm_requested = True
+        msg_alt = Float32()
+        msg_alt.data = float(self.current_alt)
+        self.pub_alt.publish(msg_alt)
         
-        elif self.flight_state == "WAIT_TAKEOFF":
-
-            if not self.takeoff_requested:
-
-                self.get_logger().info(
-                    f"Sending TAKEOFF request altitude={self.takeoff_altitude}"
-                )
-                self.takeoff()
-
-                self.takeoff_requested = True
-
-        elif self.flight_state == "WAIT_CLIMB":
-
-            self.get_logger().info(
-                f"Waiting climb altitude={self.current_alt:.2f}"
-            )
-
-            if self.current_alt > 0.3:
-
-                self.get_logger().info(
-                    "Drone has started climbing"
-                )
-
-                self.flight_state = "CLIMBING"
-
-        elif self.flight_state == "CLIMBING":
-
-            self.get_logger().info(
-
-                f"Altitude {self.current_alt:.2f}"
-
-            )
-
-            if self.reached_hover():
-
-                self.publish_status("HOVER")
-
-                self.get_logger().info(
-                    f"Reached hover altitude {self.current_alt:.2f}"
-                )
-
-        elif self.flight_state == "HOVER":
-            self.get_logger().info(
-                f"HOVER ALT={self.current_alt:.2f}"
-            )
-            pass
-
-
-
+        # Logika khusus untuk melaporkan status HOVER yang stabil
+        is_hovering = False
+        if self.current_state.armed and self.target_takeoff_alt > 0:
+            if abs(self.current_alt - self.target_takeoff_alt) < self.hover_tolerance:
+                is_hovering = True
+        
+        msg_hover = Bool()
+        msg_hover.data = is_hovering
+        self.pub_hover.publish(msg_hover)
 
 def main(args=None):
-
     rclpy.init(args=args)
-
-    node=FlightManager()
-
-
+    node = FlightManager()
     try:
-
         rclpy.spin(node)
-
     except KeyboardInterrupt:
         pass
-
-
     node.destroy_node()
-
     rclpy.shutdown()
 
-
-
-if __name__=="__main__":
-
+if __name__ == "__main__":
     main()
