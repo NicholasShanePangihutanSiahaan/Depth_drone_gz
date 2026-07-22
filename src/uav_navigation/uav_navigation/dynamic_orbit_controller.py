@@ -148,9 +148,12 @@ class DynamicOrbitController(Node):
             self.publish_status("IN_PROGRESS")
 
         # 4. Kalkulasi Setpoint Target Posisi (Translasi)
-        # Hitung seberapa jauh target berikutnya berdasarkan kecepatan dan radius
-        angular_step = (self.orbit_velocity / self.orbit_radius) * self.dt
-        target_angle = current_angle + angular_step # Bergerak berlawanan arah jarum jam (CCW)
+        # Gunakan konsep "Carrot on a Stick" (Umpan Jauh).
+        # Target harus dilempar cukup jauh ke depan agar tidak terkena auto-rem (threshold 0.5m) dari velocity_controller.
+        lookahead_distance = 1.5 # meter di depan lintasan
+        lookahead_angle = lookahead_distance / self.orbit_radius
+        
+        target_angle = current_angle + lookahead_angle # Bergerak CCW (Berlawanan arah jarum jam)
 
         # Koreksi Spiral: Jika drone terlempar menjauh, tarik kembali perlahan (P-Controller kecil)
         target_r = current_r + (self.orbit_radius - current_r) * 0.15
