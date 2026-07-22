@@ -11,7 +11,7 @@ from geometry_msgs.msg import Point
 
 from uav_interfaces.msg import Tree
 from uav_interfaces.msg import TreeArray
-
+from uav_control.mission_params import MissionConfig
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
@@ -37,23 +37,23 @@ class TreeMapper(Node):
 
 
         # maksimum jarak agar dianggap pohon yang sama
-        self.merge_distance = 1.5
+        self.merge_distance = MissionConfig.TREE_MERGE_DISTANCE
 
 
         # confidence model
 
-        self.max_confidence = 1.0
+        self.max_confidence = MissionConfig.TREE_MAX_CONFIDENCE
 
-        self.new_tree_confidence = 0.2
+        self.new_tree_confidence = MissionConfig.TREE_NEW_CONFIDENCE
 
-        self.confidence_increment = 0.15
+        self.confidence_increment = MissionConfig.TREE_CONFIDENCE_INCREMENT
 
-        self.confidence_decay = 0.01
+        self.confidence_decay = MissionConfig.TREE_CONFIDENCE_DECAY
 
 
         # waktu hilang sebelum confidence turun
 
-        self.timeout = 30.0
+        self.timeout = MissionConfig.TREE_TIMEOUT
 
 
 
