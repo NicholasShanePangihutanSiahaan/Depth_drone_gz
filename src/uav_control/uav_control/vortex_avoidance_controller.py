@@ -139,7 +139,7 @@ class VortexAvoidanceController(Node):
 
                 # B. Gaya Tangensial (Vortex Force) - Membanting kemudi menyamping
                 # Pusaran sudut: -90 derajat (Clockwise) agar mengalir di sekitar objek
-                vortex_angle = push_angle + (math.pi / 2.0)
+                vortex_angle = push_angle - (math.pi / 2.0)
                 v_force = penetration * self.vortex_gain
                 
                 vort_dx += math.cos(vortex_angle) * v_force
