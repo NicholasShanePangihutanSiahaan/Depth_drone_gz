@@ -35,9 +35,22 @@ class TreeDetector(Node):
 
         # ---------- ROS ----------
 
+        # Gazebo
+        # ------------------------------------
+
+        # self.sub = self.create_subscription(
+        #     Image,
+        #     "/zed2i/left/image_rect_color",
+        #     self.image_callback,
+        #     10
+        # )
+
+        # Real ZED2i
+        # ------------------------------------
+
         self.sub = self.create_subscription(
             Image,
-            "/zed2i/left/image_rect_color",
+            "/zed/zed_node/left/image_rect_color", 
             self.image_callback,
             10
         )
@@ -54,9 +67,22 @@ class TreeDetector(Node):
             10
         )
 
+        # Gazebo
+        # ------------------------------------
+
+        # self.depth_sub = self.create_subscription(
+            # Image,
+            # "/zed2i/depth/depth_registered",
+            # self.depth_callback,
+            # 10
+        # )
+
+        # Real ZED2i
+        # ------------------------------------
+        
         self.depth_sub = self.create_subscription(
             Image,
-            "/zed2i/depth/depth_registered",
+            "/zed/zed_node/depth/depth_registered",
             self.depth_callback,
             10
         )
