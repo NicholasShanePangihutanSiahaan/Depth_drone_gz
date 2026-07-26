@@ -2,72 +2,41 @@
 <sdf version="1.9">
   <model name="oil_palm_large">
     <static>true</static>
-    <link name="trunk">
-      <pose>0 0 3.20 0 0 0</pose>
-      <collision name="collision">
-        <geometry><cylinder><radius>0.26</radius><length>6.40</length></cylinder></geometry>
-      </collision>
-      <visual name="ribbed_trunk">
-        <geometry><cylinder><radius>0.26</radius><length>6.40</length></cylinder></geometry>
-        <material><ambient>0.28 0.16 0.08 1</ambient><diffuse>0.40 0.24 0.12 1</diffuse><specular>0.03 0.02 0.01 1</specular></material>
-      </visual>
-    </link>
-    <link name="crown">
+    <link name="base_link">
       <pose>0 0 0 0 0 0</pose>
-      <collision name="crown_collision">
-        <pose>0 0 6.85 0 0 0</pose>
-        <geometry><sphere><radius>1.55</radius></sphere></geometry>
+
+      <!-- Collision: Tetap pakai silinder sederhana agar komputasi physics Gazebo tidak berat saat UAV terbang di sekitarnya.
+           Ukuran mengikuti batang mesh: 0 .. 4.01 m -->
+      <collision name="collision">
+        <pose>0 0 2.01 0 0 0</pose>
+        <geometry>
+          <cylinder><radius>0.55</radius><length>4.01</length></cylinder>
+        </geometry>
       </collision>
-      <visual name="crown_core">
-        <pose>0 0 6.85 0 0 0</pose>
-        <geometry><sphere><radius>0.74</radius></sphere></geometry>
-        <material><ambient>0.04 0.22 0.07 1</ambient><diffuse>0.08 0.35 0.10 1</diffuse></material>
+
+      <!-- Visual: mesh realistis yang sama dengan oil_palm, hanya beda skala.
+           Mesh aslinya Y-up dan pusatnya jauh dari origin, jadi:
+             roll +90 deg  -> sumbu Y mesh jadi Z dunia (pohon berdiri tegak)
+             scale 2.2     -> tinggi total 3.466 * 2.2 = 7.62 m (sepadan model prosedural lama)
+             offset x/y/z  -> batang di origin, pangkal batang tepat di tanah (z = 0) -->
+      <visual name="visual_mesh">
+        <pose>0.013 -10.698 3.906 1.5707963268 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://oil_palm/Tropical_Oil_Palm_tree.obj</uri>
+            <scale>2.2 2.2 2.2</scale>
+          </mesh>
+        </geometry>
       </visual>
-      <visual name="frond_00">
-        <pose>0.45 0 6.85 0.22 0 0</pose>
-        <geometry><box><size>3.70 0.40 0.08</size></box></geometry>
-        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
-      </visual>
-      <visual name="frond_01">
-        <pose>0.45 0.45 6.85 0.22 0 0.78539816339</pose>
-        <geometry><box><size>3.70 0.40 0.08</size></box></geometry>
-        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
-      </visual>
-      <visual name="frond_02">
-        <pose>0 0.45 6.85 0.22 0 1.57079632679</pose>
-        <geometry><box><size>3.70 0.40 0.08</size></box></geometry>
-        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
-      </visual>
-      <visual name="frond_03">
-        <pose>-0.45 0.45 6.85 0.22 0 2.35619449019</pose>
-        <geometry><box><size>3.70 0.40 0.08</size></box></geometry>
-        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
-      </visual>
-      <visual name="frond_04">
-        <pose>-0.45 0 6.85 0.22 0 3.14159265359</pose>
-        <geometry><box><size>3.70 0.40 0.08</size></box></geometry>
-        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
-      </visual>
-      <visual name="frond_05">
-        <pose>-0.45 -0.45 6.85 0.22 0 -2.35619449019</pose>
-        <geometry><box><size>3.70 0.40 0.08</size></box></geometry>
-        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
-      </visual>
-      <visual name="frond_06">
-        <pose>0 -0.45 6.85 0.22 0 -1.57079632679</pose>
-        <geometry><box><size>3.70 0.40 0.08</size></box></geometry>
-        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
-      </visual>
-      <visual name="frond_07">
-        <pose>0.45 -0.45 6.85 0.22 0 -0.78539816339</pose>
-        <geometry><box><size>3.70 0.40 0.08</size></box></geometry>
-        <material><ambient>0.04 0.23 0.08 1</ambient><diffuse>0.07 0.37 0.11 1</diffuse><specular>0.02 0.05 0.02 1</specular></material>
-      </visual>
+
+      <!-- Target Inflorescence: marker koordinat referensi, diletakkan pada posisi tandan buah asli
+           di mesh (material xx-001nklb / palm695x300.jpg) yang berada di z = 3.41 .. 4.54 m -->
       <visual name="inflorescence_target">
-        <pose>0.35 0 6.35 0 0 0</pose>
+        <pose>0.55 0 3.97 0 0 0</pose>
         <geometry><sphere><radius>0.22</radius></sphere></geometry>
         <material><ambient>0.65 0.45 0.08 1</ambient><diffuse>0.95 0.67 0.16 1</diffuse><specular>0.08 0.05 0.02 1</specular></material>
       </visual>
+
     </link>
   </model>
 </sdf>

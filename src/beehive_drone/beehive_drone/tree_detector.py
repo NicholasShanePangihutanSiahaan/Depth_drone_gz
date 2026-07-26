@@ -11,7 +11,8 @@ from cv_bridge import CvBridge
 
 import cv2
 import numpy as np
-
+import message_filters
+from sensor_msgs.msg import Image
 
 class TreeDetector(Node):
 
@@ -35,12 +36,8 @@ class TreeDetector(Node):
 
         # ---------- ROS ----------
 
-        self.sub = self.create_subscription(
-            Image,
-            "/zed2i/left/image_rect_color",
-            self.image_callback,
-            10
-        )
+        self.rgb_sub = message_filters.Subscriber(
+            self, Image, "/zed/zed_node/rgb/image_rect_color")
 
         self.pixel_pub = self.create_publisher(
             Point,
@@ -54,12 +51,13 @@ class TreeDetector(Node):
             10
         )
 
-        self.depth_sub = self.create_subscription(
-            Image,
-            "/zed2i/depth/depth_registered",
-            self.depth_callback,
-            10
-        )
+        self.depth_sub = message_filters.Subscriber(
+            self, Image, "/zed/zed_node/depth/depth_registered")
+
+        self.ts = message_filters.ApproximateTimeSynchronizer(
+            [self.rgb_sub, self.depth_sub], 10, 0.05)
+
+        self.ts.registerCallback(self.sync_callback)
 
         self.get_logger().info("Tree Detector Started")
 
