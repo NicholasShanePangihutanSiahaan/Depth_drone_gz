@@ -165,7 +165,6 @@
     <include><name>tree_05_04</name><uri>model://oil_palm_small</uri><pose>-21.0 0.0 0 0 0 0.26</pose></include>
     <include><name>tree_05_05</name><uri>model://oil_palm</uri><pose>-14.0 0.0 0 0 0 0.0</pose></include>
     <include><name>tree_05_06</name><uri>model://oil_palm_tag0</uri><pose>-7.0 0.0 0 0 0 0.0</pose></include>
-    <include><name>tree_05_07</name><uri>model://oil_palm</uri><pose>0.0 0.0 0 0 0 0.23</pose></include>
     <include><name>tree_05_08</name><uri>model://oil_palm_tag1</uri><pose>7.0 0.0 0 0 0 0.0</pose></include>
     <include><name>tree_05_09</name><uri>model://oil_palm_tag2</uri><pose>14.0 0.0 0 0 0 0.0</pose></include>
     <include><name>tree_05_10</name><uri>model://oil_palm_tag3</uri><pose>21.0 0.0 0 0 0 0.0</pose></include>
