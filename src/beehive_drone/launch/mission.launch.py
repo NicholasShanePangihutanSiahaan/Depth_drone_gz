@@ -5,10 +5,10 @@ def generate_launch_description():
     pkg_name = 'beehive_drone'
 
     # 1. Perception & Mapping Nodes
-    detector_node = Node(
+    yolo_gazebo_detector_node = Node(
         package=pkg_name,
-        executable='tree_detector',
-        name='tree_detector',
+        executable='yolo_gazebo_detector',
+        name='yolo_gazebo_detector',
         output='screen'
     )
     
@@ -73,7 +73,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        detector_node,
+        yolo_gazebo_detector_node,
         localizer_node,
         mapper_node,
         velocity_node,

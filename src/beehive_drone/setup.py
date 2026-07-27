@@ -28,7 +28,7 @@ setup(
             'dynamic_orbit_controller = beehive_drone.dynamic_orbit_controller:main',
             'velocity_controller = beehive_drone.velocity_controller:main',
             'vortex_avoidance_controller = beehive_drone.vortex_avoidance_controller:main',
-            'tree_detector = beehive_drone.tree_detector:main',
+            'yolo_gazebo_detector = beehive_drone.yolo_gazebo_detector:main',
             'tree_mapper = beehive_drone.tree_mapper:main',
             'tree_localizer = beehive_drone.tree_localizer:main',
             'flight_manager = beehive_drone.flight_manager:main',
