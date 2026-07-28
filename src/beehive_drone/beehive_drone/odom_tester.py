@@ -6,8 +6,7 @@ import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import PoseStamped
-from mavros_msgs.msg import State
-from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
+from std_msgs.msg import String, Bool, Float32
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 def euler_to_quaternion(roll, pitch, yaw):
@@ -25,51 +24,60 @@ class OdomTester(Node):
         # Konfigurasi Misi Uji
         # ==========================================
         self.alt_target = 3.0
-        self.hover_duration = 4.0 # Waktu tunggu setiap titik (detik)
-        self.dist_tolerance = 0.3 # Toleransi jarak sampai ke waypoint (meter)
+        self.hover_duration = 4.0 
+        self.dist_tolerance = 0.3 
         
-        # Variabel Odometri
-        self.current_state = State()
         self.current_pose = None
         self.start_x = 0.0
         self.start_y = 0.0
         
-        # FSM Internal Tester
-        self.step = "WAIT_CONN"
+        self.step = "INIT"
         self.target_pose = PoseStamped()
         self.target_pose.header.frame_id = "odom"
         
         self.hover_start_time = 0.0
         self.orbit_start_time = 0.0
+        self.retry_counter = 0
+
+        # Variabel Telemetri dari Flight Manager
+        self.is_armed = False
+        self.current_mode = ""
+        self.is_hovering = False
 
         # ==========================================
-        # ROS 2 Interfaces
+        # ROS 2 Interfaces (Menggunakan Flight Manager)
         # ==========================================
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
             depth=10
         )
-        self.state_sub = self.create_subscription(State, "/mavros/state", self.state_cb, 10)
+
+        # MAVROS Pose (Hanya untuk baca koordinat aktual & kirim Setpoint navigasi)
         self.pose_sub = self.create_subscription(PoseStamped, "/mavros/local_position/pose", self.pose_cb, qos_sensor)
         self.setpoint_pub = self.create_publisher(PoseStamped, "/mavros/setpoint_position/local", 10)
-        
 
-        self.mode_client = self.create_client(SetMode, "/mavros/set_mode")
-        self.arm_client = self.create_client(CommandBool, "/mavros/cmd/arming")
-        self.takeoff_client = self.create_client(CommandTOL, "/mavros/cmd/takeoff")
-        self.land_client = self.create_client(CommandTOL, "/mavros/cmd/land")
+        # TELEMETRI SUBSCRIBER (Dari Flight Manager)
+        self.telemetry_arm_sub = self.create_subscription(Bool, "/flight/telemetry/is_armed", self.arm_cb, 10)
+        self.telemetry_mode_sub = self.create_subscription(String, "/flight/telemetry/current_mode", self.mode_cb, 10)
+        self.telemetry_hover_sub = self.create_subscription(Bool, "/flight/telemetry/is_hovering", self.hover_cb, 10)
+
+        # COMMAND PUBLISHER (Ke Flight Manager)
+        self.cmd_mode_pub = self.create_publisher(String, "/flight/cmd/set_mode", 10)
+        self.cmd_arm_pub = self.create_publisher(Bool, "/flight/cmd/set_arm", 10)
+        self.cmd_takeoff_pub = self.create_publisher(Float32, "/flight/cmd/takeoff", 10)
+        self.cmd_land_pub = self.create_publisher(Bool, "/flight/cmd/land", 10)
 
         # Loop Kontrol Utama (20 Hz)
         self.timer = self.create_timer(0.05, self.control_loop)
         
-        self.get_logger().info("Odom Tester Aktif. Menunggu koneksi FCU...")
+        self.get_logger().info("Odom Tester (via Flight Manager) Aktif.")
 
-    def state_cb(self, msg):
-        self.current_state = msg
-
-    def pose_cb(self, msg):
-        self.current_pose = msg
+    # --- Callbacks ---
+    def pose_cb(self, msg): self.current_pose = msg
+    def arm_cb(self, msg): self.is_armed = msg.data
+    def mode_cb(self, msg): self.current_mode = msg.data
+    def hover_cb(self, msg): self.is_hovering = msg.data
 
     def distance_to_target(self):
         if not self.current_pose: return float('inf')
@@ -79,7 +87,6 @@ class OdomTester(Node):
         return math.sqrt(dx*dx + dy*dy + dz*dz)
 
     def set_target(self, x, y, z, yaw=0.0):
-        self.target_pose.header.stamp = self.get_clock().now().to_msg()
         self.target_pose.pose.position.x = float(x)
         self.target_pose.pose.position.y = float(y)
         self.target_pose.pose.position.z = float(z)
@@ -91,7 +98,7 @@ class OdomTester(Node):
         self.target_pose.pose.orientation.w = qw
 
     def trigger_hover(self, next_step_name):
-        self.get_logger().info(f"Target tercapai. Hovering {self.hover_duration} detik...")
+        self.get_logger().info(f"Titik tercapai. Hovering {self.hover_duration} detik...")
         self.hover_start_time = time.time()
         self.next_step_after_hover = next_step_name
         self.step = "HOVERING"
@@ -100,47 +107,57 @@ class OdomTester(Node):
         if self.current_pose is None:
             return
 
-        # 1. Publikasikan setpoint terus-menerus (Syarat wajib ArduPilot GUIDED/OFFBOARD)
-        if self.step not in ["WAIT_CONN", "ARMING", "TAKEOFF", "LAND", "DONE"]:
+        # WAJIB: Selalu publikasikan setpoint MAVROS 20Hz agar mode GUIDED tidak terputus.
+        if self.step not in ["INIT", "ARMING", "TAKEOFF", "WAIT_TAKEOFF"]:
             self.target_pose.header.stamp = self.get_clock().now().to_msg()
             self.setpoint_pub.publish(self.target_pose)
 
-        # 2. Logic Berdasarkan Sekuens
-        if self.step == "WAIT_CONN":
-            if self.current_state.connected:
-                self.get_logger().info("FCU Terkoneksi. Memulai Setup Mode & Arming...")
+        # Logic Berdasarkan Sekuens FSM
+        if self.step == "INIT":
+            if self.retry_counter % 20 == 0:
+                mode_msg = String(); mode_msg.data = "GUIDED"
+                self.cmd_mode_pub.publish(mode_msg)
+                self.get_logger().info("Meminta mode GUIDED via Flight Manager...")
+                
+            if self.current_mode == "GUIDED":
                 self.step = "ARMING"
+                self.retry_counter = 0
+            self.retry_counter += 1
 
         elif self.step == "ARMING":
-            if self.current_state.mode != "GUIDED":
-                req = SetMode.Request(custom_mode="GUIDED")
-                self.mode_client.call_async(req)
-            elif not self.current_state.armed:
-                req = CommandBool.Request(value=True)
-                self.arm_client.call_async(req)
-            else:
-                self.get_logger().info("Armed dan GUIDED. Bersiap Takeoff...")
+            if self.retry_counter % 20 == 0:
+                arm_msg = Bool(); arm_msg.data = True
+                self.cmd_arm_pub.publish(arm_msg)
+                self.get_logger().info("Meminta Arming via Flight Manager...")
+                
+            if self.is_armed:
+                self.get_logger().info("Armed! Bersiap Takeoff...")
                 self.start_x = self.current_pose.pose.position.x
                 self.start_y = self.current_pose.pose.position.y
+                
+                # Kunci setpoint ke Z=3.0m agar takeoff tidak dilawan oleh perintah Z=0
+                self.set_target(self.start_x, self.start_y, self.alt_target)
                 self.step = "TAKEOFF"
+                self.retry_counter = 0
+            self.retry_counter += 1
 
         elif self.step == "TAKEOFF":
-            self.set_target(self.start_x, self.start_y, self.alt_target)
-            req = CommandTOL.Request(altitude=self.alt_target)
-            self.takeoff_client.call_async(req)
-            self.get_logger().info(f"Takeoff ke {self.alt_target}m...")
+            takeoff_msg = Float32(); takeoff_msg.data = self.alt_target
+            self.cmd_takeoff_pub.publish(takeoff_msg)
+            self.get_logger().info(f"Eksekusi Takeoff ke {self.alt_target}m...")
             self.step = "WAIT_TAKEOFF"
 
         elif self.step == "WAIT_TAKEOFF":
-            if abs(self.current_pose.pose.position.z - self.alt_target) < 0.5:
-                # Kunci target pose ke titik saat ini setelah takeoff
+            # Memanfaatkan logika Hover cerdas milik Flight Manager
+            if self.is_hovering:
+                self.get_logger().info("Hovering stabil pasca-takeoff tercapai.")
                 self.set_target(self.start_x, self.start_y, self.alt_target)
                 self.trigger_hover("MAJU_3M")
 
         elif self.step == "HOVERING":
             if time.time() - self.hover_start_time > self.hover_duration:
                 self.step = self.next_step_after_hover
-                self.get_logger().info(f"Eksekusi manuver: {self.step}")
+                self.get_logger().info(f"Mulai manuver: {self.step}")
 
         elif self.step == "MAJU_3M":
             self.set_target(self.start_x + 3.0, self.start_y, self.alt_target)
@@ -153,8 +170,7 @@ class OdomTester(Node):
                 self.trigger_hover("KANAN_3M")
 
         elif self.step == "KANAN_3M":
-            # Kembali ke tengah (y = start_y)
-            self.set_target(self.start_x + 3.0, self.start_y, self.alt_target)
+            self.set_target(self.start_x + 3.0, self.start_y - 3.0, self.alt_target)
             if self.distance_to_target() < self.dist_tolerance:
                 self.trigger_hover("MUNDUR_3M")
 
@@ -166,41 +182,34 @@ class OdomTester(Node):
         elif self.step == "MAJU_LAGI_3M":
             self.set_target(self.start_x + 3.0, self.start_y, self.alt_target)
             if self.distance_to_target() < self.dist_tolerance:
-                self.get_logger().info("Target tercapai. Bersiap simulasi Orbit Odom...")
+                self.get_logger().info("Titik tengah tercapai. Memulai manuver Orbit...")
                 self.orbit_start_time = time.time()
                 self.step = "ORBIT_TEST"
 
         elif self.step == "ORBIT_TEST":
-            # Orbit buatan murni secara geometris
-            # Pusat Lingkaran (Center) berada 2m di kiri titik saat ini agar transisinya mulus
             radius = 2.0
             cx = self.start_x + 3.0
             cy = self.start_y + radius 
             
-            # Waktu berjalan menentukan sudut orbit (Kecepatan 0.5 rad/s)
             elapsed = time.time() - self.orbit_start_time
             angular_speed = 0.5 
-            theta = -math.pi/2 + (elapsed * angular_speed) # Mulai dari dasar lingkaran
+            theta = -math.pi/2 + (elapsed * angular_speed)
             
-            # Kalkulasi posisi di lintasan lingkaran
             orbit_x = cx + radius * math.cos(theta)
             orbit_y = cy + radius * math.sin(theta)
-            
-            # Arahkan (Yaw) kamera selalu ke pusat lingkaran
             orbit_yaw = math.atan2(cy - orbit_y, cx - orbit_x)
             
             self.set_target(orbit_x, orbit_y, self.alt_target, yaw=orbit_yaw)
             
-            # Selesai jika sudah berputar 360 derajat (2 * PI)
             if elapsed * angular_speed >= 2 * math.pi:
                 self.get_logger().info("Orbit 360 derajat selesai. Meminta Pendaratan...")
                 self.step = "LAND"
 
         elif self.step == "LAND":
-            req = CommandTOL.Request()
-            self.land_client.call_async(req)
+            land_msg = Bool(); land_msg.data = True
+            self.cmd_land_pub.publish(land_msg)
             self.step = "DONE"
-            self.get_logger().info("Mode pendaratan dieksekusi. Uji coba odometri SELESAI.")
+            self.get_logger().info("Mode pendaratan dikirim via Flight Manager. Uji coba SELESAI.")
 
 def main(args=None):
     rclpy.init(args=args)
