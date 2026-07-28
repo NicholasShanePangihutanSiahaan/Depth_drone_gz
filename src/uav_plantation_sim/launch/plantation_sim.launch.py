@@ -109,7 +109,7 @@ def generate_launch_description():
                 "-file", model_file,
                 "-x", "0.0",
                 "-y", "0.0",
-                "-z", "1.0",
+                "-z", "0.1",
                 "-Y", "0.0",
             ],
         ),

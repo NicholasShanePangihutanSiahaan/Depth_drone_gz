@@ -91,7 +91,7 @@ class YoloGazeboDetector(Node):
         results = self.model.predict(
                     source=cv_image,
                     device="cpu",
-                    conf=0.05,  # <-- Turunkan batas ke 5% untuk memaksa deteksi
+                    conf=0.10,  # <-- Turunkan batas ke 5% untuk memaksa deteksi
                     verbose=False
                 )
 
