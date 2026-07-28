@@ -8,3 +8,5 @@ __pycache__/
 .idea/
 .agents/
 .codex/
+mission_map_*
+mission_result_*
