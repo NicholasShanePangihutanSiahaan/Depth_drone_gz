@@ -8,5 +8,5 @@ __pycache__/
 .idea/
 .agents/
 .codex/
-mission_map_*
-mission_result_*
+mission_map_*.png
+mission_result_*.csv
