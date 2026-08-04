@@ -119,6 +119,7 @@ class MissionStateMachine(Node):
         self.takeoff_start_time: Optional[float] = None
         self.takeoff_command_sent = False
         self.unexpected_disarm_since = None
+        self.last_link_warning_time = -1e9
         self.last_land_command_time = -1e9
         self.home_captured = False
         self.explore_dir_x = 1.0
@@ -378,7 +379,7 @@ class MissionStateMachine(Node):
         elif self.state == "ARM":
             # Jangan kirim target posisi/kecepatan ketika menunggu arming.
             if self.armed:
-                self.transition("TAKEOFF", "Motor armed; mulai climb dengan velocity setpoint")
+                self.transition("TAKEOFF", "Motor armed; menjalankan NAV_TAKEOFF one-shot")
             elif self.command_due():
                 self.send_bool(self.arm_pub, True)
 
@@ -403,20 +404,41 @@ class MissionStateMachine(Node):
 
             # Jangan membatalkan misi karena satu sampel telemetry
             # armed=False. Tunggu sampai kondisi disarm berlangsung terus.
+            # Heartbeat MAVLink yang hilang dapat membuat MAVROS
+            # sementara melaporkan connected=False dan armed=False.
+            # Kondisi itu bukan bukti bahwa motor benar-benar disarm.
+            if not self.connected or not self.pose_fresh():
+                self.unexpected_disarm_since = None
+
+                if now - self.last_link_warning_time >= 2.0:
+                    self.last_link_warning_time = now
+                    self.get_logger().warning(
+                        "Telemetry MAVROS terputus/stale saat TAKEOFF; "
+                        "menunggu koneksi pulih tanpa membatalkan misi."
+                    )
+
+                # Pause timer takeoff selama telemetry tidak tersedia.
+                self.state_enter_time = now
+                self.takeoff_start_time = now
+                self.takeoff_start_z = self.altitude
+                return
+
+            # armed=False baru dianggap nyata jika MAVROS masih connected,
+            # pose masih fresh, dan kondisi berlangsung terus selama 5 detik.
             if not self.armed:
                 if self.unexpected_disarm_since is None:
                     self.unexpected_disarm_since = now
                     self.get_logger().warning(
-                        "Telemetry armed=False saat TAKEOFF; "
+                        "Autopilot melaporkan disarm saat MAVROS connected; "
                         "menunggu konfirmasi 5 detik."
                     )
                 elif now - self.unexpected_disarm_since >= 5.0:
                     self.get_logger().error(
-                        "Autopilot benar-benar disarm selama TAKEOFF."
+                        "Disarm terkonfirmasi selama TAKEOFF."
                     )
                     self.transition(
                         "ABORTED",
-                        "Disarm terkonfirmasi selama 5 detik",
+                        "Disarm valid selama 5 detik",
                     )
                     return
             else:

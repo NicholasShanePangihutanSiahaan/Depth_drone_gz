@@ -105,7 +105,7 @@ class FlightManager(Node):
 
         self.create_timer(0.1, self.publish_telemetry)
         self.get_logger().info(
-            "Flight Manager aktif. Takeoff service one-shot + continuous setpoint."
+            "Flight Manager aktif. MAVROS service manager + takeoff one-shot."
         )
 
     def now_sec(self) -> float:
@@ -114,7 +114,10 @@ class FlightManager(Node):
     def state_callback(self, msg: State) -> None:
         was_armed = bool(self.current_state.armed)
         self.current_state = msg
-        if was_armed and not msg.armed:
+        # Jangan mereset latch hanya karena MAVROS kehilangan heartbeat.
+        # Reset hanya ketika FCU masih connected dan disarm benar-benar
+        # dilaporkan oleh autopilot.
+        if was_armed and not msg.armed and msg.connected:
             self.takeoff_latched = False
 
     def pose_callback(self, msg: PoseStamped) -> None:
