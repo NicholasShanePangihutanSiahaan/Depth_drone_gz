@@ -7,19 +7,20 @@ import rclpy
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 
 from beehive_drone.math_utils import clamp, wrap_pi, yaw_from_quaternion
 from beehive_drone.mission_params import MissionConfig
 
 
 class VelocityController(Node):
-    """Global ENU position-to-velocity controller with stale-command failsafe."""
+    """Global ENU position-to-velocity controller with map and stale-data gates."""
 
     def __init__(self) -> None:
         super().__init__("velocity_controller")
 
         defaults = {
+            "world_frame": MissionConfig.WORLD_FRAME,
             "kp_xy": MissionConfig.KP_XY,
             "kp_z": MissionConfig.KP_Z,
             "kp_yaw": MissionConfig.KP_YAW,
@@ -32,10 +33,12 @@ class VelocityController(Node):
             "goal_threshold_z": MissionConfig.GOAL_THRESHOLD_Z,
             "target_timeout_sec": MissionConfig.TARGET_TIMEOUT_SEC,
             "pose_timeout_sec": MissionConfig.POSE_TIMEOUT_SEC,
+            "require_map_ready": MissionConfig.REQUIRE_TREE_MAP,
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
 
+        self.world_frame = str(self.get_parameter("world_frame").value)
         self.kp_xy = float(self.get_parameter("kp_xy").value)
         self.kp_z = float(self.get_parameter("kp_z").value)
         self.kp_yaw = float(self.get_parameter("kp_yaw").value)
@@ -50,22 +53,27 @@ class VelocityController(Node):
         self.goal_threshold_z = float(self.get_parameter("goal_threshold_z").value)
         self.target_timeout_sec = float(self.get_parameter("target_timeout_sec").value)
         self.pose_timeout_sec = float(self.get_parameter("pose_timeout_sec").value)
+        self.require_map_ready = bool(self.get_parameter("require_map_ready").value)
 
         self.current_pose: Optional[PoseStamped] = None
         self.target_pose: Optional[PoseStamped] = None
         self.last_pose_time: Optional[float] = None
         self.last_target_time: Optional[float] = None
         self.last_loop_time = self.now_sec()
-        self.last_vx = 0.0
-        self.last_vy = 0.0
-        self.last_vz = 0.0
+        self.last_vx = self.last_vy = self.last_vz = 0.0
         self.fsm_state = "INIT"
-        self.last_debug_time = -1e9
+        self.map_ready = False
+        self.last_warning_time = -1e9
 
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
+        )
+        qos_map = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
         )
         self.create_subscription(
             PoseStamped, "/mavros/local_position/pose", self.pose_callback, qos_sensor
@@ -73,14 +81,15 @@ class VelocityController(Node):
         self.create_subscription(
             PoseStamped, "/control/safe_target_pose", self.target_callback, 10
         )
-        self.create_subscription(
-            String, "/mission/fsm_state", self.state_callback, 10
-        )
+        self.create_subscription(String, "/mission/fsm_state", self.state_callback, 10)
+        self.create_subscription(Bool, "/map/trees_ready", self.map_ready_callback, qos_map)
         self.velocity_pub = self.create_publisher(
             TwistStamped, "/mavros/setpoint_velocity/cmd_vel", 10
         )
         self.create_timer(0.05, self.control_loop)
-        self.get_logger().info("Velocity Controller revisi aktif.")
+        self.get_logger().info(
+            f"Velocity Controller safety revision aktif; frame={self.world_frame}."
+        )
 
     def now_sec(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
@@ -96,6 +105,9 @@ class VelocityController(Node):
     def state_callback(self, msg: String) -> None:
         self.fsm_state = msg.data
 
+    def map_ready_callback(self, msg: Bool) -> None:
+        self.map_ready = bool(msg.data)
+
     @staticmethod
     def rate_limit(target: float, previous: float, max_delta: float) -> float:
         return previous + clamp(target - previous, -max_delta, max_delta)
@@ -103,7 +115,7 @@ class VelocityController(Node):
     def publish_zero(self) -> None:
         cmd = TwistStamped()
         cmd.header.stamp = self.get_clock().now().to_msg()
-        cmd.header.frame_id = MissionConfig.WORLD_FRAME
+        cmd.header.frame_id = self.world_frame
         self.velocity_pub.publish(cmd)
         self.last_vx = self.last_vy = self.last_vz = 0.0
 
@@ -112,20 +124,19 @@ class VelocityController(Node):
         dt = max(0.01, min(0.2, now - self.last_loop_time))
         self.last_loop_time = now
 
-        # Sangat penting:
-        # Jangan publikasikan /mavros/setpoint_velocity/cmd_vel selama
-        # persiapan dan proses takeoff. NAV_TAKEOFF ArduPilot harus menjadi
-        # satu-satunya pengendali sampai hover tercapai.
-        blocked_states = {
+        no_velocity_states = {
             "INIT",
             "WAIT_CONNECTION",
             "PRESTREAM",
             "SET_MODE",
             "ARM",
             "TAKEOFF",
+            "LAND",
+            "WAIT_LANDED",
+            "ABORTED",
+            "DONE",
         }
-
-        if self.fsm_state in blocked_states:
+        if self.fsm_state in no_velocity_states:
             return
 
         if (
@@ -139,6 +150,41 @@ class VelocityController(Node):
             self.publish_zero()
             return
 
+        map_required_states = {
+            "EXPLORE_ROW",
+            "CRAB_SCAN",
+            "APPROACH_TREE",
+            "VERIFY_TREE",
+            "PREPARE_ORBIT",
+            "WAIT_ORBIT",
+            "FINAL_SCAN",
+        }
+        if (
+            self.require_map_ready
+            and self.fsm_state in map_required_states
+            and not self.map_ready
+        ):
+            self.publish_zero()
+            return
+
+        pose_frame = self.current_pose.header.frame_id.strip()
+        target_frame = self.target_pose.header.frame_id.strip()
+        if target_frame and target_frame != self.world_frame:
+            if now - self.last_warning_time > 2.0:
+                self.last_warning_time = now
+                self.get_logger().error(
+                    f"Target frame={target_frame}, expected={self.world_frame}; velocity=0."
+                )
+            self.publish_zero()
+            return
+        if pose_frame and pose_frame != self.world_frame:
+            if now - self.last_warning_time > 5.0:
+                self.last_warning_time = now
+                self.get_logger().warning(
+                    f"Pose frame={pose_frame}, configured world={self.world_frame}. "
+                    "Pastikan keduanya numerik dan TF-nya konsisten."
+                )
+
         current = self.current_pose.pose
         target = self.target_pose.pose
         ex = float(target.position.x - current.position.x)
@@ -147,8 +193,7 @@ class VelocityController(Node):
         distance_xy = math.hypot(ex, ey)
 
         if distance_xy <= self.goal_threshold_xy:
-            vx = 0.0
-            vy = 0.0
+            vx = vy = 0.0
         else:
             vx = self.kp_xy * ex
             vy = self.kp_xy * ey
@@ -181,20 +226,12 @@ class VelocityController(Node):
 
         cmd = TwistStamped()
         cmd.header.stamp = self.get_clock().now().to_msg()
-        cmd.header.frame_id = MissionConfig.WORLD_FRAME
+        cmd.header.frame_id = self.world_frame
         cmd.twist.linear.x = float(vx)
         cmd.twist.linear.y = float(vy)
         cmd.twist.linear.z = float(vz)
         cmd.twist.angular.z = float(yaw_rate)
         self.velocity_pub.publish(cmd)
-
-        if self.fsm_state in {"PRESTREAM", "SET_MODE", "ARM", "TAKEOFF"}:
-            if now - self.last_debug_time >= 1.0:
-                self.last_debug_time = now
-                self.get_logger().info(
-                    f"state={self.fsm_state} cmd_vel ENU: "
-                    f"vx={vx:.2f}, vy={vy:.2f}, vz={vz:.2f}, ez={ez:.2f}"
-                )
 
         self.last_vx = vx
         self.last_vy = vy

@@ -1,28 +1,33 @@
 /**:
   ros__parameters:
-    world_frame: odom
+    world_frame: map
 
 flight_manager:
   ros__parameters:
     hover_alt_tolerance: 0.25
     hover_speed_tolerance: 0.20
     hover_stable_sec: 1.5
-    pose_timeout_sec: 1.0
+    pose_timeout_sec: 1.5
 
 mission_state_machine:
   ros__parameters:
     flight_mode: GUIDED
     flight_altitude: 3.0
-    prestream_sec: 20.0
     command_retry_sec: 2.5
     land_retry_sec: 5.0
     takeoff_timeout_sec: 45.0
     takeoff_progress_check_sec: 20.0
     min_takeoff_progress: 0.20
     hold_after_takeoff: false
+    disconnect_grace_sec: 8.0
 
-    explore_step: 2.0
-    crab_step: 1.5
+    require_tree_map: true
+    map_timeout_sec: 6.0
+    map_startup_timeout_sec: 35.0
+    map_loss_grace_sec: 3.0
+
+    explore_step: 1.0
+    crab_step: 1.0
     end_of_row_dist: 10.0
     end_of_farm_dist: 20.0
     tree_search_radius: 18.0
@@ -31,42 +36,55 @@ mission_state_machine:
 
 pcl_tree_mapper:
   ros__parameters:
+    pcl_source_frame: plantation
     pcl_topic: /perception/pcl/tracked_cylinders
     min_seen_count: 2
-    max_missed_count: 8
+    max_missed_count: 20
     min_confidence: 0.25
     min_radius: 0.08
     max_radius: 1.20
     min_height: 0.8
     max_height: 20.0
+    tree_stale_sec: 60.0
+    pcl_stream_timeout_sec: 6.0
+    min_ready_trees: 1
     enable_fallback_points: false
+    allow_identity_frame_relabel: true
 
 dynamic_orbit_controller:
   ros__parameters:
     orbit_radius: 3.0
     orbit_altitude: 3.0
-    orbit_velocity: 0.8
+    orbit_velocity: 0.55
     orbit_direction: 1.0
+    lookahead_distance: 0.8
     yaw_offset: 0.0
 
 vortex_avoidance_controller:
   ros__parameters:
-    influence_radius: 3.0
-    hard_radius: 1.2
-    repulsive_gain: 1.1
-    vortex_gain: 0.55
+    influence_radius: 4.5
+    hard_radius: 2.0
+    active_tree_keepout_radius: 2.3
+    emergency_stop_radius: 1.25
+    repulsive_gain: 2.2
+    vortex_gain: 1.1
+    attraction_gain: 0.8
+    max_target_shift: 1.2
+    goal_timeout_sec: 1.0
+    require_map_ready: true
 
 velocity_controller:
   ros__parameters:
-    kp_xy: 0.65
+    kp_xy: 0.55
     kp_z: 0.80
     kp_yaw: 1.0
-    max_velocity_xy: 1.0
-    max_velocity_z: 0.80
-    max_velocity_yaw: 0.55
-    max_acceleration_xy: 0.8
-    max_acceleration_z: 0.8
+    max_velocity_xy: 0.45
+    max_velocity_z: 0.60
+    max_velocity_yaw: 0.45
+    max_acceleration_xy: 0.35
+    max_acceleration_z: 0.50
     goal_threshold_xy: 0.20
     goal_threshold_z: 0.10
-    target_timeout_sec: 0.75
-    pose_timeout_sec: 1.0
+    target_timeout_sec: 1.0
+    pose_timeout_sec: 1.5
+    require_map_ready: true

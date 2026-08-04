@@ -44,6 +44,10 @@ class MissionStateMachine(Node):
             "command_retry_sec": MissionConfig.COMMAND_RETRY_SEC,
             "pose_timeout_sec": MissionConfig.POSE_TIMEOUT_SEC,
             "map_timeout_sec": MissionConfig.MAP_TIMEOUT_SEC,
+            "require_tree_map": MissionConfig.REQUIRE_TREE_MAP,
+            "map_startup_timeout_sec": MissionConfig.MAP_STARTUP_TIMEOUT_SEC,
+            "map_loss_grace_sec": MissionConfig.MAP_LOSS_GRACE_SEC,
+            "disconnect_grace_sec": MissionConfig.DISCONNECT_GRACE_SEC,
             "land_complete_altitude": MissionConfig.LAND_COMPLETE_ALTITUDE,
             "home_reached_tolerance": MissionConfig.HOME_REACHED_TOLERANCE,
         }
@@ -83,6 +87,16 @@ class MissionStateMachine(Node):
         self.command_retry_sec = float(self.get_parameter("command_retry_sec").value)
         self.pose_timeout_sec = float(self.get_parameter("pose_timeout_sec").value)
         self.map_timeout_sec = float(self.get_parameter("map_timeout_sec").value)
+        self.require_tree_map = bool(self.get_parameter("require_tree_map").value)
+        self.map_startup_timeout_sec = float(
+            self.get_parameter("map_startup_timeout_sec").value
+        )
+        self.map_loss_grace_sec = float(
+            self.get_parameter("map_loss_grace_sec").value
+        )
+        self.disconnect_grace_sec = float(
+            self.get_parameter("disconnect_grace_sec").value
+        )
         self.land_complete_altitude = float(
             self.get_parameter("land_complete_altitude").value
         )
@@ -96,6 +110,9 @@ class MissionStateMachine(Node):
         self.current_pose: Optional[PoseStamped] = None
         self.last_pose_time: Optional[float] = None
         self.last_map_time: Optional[float] = None
+        self.map_ready = False
+        self.map_not_ready_since: Optional[float] = None
+        self.disconnect_since: Optional[float] = None
         self.trees = []
         self.target_tree: Optional[Tree] = None
         self.target_reference = None
@@ -145,6 +162,7 @@ class MissionStateMachine(Node):
             PoseStamped, "/mavros/local_position/pose", self.pose_callback, qos_sensor
         )
         self.create_subscription(TreeArray, "/map/trees", self.tree_callback, qos_map)
+        self.create_subscription(Bool, "/map/trees_ready", self.map_ready_callback, qos_map)
         self.create_subscription(
             String, "/control/orbit_status", self.orbit_status_callback, 10
         )
@@ -234,6 +252,13 @@ class MissionStateMachine(Node):
         self.trees = list(msg.trees)
         self.last_map_time = self.now_sec()
 
+    def map_ready_callback(self, msg: Bool) -> None:
+        self.map_ready = bool(msg.data)
+        if self.map_ready:
+            self.map_not_ready_since = None
+        elif self.map_not_ready_since is None:
+            self.map_not_ready_since = self.now_sec()
+
     def orbit_status_callback(self, msg: String) -> None:
         self.orbit_status = msg.data
 
@@ -260,7 +285,9 @@ class MissionStateMachine(Node):
 
     def map_fresh(self) -> bool:
         return (
-            self.last_map_time is not None
+            self.map_ready
+            and bool(self.trees)
+            and self.last_map_time is not None
             and self.now_sec() - self.last_map_time <= self.map_timeout_sec
         )
 
@@ -281,7 +308,7 @@ class MissionStateMachine(Node):
         self.local_goal_pub.publish(goal)
 
     def publish_takeoff_goal(self) -> None:
-        """Continuously command a vertical climb above the captured home pose."""
+        """Hold above home after takeoff; not used during NAV_TAKEOFF itself."""
         self.publish_goal(
             self.home_x,
             self.home_y,
@@ -291,6 +318,17 @@ class MissionStateMachine(Node):
         target = Float32()
         target.data = float(self.takeoff_target_z)
         self.target_altitude_pub.publish(target)
+
+    def publish_hold_here(self) -> None:
+        if self.current_pose is None:
+            return
+        yaw = yaw_from_quaternion(self.current_pose.pose.orientation)
+        self.publish_goal(
+            float(self.current_pose.pose.position.x),
+            float(self.current_pose.pose.position.y),
+            yaw,
+            z=float(self.current_pose.pose.position.z),
+        )
 
     def send_bool(self, publisher, value: bool) -> None:
         msg = Bool()
@@ -347,16 +385,39 @@ class MissionStateMachine(Node):
     def loop(self) -> None:
         self.publish_state()
 
-        if self.current_pose is None or not self.pose_fresh():
+        if self.current_pose is None:
             return
 
+        now = self.now_sec()
         if self.armed and not self.connected and self.state not in {"LAND", "WAIT_LANDED", "DONE"}:
-            self.clear_orbit()
-            self.transition("LAND", "Koneksi MAVROS hilang saat armed")
+            if self.disconnect_since is None:
+                self.disconnect_since = now
+                self.get_logger().warning("Koneksi MAVROS hilang; menunggu grace period.")
+            elif now - self.disconnect_since >= self.disconnect_grace_sec:
+                self.clear_orbit()
+                self.transition("LAND", "Koneksi MAVROS hilang terlalu lama")
+            return
+        self.disconnect_since = None
+
+        if not self.pose_fresh():
+            return
 
         cx = float(self.current_pose.pose.position.x)
         cy = float(self.current_pose.pose.position.y)
-        now = self.now_sec()
+
+        navigation_states = {
+            "EXPLORE_ROW",
+            "APPROACH_TREE",
+            "VERIFY_TREE",
+            "PREPARE_ORBIT",
+            "WAIT_ORBIT",
+            "CRAB_SCAN",
+            "FINAL_SCAN",
+        }
+        if self.require_tree_map and self.state in navigation_states and not self.map_fresh():
+            self.clear_orbit()
+            self.target_tree = None
+            self.transition("MAP_HOLD", "Peta PCL kosong atau stale")
 
         if self.state == "WAIT_CONNECTION":
             if self.connected and self.home_captured:
@@ -449,6 +510,8 @@ class MissionStateMachine(Node):
                 self.last_tree_or_row_y = cy
                 if self.hold_after_takeoff:
                     self.transition("HOLD", "Hover stabil; flight test berhasil")
+                elif self.require_tree_map:
+                    self.transition("WAIT_MAP", "Hover stabil; menunggu peta PCL")
                 else:
                     self.transition("EXPLORE_ROW", "Hover stabil")
                 return
@@ -472,7 +535,25 @@ class MissionStateMachine(Node):
                 return
 
         elif self.state == "HOLD":
-            self.publish_takeoff_goal()
+            self.publish_hold_here()
+
+        elif self.state == "WAIT_MAP":
+            self.publish_hold_here()
+            if self.map_fresh():
+                self.last_tree_or_row_x = cx
+                self.last_tree_or_row_y = cy
+                self.transition("EXPLORE_ROW", f"Peta siap: {len(self.trees)} pohon")
+            elif now - self.state_enter_time >= self.map_startup_timeout_sec:
+                self.transition("LAND", "Peta PCL tidak siap sebelum timeout")
+
+        elif self.state == "MAP_HOLD":
+            self.publish_hold_here()
+            if self.map_fresh():
+                self.last_tree_or_row_x = cx
+                self.last_tree_or_row_y = cy
+                self.transition("EXPLORE_ROW", f"Peta pulih: {len(self.trees)} pohon")
+            elif now - self.state_enter_time >= self.map_startup_timeout_sec:
+                self.transition("LAND", "Peta PCL tidak pulih")
 
         elif self.state == "EXPLORE_ROW":
             tree = self.find_uninspected_tree(require_ahead=True)
