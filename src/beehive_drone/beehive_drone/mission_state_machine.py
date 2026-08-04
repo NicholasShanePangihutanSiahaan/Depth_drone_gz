@@ -118,6 +118,7 @@ class MissionStateMachine(Node):
         self.takeoff_start_z = 0.0
         self.takeoff_start_time: Optional[float] = None
         self.takeoff_command_sent = False
+        self.unexpected_disarm_since = None
         self.last_land_command_time = -1e9
         self.home_captured = False
         self.explore_dir_x = 1.0
@@ -208,6 +209,7 @@ class MissionStateMachine(Node):
             self.takeoff_start_time = self.state_enter_time
             self.takeoff_start_z = self.altitude
             self.takeoff_command_sent = False
+            self.unexpected_disarm_since = None
         if new_state == "LAND":
             self.last_land_command_time = -1e9
         text = f"{old} -> {new_state}"
@@ -399,10 +401,26 @@ class MissionStateMachine(Node):
                     f"NAV_TAKEOFF dikirim satu kali: {self.flight_altitude:.1f} m"
                 )
 
-            if not self.armed and now - self.state_enter_time > 2.0:
-                self.get_logger().error("Autopilot disarm saat takeoff.")
-                self.transition("ABORTED", "Unexpected disarm")
-                return
+            # Jangan membatalkan misi karena satu sampel telemetry
+            # armed=False. Tunggu sampai kondisi disarm berlangsung terus.
+            if not self.armed:
+                if self.unexpected_disarm_since is None:
+                    self.unexpected_disarm_since = now
+                    self.get_logger().warning(
+                        "Telemetry armed=False saat TAKEOFF; "
+                        "menunggu konfirmasi 5 detik."
+                    )
+                elif now - self.unexpected_disarm_since >= 5.0:
+                    self.get_logger().error(
+                        "Autopilot benar-benar disarm selama TAKEOFF."
+                    )
+                    self.transition(
+                        "ABORTED",
+                        "Disarm terkonfirmasi selama 5 detik",
+                    )
+                    return
+            else:
+                self.unexpected_disarm_since = None
 
             if self.hovering:
                 self.last_tree_or_row_x = cx
