@@ -357,16 +357,15 @@ class MissionStateMachine(Node):
 
         if self.state == "WAIT_CONNECTION":
             if self.connected and self.home_captured:
-                self.transition("PRESTREAM", "MAVROS dan local pose tersedia")
+                # ArduPilot GUIDED tidak membutuhkan PRESTREAM seperti PX4.
+                self.transition("SET_MODE", "MAVROS dan local pose tersedia")
 
         elif self.state == "PRESTREAM":
-            # MAVROS/ArduPilot receives a valid setpoint stream before mode/arm.
-            self.publish_takeoff_goal()
-            if now - self.state_enter_time >= self.prestream_sec:
-                self.transition("SET_MODE", "Setpoint stream stabil")
+            # Dipertahankan hanya untuk kompatibilitas state lama.
+            # Tidak boleh mengirim target gerak sebelum takeoff.
+            self.transition("SET_MODE", "Lewati prestream untuk ArduPilot")
 
         elif self.state == "SET_MODE":
-            self.publish_takeoff_goal()
             if self.current_mode == self.flight_mode:
                 self.transition("ARM")
             elif self.command_due():
@@ -375,14 +374,22 @@ class MissionStateMachine(Node):
                 self.mode_pub.publish(msg)
 
         elif self.state == "ARM":
-            self.publish_takeoff_goal()
+            # Jangan kirim target posisi/kecepatan ketika menunggu arming.
             if self.armed:
                 self.transition("TAKEOFF", "Motor armed; mulai climb dengan velocity setpoint")
             elif self.command_due():
                 self.send_bool(self.arm_pub, True)
 
         elif self.state == "TAKEOFF":
-            self.publish_takeoff_goal()
+            # Saat TAKEOFF, controller internal ArduPilot menjadi satu-satunya
+            # pengendali climb. Jangan kirim position/velocity setpoint.
+            #
+            # Target altitude ini hanya dipakai FlightManager untuk mendeteksi
+            # hover, bukan dikirim sebagai perintah gerak ke MAVROS.
+            altitude_target = Float32()
+            altitude_target.data = float(self.takeoff_target_z)
+            self.target_altitude_pub.publish(altitude_target)
+
             if not self.takeoff_command_sent:
                 command = Float32()
                 command.data = float(self.flight_altitude)
@@ -413,9 +420,8 @@ class MissionStateMachine(Node):
                 and climb < self.min_takeoff_progress
             ):
                 self.get_logger().error(
-                    "TAKEOFF GAGAL: altitude tidak naik. Setpoint sudah dikirim, "
-                    "tetapi model Gazebo tidak merespons. Periksa ArduPilotPlugin, "
-                    "backend --model JSON, joint rotor, dan port FDM."
+                    "TAKEOFF belum menunjukkan progres ketinggian. "
+                    "NAV_TAKEOFF telah dikirim tanpa velocity override."
                 )
                 self.transition("LAND", "Tidak ada progres ketinggian")
                 return

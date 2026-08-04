@@ -16,8 +16,8 @@ mission_state_machine:
     prestream_sec: 20.0
     command_retry_sec: 2.5
     land_retry_sec: 5.0
-    takeoff_timeout_sec: 35.0
-    takeoff_progress_check_sec: 8.0
+    takeoff_timeout_sec: 45.0
+    takeoff_progress_check_sec: 20.0
     min_takeoff_progress: 0.20
     hold_after_takeoff: false
 

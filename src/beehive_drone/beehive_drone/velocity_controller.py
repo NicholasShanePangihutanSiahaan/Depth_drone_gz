@@ -112,6 +112,22 @@ class VelocityController(Node):
         dt = max(0.01, min(0.2, now - self.last_loop_time))
         self.last_loop_time = now
 
+        # Sangat penting:
+        # Jangan publikasikan /mavros/setpoint_velocity/cmd_vel selama
+        # persiapan dan proses takeoff. NAV_TAKEOFF ArduPilot harus menjadi
+        # satu-satunya pengendali sampai hover tercapai.
+        blocked_states = {
+            "INIT",
+            "WAIT_CONNECTION",
+            "PRESTREAM",
+            "SET_MODE",
+            "ARM",
+            "TAKEOFF",
+        }
+
+        if self.fsm_state in blocked_states:
+            return
+
         if (
             self.current_pose is None
             or self.target_pose is None
