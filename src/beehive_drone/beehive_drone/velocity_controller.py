@@ -7,6 +7,7 @@ import rclpy
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 
 from beehive_drone.math_utils import clamp, wrap_pi, yaw_from_quaternion
 from beehive_drone.mission_params import MissionConfig
@@ -58,6 +59,8 @@ class VelocityController(Node):
         self.last_vx = 0.0
         self.last_vy = 0.0
         self.last_vz = 0.0
+        self.fsm_state = "INIT"
+        self.last_debug_time = -1e9
 
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -69,6 +72,9 @@ class VelocityController(Node):
         )
         self.create_subscription(
             PoseStamped, "/control/safe_target_pose", self.target_callback, 10
+        )
+        self.create_subscription(
+            String, "/mission/fsm_state", self.state_callback, 10
         )
         self.velocity_pub = self.create_publisher(
             TwistStamped, "/mavros/setpoint_velocity/cmd_vel", 10
@@ -86,6 +92,9 @@ class VelocityController(Node):
     def target_callback(self, msg: PoseStamped) -> None:
         self.target_pose = msg
         self.last_target_time = self.now_sec()
+
+    def state_callback(self, msg: String) -> None:
+        self.fsm_state = msg.data
 
     @staticmethod
     def rate_limit(target: float, previous: float, max_delta: float) -> float:
@@ -162,6 +171,14 @@ class VelocityController(Node):
         cmd.twist.linear.z = float(vz)
         cmd.twist.angular.z = float(yaw_rate)
         self.velocity_pub.publish(cmd)
+
+        if self.fsm_state in {"PRESTREAM", "SET_MODE", "ARM", "TAKEOFF"}:
+            if now - self.last_debug_time >= 1.0:
+                self.last_debug_time = now
+                self.get_logger().info(
+                    f"state={self.fsm_state} cmd_vel ENU: "
+                    f"vx={vx:.2f}, vy={vy:.2f}, vz={vz:.2f}, ez={ez:.2f}"
+                )
 
         self.last_vx = vx
         self.last_vy = vy

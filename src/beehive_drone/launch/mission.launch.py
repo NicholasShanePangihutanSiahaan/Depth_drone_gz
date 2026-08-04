@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from ament_index_python.packages import get_package_share_directory
-import os
 
 
 def generate_launch_description():
@@ -17,6 +18,7 @@ def generate_launch_description():
     use_pcl = LaunchConfiguration("use_pcl")
     use_yolo_fallback = LaunchConfiguration("use_yolo_fallback")
     use_analyzer = LaunchConfiguration("use_analyzer")
+    hold_after_takeoff = LaunchConfiguration("hold_after_takeoff")
     point_cloud_topic = LaunchConfiguration("point_cloud_topic")
     odom_topic = LaunchConfiguration("odom_topic")
     yolo_model_path = LaunchConfiguration("yolo_model_path")
@@ -27,6 +29,7 @@ def generate_launch_description():
             DeclareLaunchArgument("use_pcl", default_value="true"),
             DeclareLaunchArgument("use_yolo_fallback", default_value="false"),
             DeclareLaunchArgument("use_analyzer", default_value="true"),
+            DeclareLaunchArgument("hold_after_takeoff", default_value="false"),
             DeclareLaunchArgument(
                 "point_cloud_topic", default_value="/zed2i/depth/points"
             ),
@@ -35,8 +38,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument("yolo_model_path", default_value=""),
             DeclareLaunchArgument("yolo_device", default_value="cpu"),
-            # PCL repository node. Its hard-coded `plantation` frame is tied to
-            # the local odometry frame through an identity TF for visualization.
+
             Node(
                 package="point-cloud-test",
                 executable="pcl_proc_node",
@@ -49,10 +51,7 @@ def generate_launch_description():
                     ("/output_cloud", "/perception/pcl/filtered_cloud"),
                     ("/clusters", "/perception/pcl/clusters"),
                     ("/cylinders", "/perception/pcl/cylinders"),
-                    (
-                        "/global/cylinders",
-                        "/perception/pcl/tracked_cylinders",
-                    ),
+                    ("/global/cylinders", "/perception/pcl/tracked_cylinders"),
                 ],
             ),
             Node(
@@ -62,22 +61,10 @@ def generate_launch_description():
                 output="screen",
                 condition=IfCondition(use_pcl),
                 arguments=[
-                    "--x",
-                    "0",
-                    "--y",
-                    "0",
-                    "--z",
-                    "0",
-                    "--roll",
-                    "0",
-                    "--pitch",
-                    "0",
-                    "--yaw",
-                    "0",
-                    "--frame-id",
-                    "odom",
-                    "--child-frame-id",
-                    "plantation",
+                    "--x", "0", "--y", "0", "--z", "0",
+                    "--roll", "0", "--pitch", "0", "--yaw", "0",
+                    "--frame-id", "odom",
+                    "--child-frame-id", "plantation",
                 ],
             ),
             Node(
@@ -102,10 +89,7 @@ def generate_launch_description():
                 condition=IfCondition(use_yolo_fallback),
                 parameters=[
                     config_file,
-                    {
-                        "model_path": yolo_model_path,
-                        "device": yolo_device,
-                    },
+                    {"model_path": yolo_model_path, "device": yolo_device},
                 ],
             ),
             Node(
@@ -128,7 +112,14 @@ def generate_launch_description():
                 executable="mission_state_machine",
                 name="mission_state_machine",
                 output="screen",
-                parameters=[config_file],
+                parameters=[
+                    config_file,
+                    {
+                        "hold_after_takeoff": ParameterValue(
+                            hold_after_takeoff, value_type=bool
+                        )
+                    },
+                ],
             ),
             Node(
                 package="beehive_drone",

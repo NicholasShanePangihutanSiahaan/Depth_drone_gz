@@ -24,6 +24,12 @@ class MissionStateMachine(Node):
             "world_frame": MissionConfig.WORLD_FRAME,
             "flight_mode": MissionConfig.FLIGHT_MODE,
             "flight_altitude": MissionConfig.FLIGHT_ALTITUDE,
+            "prestream_sec": MissionConfig.PRESTREAM_SEC,
+            "takeoff_timeout_sec": MissionConfig.TAKEOFF_TIMEOUT_SEC,
+            "takeoff_progress_check_sec": MissionConfig.TAKEOFF_PROGRESS_CHECK_SEC,
+            "min_takeoff_progress": MissionConfig.MIN_TAKEOFF_PROGRESS,
+            "land_retry_sec": MissionConfig.LAND_RETRY_SEC,
+            "hold_after_takeoff": False,
             "explore_step": MissionConfig.EXPLORE_STEP,
             "crab_step": MissionConfig.CRAB_STEP,
             "end_of_row_dist": MissionConfig.END_OF_ROW_DIST,
@@ -47,6 +53,18 @@ class MissionStateMachine(Node):
         self.world_frame = str(self.get_parameter("world_frame").value)
         self.flight_mode = str(self.get_parameter("flight_mode").value)
         self.flight_altitude = float(self.get_parameter("flight_altitude").value)
+        self.prestream_sec = float(self.get_parameter("prestream_sec").value)
+        self.takeoff_timeout_sec = float(self.get_parameter("takeoff_timeout_sec").value)
+        self.takeoff_progress_check_sec = float(
+            self.get_parameter("takeoff_progress_check_sec").value
+        )
+        self.min_takeoff_progress = float(
+            self.get_parameter("min_takeoff_progress").value
+        )
+        self.land_retry_sec = float(self.get_parameter("land_retry_sec").value)
+        self.hold_after_takeoff = bool(
+            self.get_parameter("hold_after_takeoff").value
+        )
         self.explore_step = float(self.get_parameter("explore_step").value)
         self.crab_step = float(self.get_parameter("crab_step").value)
         self.end_of_row_dist = float(self.get_parameter("end_of_row_dist").value)
@@ -95,6 +113,12 @@ class MissionStateMachine(Node):
 
         self.home_x = 0.0
         self.home_y = 0.0
+        self.home_z = 0.0
+        self.takeoff_target_z = self.flight_altitude
+        self.takeoff_start_z = 0.0
+        self.takeoff_start_time: Optional[float] = None
+        self.takeoff_command_sent = False
+        self.last_land_command_time = -1e9
         self.home_captured = False
         self.explore_dir_x = 1.0
         self.explore_dir_y = 1.0
@@ -140,7 +164,12 @@ class MissionStateMachine(Node):
 
         self.mode_pub = self.create_publisher(String, "/flight/cmd/set_mode", 10)
         self.arm_pub = self.create_publisher(Bool, "/flight/cmd/set_arm", 10)
-        self.takeoff_pub = self.create_publisher(Float32, "/flight/cmd/takeoff", 10)
+        self.takeoff_pub = self.create_publisher(
+            Float32, "/flight/cmd/takeoff", 10
+        )
+        self.target_altitude_pub = self.create_publisher(
+            Float32, "/flight/target_altitude", 10
+        )
         self.land_pub = self.create_publisher(Bool, "/flight/cmd/land", 10)
         self.local_goal_pub = self.create_publisher(
             PoseStamped, "/navigation/local_goal", 10
@@ -175,6 +204,12 @@ class MissionStateMachine(Node):
         self.state = new_state
         self.state_enter_time = self.now_sec()
         self.last_command_time = -1e9
+        if new_state == "TAKEOFF":
+            self.takeoff_start_time = self.state_enter_time
+            self.takeoff_start_z = self.altitude
+            self.takeoff_command_sent = False
+        if new_state == "LAND":
+            self.last_land_command_time = -1e9
         text = f"{old} -> {new_state}"
         if reason:
             text += f" | {reason}"
@@ -186,6 +221,8 @@ class MissionStateMachine(Node):
         if not self.home_captured:
             self.home_x = float(msg.pose.position.x)
             self.home_y = float(msg.pose.position.y)
+            self.home_z = float(msg.pose.position.z)
+            self.takeoff_target_z = self.home_z + self.flight_altitude
             self.last_tree_or_row_x = self.home_x
             self.last_tree_or_row_y = self.home_y
             self.home_captured = True
@@ -239,6 +276,18 @@ class MissionStateMachine(Node):
         goal.pose.position.z = float(self.flight_altitude if z is None else z)
         goal.pose.orientation = quaternion_from_yaw(yaw)
         self.local_goal_pub.publish(goal)
+
+    def publish_takeoff_goal(self) -> None:
+        """Continuously command a vertical climb above the captured home pose."""
+        self.publish_goal(
+            self.home_x,
+            self.home_y,
+            0.0,
+            z=self.takeoff_target_z,
+        )
+        target = Float32()
+        target.data = float(self.takeoff_target_z)
+        self.target_altitude_pub.publish(target)
 
     def send_bool(self, publisher, value: bool) -> None:
         msg = Bool()
@@ -307,10 +356,17 @@ class MissionStateMachine(Node):
         now = self.now_sec()
 
         if self.state == "WAIT_CONNECTION":
-            if self.connected:
-                self.transition("SET_MODE", "MAVROS connected")
+            if self.connected and self.home_captured:
+                self.transition("PRESTREAM", "MAVROS dan local pose tersedia")
+
+        elif self.state == "PRESTREAM":
+            # MAVROS/ArduPilot receives a valid setpoint stream before mode/arm.
+            self.publish_takeoff_goal()
+            if now - self.state_enter_time >= self.prestream_sec:
+                self.transition("SET_MODE", "Setpoint stream stabil")
 
         elif self.state == "SET_MODE":
+            self.publish_takeoff_goal()
             if self.current_mode == self.flight_mode:
                 self.transition("ARM")
             elif self.command_due():
@@ -319,20 +375,58 @@ class MissionStateMachine(Node):
                 self.mode_pub.publish(msg)
 
         elif self.state == "ARM":
+            self.publish_takeoff_goal()
             if self.armed:
-                self.transition("TAKEOFF")
+                self.transition("TAKEOFF", "Motor armed; mulai climb dengan velocity setpoint")
             elif self.command_due():
                 self.send_bool(self.arm_pub, True)
 
         elif self.state == "TAKEOFF":
+            self.publish_takeoff_goal()
+            if not self.takeoff_command_sent:
+                command = Float32()
+                command.data = float(self.flight_altitude)
+                self.takeoff_pub.publish(command)
+                self.takeoff_command_sent = True
+                self.get_logger().info(
+                    f"NAV_TAKEOFF dikirim satu kali: {self.flight_altitude:.1f} m"
+                )
+
+            if not self.armed and now - self.state_enter_time > 2.0:
+                self.get_logger().error("Autopilot disarm saat takeoff.")
+                self.transition("ABORTED", "Unexpected disarm")
+                return
+
             if self.hovering:
                 self.last_tree_or_row_x = cx
                 self.last_tree_or_row_y = cy
-                self.transition("EXPLORE_ROW", "Hover stabil")
-            elif self.command_due():
-                msg = Float32()
-                msg.data = self.flight_altitude
-                self.takeoff_pub.publish(msg)
+                if self.hold_after_takeoff:
+                    self.transition("HOLD", "Hover stabil; flight test berhasil")
+                else:
+                    self.transition("EXPLORE_ROW", "Hover stabil")
+                return
+
+            elapsed = now - self.state_enter_time
+            climb = self.altitude - self.takeoff_start_z
+            if (
+                elapsed >= self.takeoff_progress_check_sec
+                and climb < self.min_takeoff_progress
+            ):
+                self.get_logger().error(
+                    "TAKEOFF GAGAL: altitude tidak naik. Setpoint sudah dikirim, "
+                    "tetapi model Gazebo tidak merespons. Periksa ArduPilotPlugin, "
+                    "backend --model JSON, joint rotor, dan port FDM."
+                )
+                self.transition("LAND", "Tidak ada progres ketinggian")
+                return
+
+            if elapsed >= self.takeoff_timeout_sec:
+                self.get_logger().error("TAKEOFF timeout; mission dibatalkan.")
+                self.transition("LAND", "Takeoff timeout")
+                return
+
+        elif self.state == "HOLD":
+            self.publish_takeoff_goal()
 
         elif self.state == "EXPLORE_ROW":
             tree = self.find_uninspected_tree(require_ahead=True)
@@ -516,15 +610,23 @@ class MissionStateMachine(Node):
 
         elif self.state == "LAND":
             self.clear_orbit()
-            if self.command_due():
+            if not self.armed:
+                self.transition("DONE", "Sudah disarm")
+                return
+            if now - self.last_land_command_time >= self.land_retry_sec:
+                self.last_land_command_time = now
                 self.send_bool(self.land_pub, True)
             self.transition("WAIT_LANDED")
 
         elif self.state == "WAIT_LANDED":
-            if self.altitude <= self.land_complete_altitude or not self.armed:
+            if self.altitude <= self.home_z + self.land_complete_altitude or not self.armed:
                 self.transition("DONE", "Pendaratan selesai")
-            elif self.command_due():
+            elif now - self.last_land_command_time >= self.land_retry_sec:
+                self.last_land_command_time = now
                 self.send_bool(self.land_pub, True)
+
+        elif self.state == "ABORTED":
+            self.clear_orbit()
 
         elif self.state == "DONE":
             self.clear_orbit()

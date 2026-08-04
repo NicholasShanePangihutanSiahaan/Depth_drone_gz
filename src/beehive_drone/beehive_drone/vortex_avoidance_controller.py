@@ -137,6 +137,26 @@ class VortexAvoidanceController(Node):
         if goal is None:
             return
 
+        # Do not shift X/Y during pre-arm and vertical takeoff/landing.
+        # A tree close to the spawn point must not create lateral movement while
+        # the vehicle is still on the ground.
+        vertical_states = {
+            "PRESTREAM",
+            "SET_MODE",
+            "ARM",
+            "TAKEOFF",
+            "HOLD",
+            "LAND",
+            "WAIT_LANDED",
+        }
+        if self.fsm_state in vertical_states:
+            safe = PoseStamped()
+            safe.header.frame_id = self.world_frame
+            safe.header.stamp = self.get_clock().now().to_msg()
+            safe.pose = goal.pose
+            self.safe_target_pub.publish(safe)
+            return
+
         cx = float(self.current_pose.pose.position.x)
         cy = float(self.current_pose.pose.position.y)
         gx = float(goal.pose.position.x)

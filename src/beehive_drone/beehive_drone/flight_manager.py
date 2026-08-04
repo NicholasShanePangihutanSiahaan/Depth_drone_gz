@@ -15,29 +15,47 @@ from beehive_drone.mission_params import MissionConfig
 
 
 class FlightManager(Node):
-    """Hardware-abstraction layer between mission logic and MAVROS services."""
+    """MAVROS service manager and flight telemetry publisher.
+
+    Takeoff uses exactly one /mavros/cmd/takeoff request, while a continuous
+    local velocity setpoint is streamed for climb and position holding.  The
+    one-shot latch prevents repeated NAV_TAKEOFF acknowledgements and the
+    MAVROS ``Promise already satisfied`` crash.
+    """
 
     def __init__(self) -> None:
         super().__init__("flight_manager")
 
-        self.declare_parameter("hover_alt_tolerance", MissionConfig.HOVER_ALT_TOLERANCE)
-        self.declare_parameter("hover_speed_tolerance", MissionConfig.HOVER_SPEED_TOLERANCE)
-        self.declare_parameter("hover_stable_sec", MissionConfig.HOVER_STABLE_SEC)
+        defaults = {
+            "hover_alt_tolerance": MissionConfig.HOVER_ALT_TOLERANCE,
+            "hover_speed_tolerance": MissionConfig.HOVER_SPEED_TOLERANCE,
+            "hover_stable_sec": MissionConfig.HOVER_STABLE_SEC,
+            "pose_timeout_sec": MissionConfig.POSE_TIMEOUT_SEC,
+        }
+        for name, value in defaults.items():
+            self.declare_parameter(name, value)
 
-        self.hover_alt_tolerance = float(self.get_parameter("hover_alt_tolerance").value)
-        self.hover_speed_tolerance = float(self.get_parameter("hover_speed_tolerance").value)
+        self.hover_alt_tolerance = float(
+            self.get_parameter("hover_alt_tolerance").value
+        )
+        self.hover_speed_tolerance = float(
+            self.get_parameter("hover_speed_tolerance").value
+        )
         self.hover_stable_sec = float(self.get_parameter("hover_stable_sec").value)
+        self.pose_timeout_sec = float(self.get_parameter("pose_timeout_sec").value)
 
         self.current_state = State()
         self.current_alt = 0.0
         self.current_speed = 0.0
-        self.target_takeoff_alt = 0.0
+        self.target_altitude: Optional[float] = None
         self.hover_candidate_since: Optional[float] = None
         self.last_pose_time: Optional[float] = None
+
         self.pending_mode = False
         self.pending_arm = False
         self.pending_takeoff = False
         self.pending_land = False
+        self.takeoff_latched = False
 
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -60,6 +78,9 @@ class FlightManager(Node):
         self.create_subscription(Bool, "/flight/cmd/set_arm", self.cmd_arm_cb, 10)
         self.create_subscription(Float32, "/flight/cmd/takeoff", self.cmd_takeoff_cb, 10)
         self.create_subscription(Bool, "/flight/cmd/land", self.cmd_land_cb, 10)
+        self.create_subscription(
+            Float32, "/flight/target_altitude", self.target_altitude_cb, 10
+        )
 
         self.pub_connected = self.create_publisher(
             Bool, "/flight/telemetry/is_connected", 10
@@ -69,8 +90,12 @@ class FlightManager(Node):
             String, "/flight/telemetry/current_mode", 10
         )
         self.pub_alt = self.create_publisher(Float32, "/flight/telemetry/altitude", 10)
+        self.pub_speed = self.create_publisher(Float32, "/flight/telemetry/speed", 10)
         self.pub_hover = self.create_publisher(
             Bool, "/flight/telemetry/is_hovering", 10
+        )
+        self.pub_pose_fresh = self.create_publisher(
+            Bool, "/flight/telemetry/pose_fresh", 10
         )
 
         self.mode_client = self.create_client(SetMode, "/mavros/set_mode")
@@ -79,13 +104,18 @@ class FlightManager(Node):
         self.land_client = self.create_client(CommandTOL, "/mavros/cmd/land")
 
         self.create_timer(0.1, self.publish_telemetry)
-        self.get_logger().info("Flight Manager aktif.")
+        self.get_logger().info(
+            "Flight Manager aktif. Takeoff service one-shot + continuous setpoint."
+        )
 
     def now_sec(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
 
     def state_callback(self, msg: State) -> None:
+        was_armed = bool(self.current_state.armed)
         self.current_state = msg
+        if was_armed and not msg.armed:
+            self.takeoff_latched = False
 
     def pose_callback(self, msg: PoseStamped) -> None:
         self.current_alt = float(msg.pose.position.z)
@@ -94,6 +124,11 @@ class FlightManager(Node):
     def velocity_callback(self, msg: TwistStamped) -> None:
         v = msg.twist.linear
         self.current_speed = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+
+    def target_altitude_cb(self, msg: Float32) -> None:
+        target = float(msg.data)
+        if math.isfinite(target):
+            self.target_altitude = target
 
     def _service_ready(self, client, name: str) -> bool:
         if client.service_is_ready():
@@ -131,28 +166,32 @@ class FlightManager(Node):
 
     def cmd_takeoff_cb(self, msg: Float32) -> None:
         altitude = float(msg.data)
-        if altitude <= 0.0:
-            self.get_logger().error("Perintah takeoff ditolak: altitude harus positif.")
+        if not math.isfinite(altitude) or altitude <= 0.0:
+            self.get_logger().error("Perintah takeoff ditolak: altitude invalid.")
             return
-        self.target_takeoff_alt = altitude
-        if self.pending_takeoff:
+        if not self.current_state.armed:
+            self.get_logger().warning("Perintah takeoff diabaikan: kendaraan belum armed.")
+            return
+        if self.takeoff_latched or self.pending_takeoff:
             return
         if not self._service_ready(self.takeoff_client, "/mavros/cmd/takeoff"):
             return
 
         request = CommandTOL.Request()
         request.altitude = altitude
+        self.takeoff_latched = True
         self.pending_takeoff = True
         future = self.takeoff_client.call_async(request)
         future.add_done_callback(lambda f: self._finish_service("takeoff", f))
 
     def cmd_land_cb(self, msg: Bool) -> None:
-        if not msg.data or self.pending_land:
+        if not msg.data or self.pending_land or not self.current_state.armed:
             return
         if not self._service_ready(self.land_client, "/mavros/cmd/land"):
             return
 
         request = CommandTOL.Request()
+        request.altitude = 0.0
         self.pending_land = True
         future = self.land_client.call_async(request)
         future.add_done_callback(lambda f: self._finish_service("land", f))
@@ -167,17 +206,31 @@ class FlightManager(Node):
             if success:
                 self.get_logger().info(f"Perintah {kind} diterima autopilot.")
             else:
+                if kind == "takeoff":
+                    self.takeoff_latched = False
                 self.get_logger().warning(f"Perintah {kind} ditolak autopilot.")
         except Exception as exc:  # noqa: BLE001
+            if kind == "takeoff":
+                self.takeoff_latched = False
             self.get_logger().error(f"Service {kind} gagal: {exc}")
 
+    def pose_is_fresh(self) -> bool:
+        return (
+            self.last_pose_time is not None
+            and self.now_sec() - self.last_pose_time <= self.pose_timeout_sec
+        )
+
     def _is_stable_hover(self) -> bool:
-        if not self.current_state.armed or self.target_takeoff_alt <= 0.0:
+        if (
+            not self.current_state.armed
+            or self.target_altitude is None
+            or not self.pose_is_fresh()
+        ):
             self.hover_candidate_since = None
             return False
 
         altitude_ok = (
-            abs(self.current_alt - self.target_takeoff_alt) <= self.hover_alt_tolerance
+            abs(self.current_alt - self.target_altitude) <= self.hover_alt_tolerance
         )
         speed_ok = self.current_speed <= self.hover_speed_tolerance
         now = self.now_sec()
@@ -207,9 +260,17 @@ class FlightManager(Node):
         altitude.data = float(self.current_alt)
         self.pub_alt.publish(altitude)
 
+        speed = Float32()
+        speed.data = float(self.current_speed)
+        self.pub_speed.publish(speed)
+
         hovering = Bool()
         hovering.data = self._is_stable_hover()
         self.pub_hover.publish(hovering)
+
+        pose_fresh = Bool()
+        pose_fresh.data = self.pose_is_fresh()
+        self.pub_pose_fresh.publish(pose_fresh)
 
 
 def main(args=None) -> None:

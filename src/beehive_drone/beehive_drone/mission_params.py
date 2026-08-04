@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""Default configuration shared by all mission nodes.
-
-Every node also exposes the relevant values as ROS parameters, so these
-constants are only safe defaults and can be overridden from a YAML file.
-"""
+"""Default configuration shared by all beehive mission nodes."""
 
 import math
 
 
 class MissionConfig:
-    # Frames and common topics
     WORLD_FRAME = "odom"
     PCL_FRAME = "plantation"
 
-    # Pre-flight and mission lifecycle
+    # Flight lifecycle
     FLIGHT_MODE = "GUIDED"
     FLIGHT_ALTITUDE = 3.0
+    PRESTREAM_SEC = 30.0
+    COMMAND_RETRY_SEC = 2.5
+    LAND_RETRY_SEC = 5.0
+    TAKEOFF_TIMEOUT_SEC = 35.0
+    TAKEOFF_PROGRESS_CHECK_SEC = 8.0
+    MIN_TAKEOFF_PROGRESS = 0.20
     HOME_REACHED_TOLERANCE = 0.8
     LAND_COMPLETE_ALTITUDE = 0.25
-    COMMAND_RETRY_SEC = 2.0
     POSE_TIMEOUT_SEC = 1.0
     MAP_TIMEOUT_SEC = 2.0
     STATE_TIMEOUT_SEC = 90.0
@@ -42,7 +42,7 @@ class MissionConfig:
     ORBIT_RADIUS = 3.0
     ORBIT_ALTITUDE = FLIGHT_ALTITUDE
     ORBIT_VELOCITY = 0.8
-    ORBIT_DIRECTION = 1.0  # +1 CCW, -1 CW
+    ORBIT_DIRECTION = 1.0
     ORBIT_LOOKAHEAD_DISTANCE = 1.2
     ORBIT_RADIAL_GAIN = 0.35
     ORBIT_RADIUS_TOLERANCE = 0.45
@@ -62,18 +62,18 @@ class MissionConfig:
 
     # Velocity controller
     KP_XY = 0.65
-    KP_Z = 0.55
+    KP_Z = 0.80
     KP_YAW = 1.0
     MAX_VELOCITY_XY = 1.0
-    MAX_VELOCITY_Z = 0.45
+    MAX_VELOCITY_Z = 0.80
     MAX_VELOCITY_YAW = 0.55
     MAX_ACCELERATION_XY = 0.8
-    MAX_ACCELERATION_Z = 0.5
+    MAX_ACCELERATION_Z = 0.8
     GOAL_THRESHOLD_XY = 0.20
-    GOAL_THRESHOLD_Z = 0.15
-    TARGET_TIMEOUT_SEC = 0.6
+    GOAL_THRESHOLD_Z = 0.10
+    TARGET_TIMEOUT_SEC = 0.75
 
-    # PCL-backed tree map
+    # PCL tree map
     PCL_TOPIC = "/perception/pcl/tracked_cylinders"
     PCL_MIN_SEEN_COUNT = 2
     PCL_MAX_MISSED_COUNT = 8
@@ -86,7 +86,7 @@ class MissionConfig:
     TREE_REJECT_HOLD_SEC = 20.0
     TREE_FALLBACK_MERGE_DISTANCE = 2.0
 
-    # YOLO fallback / flower detector
+    # YOLO fallback
     YOLO_CONFIDENCE = 0.35
     YOLO_IOU = 0.45
     YOLO_MAX_DEPTH = 20.0
