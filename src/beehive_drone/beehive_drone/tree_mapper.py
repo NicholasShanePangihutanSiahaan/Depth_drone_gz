@@ -1,344 +1,393 @@
 #!/usr/bin/env python3
 
 import math
-import time
+from dataclasses import dataclass
+from typing import Dict, Optional
 
 import rclpy
+from geometry_msgs.msg import Point, PointStamped
+from pcl_cstm_msg.msg import TrackedCylinderArray
 from rclpy.node import Node
+from rclpy.qos import (
+    DurabilityPolicy,
+    HistoryPolicy,
+    QoSProfile,
+    ReliabilityPolicy,
+)
+from uav_interfaces.msg import Tree, TreeArray
+from visualization_msgs.msg import Marker, MarkerArray
 
-from geometry_msgs.msg import Point
-
-from uav_interfaces.msg import Tree
-from uav_interfaces.msg import TreeArray
 from beehive_drone.mission_params import MissionConfig
-from visualization_msgs.msg import Marker
-from visualization_msgs.msg import MarkerArray
 
-from rclpy.qos import QoSProfile
-from rclpy.qos import ReliabilityPolicy
-from rclpy.qos import DurabilityPolicy
-from rclpy.qos import HistoryPolicy
 
-class TreeMapper(Node):
+@dataclass
+class TreeRecord:
+    tree_id: int
+    x: float
+    y: float
+    z: float
+    confidence: float
+    validated: bool
+    inspected: bool
+    last_seen: float
+    seen_count: int = 1
+    missed_count: int = 0
+    radius: float = 0.0
+    height: float = 0.0
+    source: str = "pcl"
 
-    def __init__(self):
-        super().__init__("tree_mapper")
 
-        ##################################################
-        # Parameters
-        ##################################################
-        self.frame_id = "odom"
+class PclTreeMapper(Node):
+    """Single authority for `/map/trees`.
 
-        # maksimum jarak agar dianggap pohon yang sama
-        self.merge_distance = MissionConfig.TREE_MERGE_DISTANCE
+    PCL tracked cylinders are the primary source. A frame-aware point fallback
+    can be enabled for YOLO/depth testing without allowing two nodes to publish
+    competing maps.
+    """
 
-        # confidence model
-        self.max_confidence = MissionConfig.TREE_MAX_CONFIDENCE
-        self.new_tree_confidence = MissionConfig.TREE_NEW_CONFIDENCE
-        self.confidence_increment = MissionConfig.TREE_CONFIDENCE_INCREMENT
-        self.confidence_decay = MissionConfig.TREE_CONFIDENCE_DECAY
+    def __init__(self) -> None:
+        super().__init__("pcl_tree_mapper")
 
-        # waktu hilang sebelum confidence turun
-        self.timeout = MissionConfig.TREE_TIMEOUT
+        self.declare_parameter("world_frame", MissionConfig.WORLD_FRAME)
+        self.declare_parameter("pcl_topic", MissionConfig.PCL_TOPIC)
+        self.declare_parameter("min_seen_count", MissionConfig.PCL_MIN_SEEN_COUNT)
+        self.declare_parameter("max_missed_count", MissionConfig.PCL_MAX_MISSED_COUNT)
+        self.declare_parameter("min_confidence", MissionConfig.PCL_MIN_CONFIDENCE)
+        self.declare_parameter("min_radius", MissionConfig.PCL_MIN_RADIUS)
+        self.declare_parameter("max_radius", MissionConfig.PCL_MAX_RADIUS)
+        self.declare_parameter("min_height", MissionConfig.PCL_MIN_HEIGHT)
+        self.declare_parameter("max_height", MissionConfig.PCL_MAX_HEIGHT)
+        self.declare_parameter("tree_stale_sec", MissionConfig.TREE_STALE_SEC)
+        self.declare_parameter("reject_hold_sec", MissionConfig.TREE_REJECT_HOLD_SEC)
+        self.declare_parameter(
+            "fallback_merge_distance", MissionConfig.TREE_FALLBACK_MERGE_DISTANCE
+        )
+        self.declare_parameter("enable_fallback_points", False)
 
-        ##################################################
-        # Database
-        ##################################################
-        self.tree_database = {}
-        self.next_tree_id = 1
-
-        ##################################################
-        # Subscribers
-        ##################################################
-        # hasil deteksi perception
-        self.sub = self.create_subscription(
-            Point,
-            "/perception/tree_position_camera",
-            self.tree_callback,
-            10
+        self.world_frame = str(self.get_parameter("world_frame").value)
+        self.pcl_topic = str(self.get_parameter("pcl_topic").value)
+        self.min_seen_count = int(self.get_parameter("min_seen_count").value)
+        self.max_missed_count = int(self.get_parameter("max_missed_count").value)
+        self.min_confidence = float(self.get_parameter("min_confidence").value)
+        self.min_radius = float(self.get_parameter("min_radius").value)
+        self.max_radius = float(self.get_parameter("max_radius").value)
+        self.min_height = float(self.get_parameter("min_height").value)
+        self.max_height = float(self.get_parameter("max_height").value)
+        self.tree_stale_sec = float(self.get_parameter("tree_stale_sec").value)
+        self.reject_hold_sec = float(self.get_parameter("reject_hold_sec").value)
+        self.fallback_merge_distance = float(
+            self.get_parameter("fallback_merge_distance").value
+        )
+        self.enable_fallback_points = bool(
+            self.get_parameter("enable_fallback_points").value
         )
 
-        # hasil inspeksi
-        self.create_subscription(
-            Tree,
-            "/map/tree_update",
-            self.tree_update_callback,
-            10
-        )
+        self.tree_database: Dict[int, TreeRecord] = {}
+        self.rejected_until: Dict[int, float] = {}
+        self.next_fallback_id = 100_000
+        self.last_pcl_msg_time: Optional[float] = None
 
-        map_qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
+        qos_sensor = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
-            depth=10
+            depth=5,
+        )
+        qos_map = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
         )
 
-        ##################################################
-        # Publishers
-        ##################################################
-        self.tree_pub = self.create_publisher(
-            TreeArray,
-            "/map/trees",
-            map_qos
+        self.create_subscription(
+            TrackedCylinderArray, self.pcl_topic, self.pcl_callback, qos_sensor
         )
-
-        self.marker_pub = self.create_publisher(
-            MarkerArray,
-            "/tree_markers",
-            10
-        )
-
-        ##################################################
-        # Timer
-        ##################################################
-        self.timer = self.create_timer(
-            5.0,
-            self.update_confidence
-        )
-
-        self.get_logger().info("Tree Mapper Started")
-
-
-    ##################################################
-    # Receive tree detection
-    ##################################################
-    def tree_callback(self,msg):
-        x = msg.x
-        y = msg.y
-        z = msg.z
-
-        if not math.isfinite(x) or not math.isfinite(y) or not math.isfinite(z):
-            self.get_logger().warning("Invalid tree position ignored")
-            return
-
-        nearest_id = None
-        nearest_distance = float("inf")
-
-        ##################################################
-        # Search nearest tree
-        ##################################################
-        for tree_id,tree in self.tree_database.items():
-            distance = math.sqrt(
-                (x-tree["x"])**2 +
-                (y-tree["y"])**2
+        self.create_subscription(Tree, "/map/tree_update", self.tree_update_callback, 10)
+        if self.enable_fallback_points:
+            self.create_subscription(
+                PointStamped,
+                "/perception/tree_position_world",
+                self.fallback_point_callback,
+                qos_sensor,
             )
 
-            if distance < nearest_distance:
-                nearest_distance = distance
-                nearest_id = tree_id
+        self.tree_pub = self.create_publisher(TreeArray, "/map/trees", qos_map)
+        self.marker_pub = self.create_publisher(MarkerArray, "/tree_markers", 10)
+        self.create_timer(0.5, self.housekeeping)
 
-        ##################################################
-        # Existing tree
-        ##################################################
-        if nearest_id is not None and nearest_distance < self.merge_distance:
-            tree = self.tree_database[nearest_id]
-            tree["count"] += 1
+        self.get_logger().info(
+            f"PCL Tree Mapper aktif; input={self.pcl_topic}, fallback={self.enable_fallback_points}."
+        )
 
-            alpha = 1.0 / tree["count"]
+    def now_sec(self) -> float:
+        return self.get_clock().now().nanoseconds * 1e-9
 
-            # update posisi
-            tree["x"] += alpha * (x-tree["x"])
-            tree["y"] += alpha * (y-tree["y"])
-            tree["z"] += alpha * (z-tree["z"])
+    @staticmethod
+    def _finite(*values: float) -> bool:
+        return all(math.isfinite(float(v)) for v in values)
 
-            ##################################################
-            # Confidence hanya naik jika belum inspected
-            ##################################################
-            if not tree["inspected"]:
-                tree["confidence"] = min(
-                    tree["confidence"] + self.confidence_increment,
-                    self.max_confidence
-                )
+    def _accepted_cylinder(self, tracked) -> bool:
+        cylinder = tracked.cylinder
+        if tracked.id < 0:
+            return False
+        if tracked.seen_count < self.min_seen_count:
+            return False
+        if tracked.missed_count > self.max_missed_count:
+            return False
+        if not cylinder.is_valid:
+            return False
+        if cylinder.confidence < self.min_confidence:
+            return False
+        if not (self.min_radius <= cylinder.radius <= self.max_radius):
+            return False
+        if not (self.min_height <= cylinder.height <= self.max_height):
+            return False
+        p = cylinder.pose.position
+        return self._finite(p.x, p.y, p.z)
 
-            tree["last_seen"] = time.time()
-            self.get_logger().debug(f"Tree {nearest_id} updated")
+    def pcl_callback(self, msg: TrackedCylinderArray) -> None:
+        now = self.now_sec()
+        self.last_pcl_msg_time = now
+        received_ids = set()
 
-        ##################################################
-        # New tree
-        ##################################################
-        else:
-            tree_id = self.next_tree_id
-            self.tree_database[tree_id] = {
-                "id":tree_id,
-                "x":x,
-                "y":y,
-                "z":z,
-                "confidence": self.new_tree_confidence,
-                "count":1,
-                "inspected":False,
-                "last_seen": time.time()
-            }
-            self.next_tree_id += 1
-            self.get_logger().info(f"New tree {tree_id} ({x:.2f},{y:.2f},{z:.2f})")
+        for tracked in msg.cylinders:
+            tree_id = int(tracked.id)
+            received_ids.add(tree_id)
 
-        self.publish_tree()
-        self.publish_marker()
-
-
-    ##################################################
-    # Receive inspection result
-    ##################################################
-    def tree_update_callback(self,msg):
-        
-        ##################################################
-        # 1. CEK SINYAL PEMUSNAHAN DARI FSM
-        ##################################################
-        if msg.confidence == -1.0:
-            if msg.id in self.tree_database:
-                del self.tree_database[msg.id]
-                self.get_logger().info(f"Pohon Hantu ID:{msg.id} resmi DIHAPUS dari database peta.")
-                
-                # Update visualisasi untuk segera membuang pohon yang dihapus
-                self.publish_tree()
-                self.publish_marker()
-            return
-        ##################################################
-
-        ##################################################
-        # 2. LOGIKA UPDATE NORMAL
-        ##################################################
-        if msg.id not in self.tree_database:
-            self.get_logger().warning(f"Unknown tree ID {msg.id}")
-            return
-
-        tree = self.tree_database[msg.id]
-
-        # Update full information
-        tree["x"] = msg.x
-        tree["y"] = msg.y
-        tree["z"] = msg.z
-        tree["confidence"] = msg.confidence
-        tree["inspected"] = msg.inspected
-        tree["last_seen"] = time.time()
-
-        self.get_logger().info(f"Tree {msg.id} inspected={msg.inspected}")
-
-        self.publish_tree()
-        self.publish_marker()
-
-
-    ##################################################
-    # Confidence aging
-    ##################################################
-    def update_confidence(self):
-        now = time.time()
-
-        for tree in self.tree_database.values():
-            ##################################################
-            # Jangan decay pohon selesai inspeksi
-            ##################################################
-            if tree["inspected"]:
+            if self.rejected_until.get(tree_id, 0.0) > now:
+                continue
+            if not self._accepted_cylinder(tracked):
                 continue
 
-            elapsed = now - tree["last_seen"]
+            cylinder = tracked.cylinder
+            p = cylinder.pose.position
+            confidence = max(0.0, min(1.0, float(cylinder.confidence)))
+            existing = self.tree_database.get(tree_id)
 
-            if elapsed > self.timeout:
-                tree["confidence"] -= self.confidence_decay
-                if tree["confidence"] < 0:
-                    tree["confidence"] = 0.0
+            if existing is None:
+                self.tree_database[tree_id] = TreeRecord(
+                    tree_id=tree_id,
+                    x=float(p.x),
+                    y=float(p.y),
+                    z=float(p.z),
+                    confidence=confidence,
+                    validated=True,
+                    inspected=False,
+                    last_seen=now,
+                    seen_count=int(tracked.seen_count),
+                    missed_count=int(tracked.missed_count),
+                    radius=float(cylinder.radius),
+                    height=float(cylinder.height),
+                    source="pcl",
+                )
+                self.get_logger().info(
+                    f"Pohon PCL baru ID={tree_id} di ({p.x:.2f}, {p.y:.2f})."
+                )
+            else:
+                alpha = 0.35
+                existing.x = (1.0 - alpha) * existing.x + alpha * float(p.x)
+                existing.y = (1.0 - alpha) * existing.y + alpha * float(p.y)
+                existing.z = (1.0 - alpha) * existing.z + alpha * float(p.z)
+                existing.confidence = max(existing.confidence, confidence)
+                existing.validated = True
+                existing.last_seen = now
+                existing.seen_count = int(tracked.seen_count)
+                existing.missed_count = int(tracked.missed_count)
+                existing.radius = float(cylinder.radius)
+                existing.height = float(cylinder.height)
 
-        self.publish_tree()
-        self.publish_marker()
+        for tree_id, record in self.tree_database.items():
+            if record.source == "pcl" and tree_id not in received_ids:
+                record.missed_count += 1
 
+        self.publish_all()
 
-    ##################################################
-    # Publish TreeArray
-    ##################################################
-    def publish_tree(self):
-        msg = TreeArray()
+    def fallback_point_callback(self, msg: PointStamped) -> None:
+        if msg.header.frame_id and msg.header.frame_id != self.world_frame:
+            self.get_logger().warning(
+                f"Fallback point di frame {msg.header.frame_id}, diharapkan {self.world_frame}."
+            )
+            return
+        p = msg.point
+        if not self._finite(p.x, p.y, p.z):
+            return
 
-        for tree in self.tree_database.values():
-            t = Tree()
-            t.id = tree["id"]
-            t.x = tree["x"]
-            t.y = tree["y"]
-            t.z = tree["z"]
-            t.confidence = tree["confidence"]
-            t.inspected = tree["inspected"]
+        now = self.now_sec()
+        nearest: Optional[TreeRecord] = None
+        nearest_distance = float("inf")
+        for record in self.tree_database.values():
+            distance = math.hypot(record.x - p.x, record.y - p.y)
+            if distance < nearest_distance:
+                nearest = record
+                nearest_distance = distance
 
-            msg.trees.append(t)
+        if nearest is not None and nearest_distance <= self.fallback_merge_distance:
+            nearest.seen_count += 1
+            alpha = min(0.5, 1.0 / max(2, nearest.seen_count))
+            nearest.x += alpha * (float(p.x) - nearest.x)
+            nearest.y += alpha * (float(p.y) - nearest.y)
+            nearest.z += alpha * (float(p.z) - nearest.z)
+            nearest.confidence = min(1.0, nearest.confidence + 0.08)
+            nearest.validated = nearest.seen_count >= 3
+            nearest.last_seen = now
+        else:
+            tree_id = self.next_fallback_id
+            self.next_fallback_id += 1
+            self.tree_database[tree_id] = TreeRecord(
+                tree_id=tree_id,
+                x=float(p.x),
+                y=float(p.y),
+                z=float(p.z),
+                confidence=0.25,
+                validated=False,
+                inspected=False,
+                last_seen=now,
+                source="fallback",
+            )
+        self.publish_all()
 
-        self.tree_pub.publish(msg)
+    def tree_update_callback(self, msg: Tree) -> None:
+        tree_id = int(msg.id)
+        now = self.now_sec()
 
+        if float(msg.confidence) < 0.0:
+            self.tree_database.pop(tree_id, None)
+            self.rejected_until[tree_id] = now + self.reject_hold_sec
+            self.get_logger().warning(
+                f"Pohon ID={tree_id} ditolak selama {self.reject_hold_sec:.1f} detik."
+            )
+            self.publish_all()
+            return
 
-    ##################################################
-    # RVIZ Marker
-    ##################################################
-    def publish_marker(self):
-        markers = MarkerArray()
+        record = self.tree_database.get(tree_id)
+        if record is None:
+            self.get_logger().warning(f"Update untuk ID pohon tidak dikenal: {tree_id}.")
+            return
 
-        # Membersihkan teks lama di RVIZ sebelum mempublikasikan ulang
-        # Ini mencegah teks pohon hantu tertinggal di layar setelah dihapus
-        delete_all_marker = Marker()
-        delete_all_marker.action = Marker.DELETEALL
-        markers.markers.append(delete_all_marker)
+        if bool(msg.inspected):
+            record.inspected = True
+        if hasattr(msg, "validated") and bool(msg.validated):
+            record.validated = True
+        if 0.0 <= float(msg.confidence) <= 1.0:
+            record.confidence = max(record.confidence, float(msg.confidence))
+        if self._finite(msg.x, msg.y, msg.z) and not (
+            msg.x == 0.0 and msg.y == 0.0 and msg.z == 0.0
+        ):
+            record.x = float(msg.x)
+            record.y = float(msg.y)
+            record.z = float(msg.z)
+        record.last_seen = now
+        self.publish_all()
 
-        ##################################################
-        # Sphere marker
-        ##################################################
-        sphere = Marker()
-        sphere.header.frame_id = self.frame_id
-        sphere.header.stamp = self.get_clock().now().to_msg()
-        sphere.ns = "trees"
-        sphere.id = 0
-        sphere.type = Marker.SPHERE_LIST
-        sphere.action = Marker.ADD
+    def housekeeping(self) -> None:
+        now = self.now_sec()
+        expired_rejections = [
+            tree_id for tree_id, expiry in self.rejected_until.items() if expiry <= now
+        ]
+        for tree_id in expired_rejections:
+            self.rejected_until.pop(tree_id, None)
 
-        sphere.scale.x = 0.5
-        sphere.scale.y = 0.5
-        sphere.scale.z = 0.5
-        sphere.pose.orientation.w = 1.0
+        stale_ids = []
+        for tree_id, record in self.tree_database.items():
+            if record.inspected:
+                continue
+            if now - record.last_seen > self.tree_stale_sec:
+                stale_ids.append(tree_id)
+        for tree_id in stale_ids:
+            self.tree_database.pop(tree_id, None)
+            self.get_logger().warning(f"Pohon stale ID={tree_id} dihapus dari peta aktif.")
 
-        for tree in self.tree_database.values():
-            p = Point()
-            p.x = tree["x"]
-            p.y = tree["y"]
-            p.z = tree["z"]
-            sphere.points.append(p)
+        self.publish_all()
 
-        markers.markers.append(sphere)
+    def _to_tree_msg(self, record: TreeRecord) -> Tree:
+        tree = Tree()
+        tree.id = int(record.tree_id)
+        tree.x = float(record.x)
+        tree.y = float(record.y)
+        tree.z = float(record.z)
+        tree.confidence = float(record.confidence)
+        tree.inspected = bool(record.inspected)
+        if hasattr(tree, "validated"):
+            tree.validated = bool(record.validated)
+        return tree
 
-        ##################################################
-        # Text marker
-        ##################################################
-        marker_id = 1000
+    def publish_all(self) -> None:
+        array = TreeArray()
+        for tree_id in sorted(self.tree_database):
+            array.trees.append(self._to_tree_msg(self.tree_database[tree_id]))
+        self.tree_pub.publish(array)
+        self.publish_markers()
 
-        for tree in self.tree_database.values():
+    def publish_markers(self) -> None:
+        marker_array = MarkerArray()
+        clear = Marker()
+        clear.action = Marker.DELETEALL
+        marker_array.markers.append(clear)
+
+        marker_id = 0
+        for record in self.tree_database.values():
+            marker = Marker()
+            marker.header.frame_id = self.world_frame
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.ns = "pcl_trees"
+            marker.id = marker_id
+            marker_id += 1
+            marker.type = Marker.CYLINDER
+            marker.action = Marker.ADD
+            marker.pose.position.x = record.x
+            marker.pose.position.y = record.y
+            marker.pose.position.z = max(0.5, record.z)
+            marker.pose.orientation.w = 1.0
+            diameter = max(0.25, 2.0 * record.radius)
+            marker.scale.x = diameter
+            marker.scale.y = diameter
+            marker.scale.z = max(1.0, record.height)
+            marker.color.a = 0.85
+            if record.inspected:
+                marker.color.g = 1.0
+            elif record.validated:
+                marker.color.r = 1.0
+                marker.color.g = 0.65
+            else:
+                marker.color.r = 0.7
+                marker.color.g = 0.7
+                marker.color.b = 0.7
+            marker_array.markers.append(marker)
+
             text = Marker()
-            text.header.frame_id = self.frame_id
-            text.header.stamp = self.get_clock().now().to_msg()
-            text.ns = "tree_id"
+            text.header = marker.header
+            text.ns = "pcl_tree_labels"
             text.id = marker_id
             marker_id += 1
-
             text.type = Marker.TEXT_VIEW_FACING
             text.action = Marker.ADD
-
-            text.pose.position.x = tree["x"]
-            text.pose.position.y = tree["y"]
-            text.pose.position.z = 1.5
+            text.pose.position.x = record.x
+            text.pose.position.y = record.y
+            text.pose.position.z = max(2.0, record.z + record.height * 0.5 + 0.5)
             text.pose.orientation.w = 1.0
-            text.scale.z = 0.5
+            text.scale.z = 0.45
+            text.color.a = 1.0
+            text.color.r = 1.0
+            text.color.g = 1.0
+            text.color.b = 1.0
+            status = "DONE" if record.inspected else "READY"
+            text.text = f"ID:{record.tree_id} {status} C:{record.confidence:.2f}"
+            marker_array.markers.append(text)
 
-            status = "DONE" if tree["inspected"] else "NEW"
-            text.text = f"ID:{tree['id']} C:{tree['confidence']:.2f} {status}"
+        self.marker_pub.publish(marker_array)
 
-            markers.markers.append(text)
 
-        self.marker_pub.publish(markers)
-
-##################################################
-def main(args=None):
+def main(args=None) -> None:
     rclpy.init(args=args)
-    node = TreeMapper()
-    
+    node = PclTreeMapper()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
-    node.destroy_node()
-    rclpy.shutdown()
 
 if __name__ == "__main__":
     main()

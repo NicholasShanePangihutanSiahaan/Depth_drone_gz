@@ -1,0 +1,57 @@
+/**:
+  ros__parameters:
+    world_frame: odom
+
+flight_manager:
+  ros__parameters:
+    hover_alt_tolerance: 0.25
+    hover_speed_tolerance: 0.20
+    hover_stable_sec: 1.5
+
+mission_state_machine:
+  ros__parameters:
+    flight_mode: GUIDED
+    flight_altitude: 3.0
+    explore_step: 2.0
+    crab_step: 1.5
+    end_of_row_dist: 10.0
+    end_of_farm_dist: 20.0
+    tree_search_radius: 18.0
+    tree_min_confidence: 0.35
+    orbit_radius: 3.0
+
+pcl_tree_mapper:
+  ros__parameters:
+    pcl_topic: /perception/pcl/tracked_cylinders
+    min_seen_count: 2
+    max_missed_count: 8
+    min_confidence: 0.25
+    min_radius: 0.08
+    max_radius: 1.20
+    min_height: 0.8
+    max_height: 20.0
+    enable_fallback_points: false
+
+dynamic_orbit_controller:
+  ros__parameters:
+    orbit_radius: 3.0
+    orbit_altitude: 3.0
+    orbit_velocity: 0.8
+    orbit_direction: 1.0
+    yaw_offset: 0.0
+
+vortex_avoidance_controller:
+  ros__parameters:
+    influence_radius: 3.0
+    hard_radius: 1.2
+    repulsive_gain: 1.1
+    vortex_gain: 0.55
+
+velocity_controller:
+  ros__parameters:
+    kp_xy: 0.65
+    kp_z: 0.55
+    kp_yaw: 1.0
+    max_velocity_xy: 1.0
+    max_velocity_z: 0.45
+    max_velocity_yaw: 0.55

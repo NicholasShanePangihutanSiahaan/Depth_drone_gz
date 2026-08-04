@@ -1,137 +1,104 @@
 #!/usr/bin/env python3
 
 import math
+
 import rclpy
+from geometry_msgs.msg import PointStamped
+from rclpy.duration import Duration
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
+from rclpy.time import Time
+from tf2_ros import Buffer, TransformException, TransformListener
 
-from geometry_msgs.msg import Point, PoseStamped
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from beehive_drone.mission_params import MissionConfig
 
-def quaternion_to_yaw(qx, qy, qz, qw):
-    """Konversi Quaternion ke sudut Yaw"""
-    siny_cosp = 2.0 * (qw * qz + qx * qy)
-    cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
-    return math.atan2(siny_cosp, cosy_cosp)
+
+def rotate_vector_by_quaternion(x: float, y: float, z: float, q):
+    # Efficient q * v * q^-1 expansion.
+    tx = 2.0 * (q.y * z - q.z * y)
+    ty = 2.0 * (q.z * x - q.x * z)
+    tz = 2.0 * (q.x * y - q.y * x)
+    rx = x + q.w * tx + (q.y * tz - q.z * ty)
+    ry = y + q.w * ty + (q.z * tx - q.x * tz)
+    rz = z + q.w * tz + (q.x * ty - q.y * tx)
+    return rx, ry, rz
+
 
 class TreeLocalizer(Node):
-    def __init__(self):
+    """Transforms camera optical points into the mission world frame using TF2."""
+
+    def __init__(self) -> None:
         super().__init__("tree_localizer")
+        self.declare_parameter("world_frame", MissionConfig.WORLD_FRAME)
+        self.declare_parameter("input_topic", "/perception/tree_position_camera")
+        self.declare_parameter("output_topic", "/perception/tree_position_world")
+        self.world_frame = str(self.get_parameter("world_frame").value)
+        input_topic = str(self.get_parameter("input_topic").value)
+        output_topic = str(self.get_parameter("output_topic").value)
 
-        # ==========================================
-        # Camera Intrinsic (ZED 2i)
-        # ==========================================
-        self.fx = 381.3611502479812
-        self.fy = 381.3611502479812
-        self.cx = 320.0
-        self.cy = 240.0
-
-        # ==========================================
-        # Variabel Pose Drone
-        # ==========================================
-        self.drone_x = 0.0
-        self.drone_y = 0.0
-        self.drone_z = 0.0
-        self.drone_yaw = 0.0
-        self.have_pose = False
-
-        qos_sensor = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10
+        self.tf_buffer = Buffer(cache_time=Duration(seconds=10.0))
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.publisher = self.create_publisher(PointStamped, output_topic, 10)
+        self.create_subscription(
+            PointStamped, input_topic, self.point_callback, qos_profile_sensor_data
         )
-
-        # ==========================================
-        # Subscriber & Publisher
-        # ==========================================
-        # DENGARKAN POSE DRONE UNTUK TITIK ACUAN
-        self.pose_sub = self.create_subscription(
-            PoseStamped,
-            "/mavros/local_position/pose",
-            self.pose_callback,
-            qos_sensor
-        )
-
-        self.pixel_sub = self.create_subscription(
-            Point,
-            "/perception/tree_pixel",
-            self.pixel_callback,
-            10
-        )
-
-        # PUBLIKASIKAN KOORDINAT DUNIA (WORLD FRAME)
-        self.pub = self.create_publisher(
-            Point,
-            "/perception/tree_position_camera",
-            10
-        )
-
-        self.get_logger().info("Tree Localizer (World Frame) Started")
-
-    def pose_callback(self, msg):
-        self.drone_x = msg.pose.position.x
-        self.drone_y = msg.pose.position.y
-        self.drone_z = msg.pose.position.z
-        
-        qx = msg.pose.orientation.x
-        qy = msg.pose.orientation.y
-        qz = msg.pose.orientation.z
-        qw = msg.pose.orientation.w
-        self.drone_yaw = quaternion_to_yaw(qx, qy, qz, qw)
-        
-        self.have_pose = True
-
-    def pixel_callback(self, msg):
-        if not self.have_pose:
-            return
-
-        u = msg.x
-        v = msg.y
-        Z_cam = msg.z  # Ini adalah kedalaman asli dari sensor (misal 7.15 meter)
-
-        if Z_cam <= 0.0:
-            return
-
-        # 1. Proyeksi Relatif ke Frame Kamera
-        X_cam = (u - self.cx) * Z_cam / self.fx
-        Y_cam = (v - self.cy) * Z_cam / self.fy
-
-        # 2. Transformasi ke Orientasi Fisik Drone (base_link)
-        # Asumsi standar ROS: Kamera menghadap sumbu X drone
-        # Kamera Z (Maju) = Drone X (Maju)
-        # Kamera X (Kanan) = Drone -Y (Kanan)
-        bl_x = Z_cam
-        bl_y = -X_cam
-
-        # 3. Transformasi Rotasi ke World Frame (Odometry) menggunakan Yaw Drone
-        yaw = self.drone_yaw
-        world_x = self.drone_x + (bl_x * math.cos(yaw)) - (bl_y * math.sin(yaw))
-        world_y = self.drone_y + (bl_x * math.sin(yaw)) + (bl_y * math.cos(yaw))
-        
-        # Kalkulasi estimasi tinggi pohon
-        world_z = self.drone_z - Y_cam 
-
-        # 4. Kirim Titik yang Sudah Akurat ke Tree Mapper
-        point = Point()
-        point.x = world_x
-        point.y = world_y
-        point.z = world_z
-
-        self.pub.publish(point)
-
+        self.last_warning_time = -1e9
         self.get_logger().info(
-            f"Proyeksi Pohon -> World X: {world_x:.2f}m, World Y: {world_y:.2f}m (Jarak Aktual: {Z_cam:.2f}m)"
+            f"Tree Localizer TF aktif: {input_topic} -> {output_topic} ({self.world_frame})."
         )
 
+    def now_sec(self) -> float:
+        return self.get_clock().now().nanoseconds * 1e-9
 
-def main(args=None):
+    def point_callback(self, msg: PointStamped) -> None:
+        if not msg.header.frame_id:
+            self.get_logger().warning("Point kamera tanpa frame_id diabaikan.")
+            return
+        if not all(
+            math.isfinite(float(v)) for v in (msg.point.x, msg.point.y, msg.point.z)
+        ):
+            return
+
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                self.world_frame,
+                msg.header.frame_id,
+                Time.from_msg(msg.header.stamp),
+                timeout=Duration(seconds=0.08),
+            )
+        except TransformException as exc:
+            now = self.now_sec()
+            if now - self.last_warning_time > 1.0:
+                self.last_warning_time = now
+                self.get_logger().warning(f"TF point kamera gagal: {exc}")
+            return
+
+        rotation = transform.transform.rotation
+        rx, ry, rz = rotate_vector_by_quaternion(
+            msg.point.x, msg.point.y, msg.point.z, rotation
+        )
+        translation = transform.transform.translation
+
+        output = PointStamped()
+        output.header.stamp = msg.header.stamp
+        output.header.frame_id = self.world_frame
+        output.point.x = float(rx + translation.x)
+        output.point.y = float(ry + translation.y)
+        output.point.z = float(rz + translation.z)
+        self.publisher.publish(output)
+
+
+def main(args=None) -> None:
     rclpy.init(args=args)
     node = TreeLocalizer()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    node.destroy_node()
-    rclpy.shutdown()
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()
