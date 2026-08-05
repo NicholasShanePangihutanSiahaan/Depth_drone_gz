@@ -26,13 +26,16 @@ mission_state_machine:
     map_startup_timeout_sec: 35.0
     map_loss_grace_sec: 3.0
 
-    explore_step: 1.0
-    crab_step: 1.0
-    end_of_row_dist: 10.0
-    end_of_farm_dist: 20.0
     tree_search_radius: 18.0
     tree_min_confidence: 0.35
+    approach_distance: 3.0
+    approach_tolerance: 0.25
     orbit_radius: 3.0
+    pre_orbit_hover_sec: 3.0
+    post_orbit_hover_sec: 2.0
+    return_hover_sec: 1.5
+    home_hover_sec: 2.0
+    hover_wait_timeout_sec: 30.0
 
 pcl_tree_mapper:
   ros__parameters:
@@ -55,35 +58,36 @@ dynamic_orbit_controller:
   ros__parameters:
     orbit_radius: 3.0
     orbit_altitude: 3.0
-    orbit_velocity: 0.55
+    orbit_velocity: 0.30
     orbit_direction: 1.0
-    lookahead_distance: 0.8
+    lookahead_distance: 0.35
+    completion_margin: 0.0
     yaw_offset: 0.0
 
 vortex_avoidance_controller:
   ros__parameters:
     influence_radius: 4.5
-    hard_radius: 2.0
-    active_tree_keepout_radius: 2.3
-    emergency_stop_radius: 1.25
-    repulsive_gain: 2.2
-    vortex_gain: 1.1
-    attraction_gain: 0.8
-    max_target_shift: 1.2
+    hard_radius: 2.2
+    active_tree_keepout_radius: 2.2
+    emergency_stop_radius: 1.8
+    repulsive_gain: 2.5
+    vortex_gain: 0.8
+    attraction_gain: 0.6
+    max_target_shift: 0.6
     goal_timeout_sec: 1.0
     require_map_ready: true
 
 velocity_controller:
   ros__parameters:
-    kp_xy: 0.55
+    kp_xy: 0.45
     kp_z: 0.80
     kp_yaw: 1.0
-    max_velocity_xy: 0.45
+    max_velocity_xy: 0.30
     max_velocity_z: 0.60
     max_velocity_yaw: 0.45
-    max_acceleration_xy: 0.35
+    max_acceleration_xy: 0.20
     max_acceleration_z: 0.50
-    goal_threshold_xy: 0.20
+    goal_threshold_xy: 0.15
     goal_threshold_z: 0.10
     target_timeout_sec: 1.0
     pose_timeout_sec: 1.5

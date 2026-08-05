@@ -100,7 +100,7 @@ class VortexAvoidanceController(Node):
         )
         self.create_timer(0.05, self.control_loop)
         self.get_logger().info(
-            "Vortex safety revision aktif; active tree tetap memiliki keep-out radius."
+            "Vortex safety aktif; pohon target bebas diorbit di luar keep-out radius."
         )
 
     def now_sec(self) -> float:
@@ -173,20 +173,21 @@ class VortexAvoidanceController(Node):
             self.publish_hold()
             return
 
-        vertical_states = {
-            "PRESTREAM",
+        pass_through_states = {
             "SET_MODE",
             "ARM",
             "TAKEOFF",
             "HOLD",
-            "WAIT_MAP",
-            "MAP_HOLD",
+            "SEARCH_TREE",
+            "POST_ORBIT_HOVER",
+            "HOVER_AT_PRE_ORBIT",
+            "HOME_HOVER",
             "LAND",
             "WAIT_LANDED",
             "ABORTED",
             "DONE",
         }
-        if self.fsm_state in vertical_states:
+        if self.fsm_state in pass_through_states:
             safe = PoseStamped()
             safe.header.frame_id = self.world_frame
             safe.header.stamp = self.get_clock().now().to_msg()
@@ -195,13 +196,10 @@ class VortexAvoidanceController(Node):
             return
 
         map_required_states = {
-            "EXPLORE_ROW",
-            "CRAB_SCAN",
             "APPROACH_TREE",
-            "VERIFY_TREE",
+            "HOVER_BEFORE_ORBIT",
             "PREPARE_ORBIT",
             "WAIT_ORBIT",
-            "FINAL_SCAN",
         }
         if (
             self.require_map_ready
@@ -231,20 +229,30 @@ class VortexAvoidanceController(Node):
 
         for tree in self.trees:
             is_active = int(tree.id) == self.active_tree_id
-            local_hard_radius = (
-                self.active_tree_keepout_radius if is_active else self.hard_radius
-            )
-            local_influence_radius = max(
-                self.influence_radius, local_hard_radius + 0.8
-            )
-
             dx = cx - float(tree.x)
             dy = cy - float(tree.y)
             distance = math.hypot(dx, dy)
-            if distance <= 1e-4 or distance >= local_influence_radius:
+            if distance <= 1e-4:
                 continue
 
-            closest_obstacle = min(closest_obstacle, distance)
+            # Pohon target boleh diorbit pada radius misi. Target aktif hanya
+            # menghasilkan tolakan bila drone masuk ke keep-out radius; pohon
+            # lain tetap menggunakan influence radius penuh.
+            if is_active:
+                closest_obstacle = min(closest_obstacle, distance)
+                if distance >= self.active_tree_keepout_radius:
+                    continue
+                local_hard_radius = self.active_tree_keepout_radius
+                local_influence_radius = self.active_tree_keepout_radius + 0.8
+            else:
+                local_hard_radius = self.hard_radius
+                local_influence_radius = max(
+                    self.influence_radius, local_hard_radius + 0.8
+                )
+                if distance >= local_influence_radius:
+                    continue
+                closest_obstacle = min(closest_obstacle, distance)
+
             ux = dx / distance
             uy = dy / distance
             effective_distance = max(distance, local_hard_radius * 0.35)
@@ -259,17 +267,17 @@ class VortexAvoidanceController(Node):
             field_x += repulsive * ux
             field_y += repulsive * uy
 
-            tangent_a = (-uy, ux)
-            tangent_b = (uy, -ux)
-            dot_a = tangent_a[0] * goal_ux + tangent_a[1] * goal_uy
-            dot_b = tangent_b[0] * goal_ux + tangent_b[1] * goal_uy
-            tangent = tangent_a if dot_a >= dot_b else tangent_b
-            vortex_scale = 0.35 if is_active else 1.0
-            vortex_weight = vortex_scale * self.vortex_gain * (
-                local_influence_radius - distance
-            ) / local_influence_radius
-            field_x += vortex_weight * tangent[0]
-            field_y += vortex_weight * tangent[1]
+            if not is_active:
+                tangent_a = (-uy, ux)
+                tangent_b = (uy, -ux)
+                dot_a = tangent_a[0] * goal_ux + tangent_a[1] * goal_uy
+                dot_b = tangent_b[0] * goal_ux + tangent_b[1] * goal_uy
+                tangent = tangent_a if dot_a >= dot_b else tangent_b
+                vortex_weight = self.vortex_gain * (
+                    local_influence_radius - distance
+                ) / local_influence_radius
+                field_x += vortex_weight * tangent[0]
+                field_y += vortex_weight * tangent[1]
 
         if closest_obstacle < self.emergency_stop_radius:
             self.publish_hold()

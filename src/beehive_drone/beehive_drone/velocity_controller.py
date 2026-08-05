@@ -151,13 +151,10 @@ class VelocityController(Node):
             return
 
         map_required_states = {
-            "EXPLORE_ROW",
-            "CRAB_SCAN",
             "APPROACH_TREE",
-            "VERIFY_TREE",
+            "HOVER_BEFORE_ORBIT",
             "PREPARE_ORBIT",
             "WAIT_ORBIT",
-            "FINAL_SCAN",
         }
         if (
             self.require_map_ready
