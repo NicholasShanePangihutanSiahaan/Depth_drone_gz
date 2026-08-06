@@ -5,9 +5,8 @@ import math
 
 
 class MissionConfig:
-    # Internal navigation frame. MAVROS local pose on the current simulation
-    # publishes frame_id="map", therefore every mission target and tree map
-    # must use the same frame.
+    # Internal navigation frame for the real vehicle. The mission, PCL map,
+    # and MAVROS local pose must all be aligned to the same local odometry frame.
     WORLD_FRAME = "map"
     PCL_FRAME = "plantation"
 
@@ -27,6 +26,11 @@ class MissionConfig:
     MAP_TIMEOUT_SEC = 6.0
     STATE_TIMEOUT_SEC = 90.0
     DISCONNECT_GRACE_SEC = 8.0
+
+    # RC/pilot takeover. Any confirmed flight-mode change away from the
+    # autonomous mode permanently disables autonomy for the current process.
+    ENABLE_RC_TAKEOVER = True
+    RC_TAKEOVER_CONFIRM_SEC = 0.30
 
     # Map safety gate
     REQUIRE_TREE_MAP = True
@@ -50,46 +54,46 @@ class MissionConfig:
     VERIFY_POSITION_TOLERANCE = 1.0
 
     # Single-tree approach/hover sequence
-    APPROACH_DISTANCE = 2.0
-    APPROACH_TOLERANCE = 0.35
-    PRE_ORBIT_HOVER_SEC = 2.0
+    APPROACH_DISTANCE = 3.0
+    APPROACH_TOLERANCE = 0.25
+    PRE_ORBIT_HOVER_SEC = 3.0
     POST_ORBIT_HOVER_SEC = 2.0
     RETURN_HOVER_SEC = 1.5
     HOME_HOVER_SEC = 2.0
 
     # Orbit
-    ORBIT_RADIUS = 2.0
+    ORBIT_RADIUS = 3.0
     ORBIT_ALTITUDE = FLIGHT_ALTITUDE
-    ORBIT_VELOCITY = 0.55
+    ORBIT_VELOCITY = 0.30
     ORBIT_DIRECTION = 1.0
-    ORBIT_LOOKAHEAD_DISTANCE = 0.8
+    ORBIT_LOOKAHEAD_DISTANCE = 0.35
     ORBIT_RADIAL_GAIN = 0.35
-    ORBIT_RADIUS_TOLERANCE = 0.45
-    ORBIT_START_TOLERANCE = 0.65
+    ORBIT_RADIUS_TOLERANCE = 0.30
+    ORBIT_START_TOLERANCE = 0.45
     ORBIT_COMPLETION_MARGIN = 0.0
     ORBIT_TIMEOUT_SEC = 90.0
     YAW_OFFSET = 0.0
 
     # Obstacle avoidance
     OBSTACLE_INFLUENCE_RADIUS = 4.5
-    OBSTACLE_HARD_RADIUS = 2.0
-    ACTIVE_TARGET_KEEP_OUT_RADIUS = 1.5
-    EMERGENCY_STOP_RADIUS = 1.25
-    REPULSIVE_GAIN = 2.2
-    VORTEX_GAIN = 1.1
-    ATTRACTION_GAIN = 0.8
-    MAX_TARGET_SHIFT = 1.2
+    OBSTACLE_HARD_RADIUS = 2.2
+    ACTIVE_TARGET_KEEP_OUT_RADIUS = 2.2
+    EMERGENCY_STOP_RADIUS = 1.8
+    REPULSIVE_GAIN = 2.5
+    VORTEX_GAIN = 0.8
+    ATTRACTION_GAIN = 0.6
+    MAX_TARGET_SHIFT = 0.6
 
     # Velocity controller
-    KP_XY = 0.55
+    KP_XY = 0.45
     KP_Z = 0.80
     KP_YAW = 1.0
-    MAX_VELOCITY_XY = 0.45
+    MAX_VELOCITY_XY = 0.30
     MAX_VELOCITY_Z = 0.60
     MAX_VELOCITY_YAW = 0.45
-    MAX_ACCELERATION_XY = 0.35
+    MAX_ACCELERATION_XY = 0.20
     MAX_ACCELERATION_Z = 0.50
-    GOAL_THRESHOLD_XY = 0.20
+    GOAL_THRESHOLD_XY = 0.15
     GOAL_THRESHOLD_Z = 0.10
     TARGET_TIMEOUT_SEC = 1.0
 

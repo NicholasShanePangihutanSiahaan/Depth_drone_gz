@@ -206,12 +206,17 @@ class FlightManager(Node):
             success = bool(
                 getattr(response, "success", getattr(response, "mode_sent", False))
             )
+            result = int(getattr(response, "result", -1))
             if success:
-                self.get_logger().info(f"Perintah {kind} diterima autopilot.")
+                self.get_logger().info(
+                    f"Perintah {kind} diterima autopilot; MAV_RESULT={result}."
+                )
             else:
                 if kind == "takeoff":
                     self.takeoff_latched = False
-                self.get_logger().warning(f"Perintah {kind} ditolak autopilot.")
+                self.get_logger().warning(
+                    f"Perintah {kind} ditolak autopilot; MAV_RESULT={result}."
+                )
         except Exception as exc:  # noqa: BLE001
             if kind == "takeoff":
                 self.takeoff_latched = False
@@ -285,7 +290,8 @@ def main(args=None) -> None:
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
