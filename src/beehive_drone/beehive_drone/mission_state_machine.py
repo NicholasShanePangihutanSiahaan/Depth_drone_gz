@@ -15,7 +15,7 @@ from beehive_drone.mission_params import MissionConfig
 
 
 class MissionStateMachine(Node):
-    """Single-tree mission: takeoff, one orbit, return home, and land."""
+    """Single-tree mission with reverse return path and pilot takeover safety."""
 
     def __init__(self) -> None:
         super().__init__("mission_state_machine")
@@ -152,6 +152,8 @@ class MissionStateMachine(Node):
         self.target_tree: Optional[Tree] = None
         self.pre_orbit_point: Optional[Tuple[float, float, float]] = None
         self.post_orbit_hold_point: Optional[Tuple[float, float, float, float]] = None
+        self.return_path_samples: list[Tuple[float, float, float, float]] = []
+        self.return_retrace_index: Optional[int] = None
         self.orbit_prepare_start: Optional[float] = None
         self.orbit_start_time: Optional[float] = None
         self.orbit_status = "IDLE"
@@ -218,6 +220,10 @@ class MissionStateMachine(Node):
             self.takeoff_start_z = self.altitude
             self.takeoff_command_sent = False
             self.unexpected_disarm_since = None
+            self.return_path_samples = []
+            self.return_retrace_index = None
+        if new_state == "RETRACE_HOME":
+            self.return_retrace_index = None
         if new_state == "LAND":
             self.last_land_command_time = -1e9
         text = f"{old_state} -> {new_state}"
@@ -299,6 +305,7 @@ class MissionStateMachine(Node):
             "POST_ORBIT_HOVER",
             "RETURN_PRE_ORBIT",
             "HOVER_AT_PRE_ORBIT",
+            "RETRACE_HOME",
             "RETURN_HOME",
             "HOME_HOVER",
         }
@@ -489,6 +496,34 @@ class MissionStateMachine(Node):
             return False
         return False
 
+    def record_return_path_sample(self) -> None:
+        if self.current_pose is None:
+            return
+        if self.state not in {
+            "TAKEOFF",
+            "SEARCH_TREE",
+            "APPROACH_TREE",
+            "HOVER_BEFORE_ORBIT",
+            "PREPARE_ORBIT",
+        }:
+            return
+
+        p = self.current_pose.pose.position
+        sample = (
+            float(p.x),
+            float(p.y),
+            float(p.z),
+            yaw_from_quaternion(self.current_pose.pose.orientation),
+        )
+        if self.return_path_samples:
+            last_x, last_y, last_z, _ = self.return_path_samples[-1]
+            if (
+                distance_2d(last_x, last_y, sample[0], sample[1]) < 0.15
+                and abs(last_z - sample[2]) < 0.10
+            ):
+                return
+        self.return_path_samples.append(sample)
+
     def mark_target_inspected(self) -> None:
         if self.target_tree is None:
             return
@@ -544,6 +579,7 @@ class MissionStateMachine(Node):
 
         cx = float(self.current_pose.pose.position.x)
         cy = float(self.current_pose.pose.position.y)
+        self.record_return_path_sample()
 
         tree_dependent_states = {
             "APPROACH_TREE",
@@ -759,7 +795,25 @@ class MissionStateMachine(Node):
             if self.hover_stage_complete(self.return_hover_sec):
                 self.set_active_tree(-1)
                 self.target_tree = None
-                self.transition("RETURN_HOME", "Hover di titik sebelum orbit selesai")
+                self.transition("RETRACE_HOME", "Hover di titik sebelum orbit selesai")
+
+        elif self.state == "RETRACE_HOME":
+            if not self.return_path_samples:
+                self.transition("RETURN_HOME", "Jejak balik tidak tersedia; direct home")
+                return
+            if self.return_retrace_index is None:
+                self.return_retrace_index = len(self.return_path_samples) - 1
+
+            if self.return_retrace_index < 0:
+                self.transition("HOME_HOVER", "Jejak balik selesai")
+                return
+
+            point_x, point_y, point_z, point_yaw = self.return_path_samples[
+                self.return_retrace_index
+            ]
+            self.publish_goal(point_x, point_y, point_yaw, z=point_z)
+            if distance_2d(cx, cy, point_x, point_y) <= self.approach_tolerance:
+                self.return_retrace_index -= 1
 
         elif self.state == "RETURN_HOME":
             yaw = math.atan2(self.home_y - cy, self.home_x - cx)

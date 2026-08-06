@@ -19,8 +19,14 @@ def generate_launch_description():
     use_yolo_fallback = LaunchConfiguration("use_yolo_fallback")
     use_analyzer = LaunchConfiguration("use_analyzer")
     hold_after_takeoff = LaunchConfiguration("hold_after_takeoff")
+    use_depth_pointcloud = LaunchConfiguration("use_depth_pointcloud")
     point_cloud_topic = LaunchConfiguration("point_cloud_topic")
+    rgb_topic = LaunchConfiguration("rgb_topic")
+    depth_topic = LaunchConfiguration("depth_topic")
+    camera_info_topic = LaunchConfiguration("camera_info_topic")
+    depth_camera_info_topic = LaunchConfiguration("depth_camera_info_topic")
     odom_topic = LaunchConfiguration("odom_topic")
+    mission_output_dir = LaunchConfiguration("mission_output_dir")
     yolo_model_path = LaunchConfiguration("yolo_model_path")
     yolo_device = LaunchConfiguration("yolo_device")
 
@@ -30,15 +36,37 @@ def generate_launch_description():
             DeclareLaunchArgument("use_yolo_fallback", default_value="false"),
             DeclareLaunchArgument("use_analyzer", default_value="true"),
             DeclareLaunchArgument("hold_after_takeoff", default_value="false"),
+            DeclareLaunchArgument("use_depth_pointcloud", default_value="true"),
             DeclareLaunchArgument(
                 "point_cloud_topic", default_value="/zed2i/depth/points"
             ),
+            DeclareLaunchArgument("rgb_topic", default_value="/zed2i/left/image_rect_color"),
+            DeclareLaunchArgument("depth_topic", default_value="/zed2i/depth/depth_registered"),
             DeclareLaunchArgument(
-                "odom_topic", default_value="/mavros/odometry/out"
+                "camera_info_topic", default_value="/zed2i/left/camera_info"
+            ),
+            DeclareLaunchArgument(
+                "depth_camera_info_topic", default_value="/zed2i/depth/camera_info"
+            ),
+            DeclareLaunchArgument("odom_topic", default_value="/mavros/odometry/out"),
+            DeclareLaunchArgument(
+                "mission_output_dir", default_value="~/beehive_mission_results"
             ),
             DeclareLaunchArgument("yolo_model_path", default_value=""),
             DeclareLaunchArgument("yolo_device", default_value="cpu"),
 
+            Node(
+                package="depth_image_proc",
+                executable="point_cloud_xyz_node",
+                name="depth_to_pointcloud",
+                output="screen",
+                condition=IfCondition(use_depth_pointcloud),
+                remappings=[
+                    ("image_rect", depth_topic),
+                    ("camera_info", depth_camera_info_topic),
+                    ("points", point_cloud_topic),
+                ],
+            ),
             Node(
                 package="point-cloud-test",
                 executable="pcl_proc_node",
@@ -61,10 +89,22 @@ def generate_launch_description():
                 output="screen",
                 condition=IfCondition(use_pcl),
                 arguments=[
-                    "--x", "0", "--y", "0", "--z", "0",
-                    "--roll", "0", "--pitch", "0", "--yaw", "0",
-                    "--frame-id", "map",
-                    "--child-frame-id", "plantation",
+                    "--x",
+                    "0",
+                    "--y",
+                    "0",
+                    "--z",
+                    "0",
+                    "--roll",
+                    "0",
+                    "--pitch",
+                    "0",
+                    "--yaw",
+                    "0",
+                    "--frame-id",
+                    "map",
+                    "--child-frame-id",
+                    "plantation",
                 ],
             ),
             Node(
@@ -72,6 +112,7 @@ def generate_launch_description():
                 executable="pcl_tree_mapper",
                 name="pcl_tree_mapper",
                 output="screen",
+                condition=IfCondition(use_pcl),
                 parameters=[
                     config_file,
                     {
@@ -89,7 +130,13 @@ def generate_launch_description():
                 condition=IfCondition(use_yolo_fallback),
                 parameters=[
                     config_file,
-                    {"model_path": yolo_model_path, "device": yolo_device},
+                    {
+                        "model_path": yolo_model_path,
+                        "device": yolo_device,
+                        "rgb_topic": rgb_topic,
+                        "depth_topic": depth_topic,
+                        "camera_info_topic": camera_info_topic,
+                    },
                 ],
             ),
             Node(
@@ -148,7 +195,10 @@ def generate_launch_description():
                 name="mission_analyzer",
                 output="screen",
                 condition=IfCondition(use_analyzer),
-                parameters=[config_file],
+                parameters=[
+                    config_file,
+                    {"output_dir": mission_output_dir},
+                ],
             ),
         ]
     )

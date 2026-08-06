@@ -14,6 +14,7 @@ from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, Float32, Int32, String
 from uav_interfaces.msg import TreeArray
+from PIL import Image, ImageDraw, ImageFont
 
 
 TRAJECTORY_FIELDS = [
@@ -198,6 +199,8 @@ class MissionAnalyzer(Node):
         self.plt = None
         self.live_figure = None
         self.live_axis = None
+        self.matplotlib = None
+        self.matplotlib_available = False
 
         self.trajectory_path = self.run_dir / "trajectory_detailed.csv"
         self.states_path = self.run_dir / "state_events.csv"
@@ -681,14 +684,21 @@ class MissionAnalyzer(Node):
 
     def _ensure_matplotlib(self, live: bool = False) -> None:
         if self.plt is not None:
+            self.matplotlib_available = True
             return
-        import matplotlib
+        try:
+            import matplotlib
 
-        if not live:
-            matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
+            if not live:
+                matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
 
-        self.plt = plt
+            self.plt = plt
+            self.matplotlib_available = True
+        except Exception as exc:  # noqa: BLE001
+            self.matplotlib_available = False
+            if live:
+                raise exc
 
     def draw_live_map(self) -> None:
         if self.live_axis is None or self.live_figure is None:
@@ -795,20 +805,231 @@ class MissionAnalyzer(Node):
     def save_plots(self) -> None:
         if not self.rows or not (self.save_2d_png or self.save_3d_png):
             return
-        self._ensure_matplotlib(live=self.enable_live_plot)
+        try:
+            self._ensure_matplotlib(live=self.enable_live_plot)
+        except Exception:
+            self.matplotlib_available = False
 
-        if self.save_2d_png:
-            figure, axis = self.plt.subplots(figsize=(10, 8))
-            self._draw_2d(axis)
-            figure.savefig(self.map_2d_path, dpi=self.plot_dpi, bbox_inches="tight")
-            self.plt.close(figure)
+        if self.matplotlib_available and self.plt is not None:
+            if self.save_2d_png:
+                figure, axis = self.plt.subplots(figsize=(10, 8))
+                self._draw_2d(axis)
+                figure.savefig(self.map_2d_path, dpi=self.plot_dpi, bbox_inches="tight")
+                self.plt.close(figure)
 
-        if self.save_3d_png:
-            figure = self.plt.figure(figsize=(11, 9))
-            axis = figure.add_subplot(111, projection="3d")
-            self._draw_3d(axis)
-            figure.savefig(self.map_3d_path, dpi=self.plot_dpi, bbox_inches="tight")
-            self.plt.close(figure)
+            if self.save_3d_png:
+                figure = self.plt.figure(figsize=(11, 9))
+                axis = figure.add_subplot(111, projection="3d")
+                self._draw_3d(axis)
+                figure.savefig(self.map_3d_path, dpi=self.plot_dpi, bbox_inches="tight")
+                self.plt.close(figure)
+            return
+
+        self._save_plots_pil()
+
+    def _safe_font(self, size: int = 18):
+        try:
+            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+        except Exception:  # noqa: BLE001
+            return ImageFont.load_default()
+
+    def _plot_bounds(self) -> Tuple[float, float, float, float]:
+        xs = [float(row["x_m"]) for row in self.rows]
+        ys = [float(row["y_m"]) for row in self.rows]
+        if self.home_position is not None:
+            xs.append(self.home_position[0])
+            ys.append(self.home_position[1])
+        for tree in self.trees:
+            xs.append(float(tree.x))
+            ys.append(float(tree.y))
+        if not xs or not ys:
+            return -1.0, 1.0, -1.0, 1.0
+        margin_x = max(1.0, (max(xs) - min(xs)) * 0.12)
+        margin_y = max(1.0, (max(ys) - min(ys)) * 0.12)
+        return min(xs) - margin_x, max(xs) + margin_x, min(ys) - margin_y, max(ys) + margin_y
+
+    def _plot_bounds_projected(self) -> Tuple[float, float, float, float]:
+        projected = [self._project_3d_to_2d(float(row["x_m"]), float(row["y_m"]), float(row["z_m"])) for row in self.rows]
+        if self.home_position is not None:
+            projected.append(
+                self._project_3d_to_2d(
+                    self.home_position[0], self.home_position[1], self.home_position[2]
+                )
+            )
+        for tree in self.trees:
+            projected.append(self._project_3d_to_2d(float(tree.x), float(tree.y), float(tree.z)))
+        if not projected:
+            return -1.0, 1.0, -1.0, 1.0
+        xs = [p[0] for p in projected]
+        ys = [p[1] for p in projected]
+        margin_x = max(1.0, (max(xs) - min(xs)) * 0.12)
+        margin_y = max(1.0, (max(ys) - min(ys)) * 0.12)
+        return min(xs) - margin_x, max(xs) + margin_x, min(ys) - margin_y, max(ys) + margin_y
+
+    @staticmethod
+    def _project_3d_to_2d(x: float, y: float, z: float) -> Tuple[float, float]:
+        return x - 0.72 * y, 0.55 * (x + y) - 1.10 * z
+
+    @staticmethod
+    def _to_pixel(
+        value_x: float,
+        value_y: float,
+        bounds: Tuple[float, float, float, float],
+        width: int,
+        height: int,
+        pad: int = 60,
+    ) -> Tuple[int, int]:
+        min_x, max_x, min_y, max_y = bounds
+        span_x = max(1e-6, max_x - min_x)
+        span_y = max(1e-6, max_y - min_y)
+        px = pad + int((value_x - min_x) * (width - 2 * pad) / span_x)
+        py = height - pad - int((value_y - min_y) * (height - 2 * pad) / span_y)
+        return px, py
+
+    def _save_plots_pil(self) -> None:
+        self._save_plot_2d_pil()
+        self._save_plot_3d_pil()
+
+    def _save_plot_2d_pil(self) -> None:
+        if not self.save_2d_png:
+            return
+        width, height = 1800, 1350
+        image = Image.new("RGB", (width, height), "white")
+        draw = ImageDraw.Draw(image)
+        font = self._safe_font(18)
+        small_font = self._safe_font(14)
+        bounds = self._plot_bounds()
+
+        for i in range(6):
+            x = 60 + int((width - 120) * i / 5)
+            y = 60 + int((height - 120) * i / 5)
+            draw.line([(x, 60), (x, height - 60)], fill=(230, 230, 230), width=1)
+            draw.line([(60, y), (width - 60, y)], fill=(230, 230, 230), width=1)
+
+        if len(self.rows) > 1:
+            points = [
+                self._to_pixel(float(row["x_m"]), float(row["y_m"]), bounds, width, height)
+                for row in self.rows
+            ]
+            draw.line(points, fill=(30, 90, 210), width=4)
+
+        for tree in self.trees:
+            tx, ty = self._to_pixel(float(tree.x), float(tree.y), bounds, width, height)
+            r = 10 if int(tree.id) == self.active_tree_id else 7
+            fill = (220, 90, 30) if bool(getattr(tree, "inspected", False)) else (30, 170, 80)
+            draw.ellipse([(tx - r, ty - r), (tx + r, ty + r)], outline="black", fill=fill)
+            draw.text((tx + 8, ty - 10), str(int(tree.id)), fill="black", font=small_font)
+
+        if self.home_position is not None:
+            hx, hy = self._to_pixel(
+                self.home_position[0], self.home_position[1], bounds, width, height
+            )
+            draw.regular_polygon((hx, hy, 14), n_sides=5, rotation=0.0, fill=(180, 40, 40))
+            draw.text((hx + 12, hy + 8), "HOME", fill="black", font=font)
+
+        if self.current_pose is not None:
+            px = float(self.current_pose.pose.position.x)
+            py = float(self.current_pose.pose.position.y)
+            ux, uy = self._to_pixel(px, py, bounds, width, height)
+            draw.ellipse([(ux - 8, uy - 8), (ux + 8, uy + 8)], outline="black", fill=(40, 80, 220))
+
+        summary = [
+            f"State: {self.current_state}",
+            f"Mission: {self.mission_status}",
+            f"Orbit: {100.0 * self.orbit_progress:.1f}%",
+            f"Trees: {len(self.trees)} | Inspected: {sum(bool(getattr(tree, 'inspected', False)) for tree in self.trees)}",
+            f"Distance: {self.total_distance:.1f} m",
+        ]
+        draw.rounded_rectangle((70, 70, 530, 240), radius=16, fill=(245, 248, 252), outline=(180, 190, 200))
+        for idx, line in enumerate(summary):
+            draw.text((90, 90 + idx * 28), line, fill="black", font=font)
+
+        draw.text((80, height - 40), "Top view: trajectory, trees, home, active target", fill="black", font=small_font)
+        image.save(self.map_2d_path)
+
+    def _save_plot_3d_pil(self) -> None:
+        if not self.save_3d_png:
+            return
+        width, height = 1800, 1350
+        image = Image.new("RGB", (width, height), "white")
+        draw = ImageDraw.Draw(image)
+        font = self._safe_font(18)
+        small_font = self._safe_font(14)
+
+        projected_points = [
+            self._project_3d_to_2d(float(row["x_m"]), float(row["y_m"]), float(row["z_m"]))
+            for row in self.rows
+        ]
+        if self.home_position is not None:
+            projected_points.append(
+                self._project_3d_to_2d(
+                    self.home_position[0], self.home_position[1], self.home_position[2]
+                )
+            )
+        for tree in self.trees:
+            projected_points.append(
+                self._project_3d_to_2d(float(tree.x), float(tree.y), float(tree.z))
+            )
+        if not projected_points:
+            image.save(self.map_3d_path)
+            return
+
+        xs = [item[0] for item in projected_points]
+        ys = [item[1] for item in projected_points]
+        bounds = (
+            min(xs) - max(1.0, (max(xs) - min(xs)) * 0.12),
+            max(xs) + max(1.0, (max(xs) - min(xs)) * 0.12),
+            min(ys) - max(1.0, (max(ys) - min(ys)) * 0.12),
+            max(ys) + max(1.0, (max(ys) - min(ys)) * 0.12),
+        )
+
+        if len(self.rows) > 1:
+            points = [
+                self._to_pixel(
+                    *self._project_3d_to_2d(
+                        float(row["x_m"]), float(row["y_m"]), float(row["z_m"])
+                    ),
+                    bounds,
+                    width,
+                    height,
+                )
+                for row in self.rows
+            ]
+            draw.line(points, fill=(60, 100, 200), width=4)
+
+        for tree in self.trees:
+            px, py = self._project_3d_to_2d(float(tree.x), float(tree.y), float(tree.z))
+            tx, ty = self._to_pixel(px, py, bounds, width, height)
+            fill = (220, 90, 30) if bool(getattr(tree, "inspected", False)) else (30, 170, 80)
+            r = 10 if int(tree.id) == self.active_tree_id else 7
+            draw.ellipse([(tx - r, ty - r), (tx + r, ty + r)], outline="black", fill=fill)
+            draw.text((tx + 8, ty - 10), str(int(tree.id)), fill="black", font=small_font)
+
+        if self.home_position is not None:
+            hx, hy = self._project_3d_to_2d(
+                self.home_position[0], self.home_position[1], self.home_position[2]
+            )
+            px, py = self._to_pixel(hx, hy, bounds, width, height)
+            draw.regular_polygon((px, py, 16), n_sides=5, rotation=0.0, fill=(180, 40, 40))
+
+        if self.current_pose is not None:
+            p = self.current_pose.pose.position
+            ux, uy = self._project_3d_to_2d(float(p.x), float(p.y), float(p.z))
+            px, py = self._to_pixel(ux, uy, bounds, width, height)
+            draw.ellipse([(px - 8, py - 8), (px + 8, py + 8)], outline="black", fill=(40, 80, 220))
+
+        draw.rounded_rectangle((70, 70, 620, 250), radius=16, fill=(245, 248, 252), outline=(180, 190, 200))
+        summary = [
+            f"State: {self.current_state}",
+            f"Mission: {self.mission_status}",
+            f"Orbit: {100.0 * self.orbit_progress:.1f}%",
+            f"Max altitude: {self.max_altitude:.1f} m",
+            f"Max speed: {self.max_speed_3d:.2f} m/s",
+        ]
+        for idx, line in enumerate(summary):
+            draw.text((90, 90 + idx * 28), line, fill="black", font=font)
+        draw.text((80, height - 40), "3D pseudo-projection of trajectory, trees, and home", fill="black", font=small_font)
+        image.save(self.map_3d_path)
 
     def write_tree_snapshot(self) -> None:
         temporary = self.trees_path.with_suffix(".tmp")

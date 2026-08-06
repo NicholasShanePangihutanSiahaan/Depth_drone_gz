@@ -26,6 +26,8 @@
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-matplotlib</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
+  <exec_depend>depth_image_proc</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>
