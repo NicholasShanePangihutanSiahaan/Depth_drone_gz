@@ -33,6 +33,7 @@ class DynamicOrbitController(Node):
             "yaw_offset": MissionConfig.YAW_OFFSET,
             "orbit_obstacle_clearance": MissionConfig.ORBIT_OBSTACLE_CLEARANCE,
             "active_tree_alias_radius": MissionConfig.TREE_ASSOCIATION_DISTANCE,
+            "enable_orbit_corridor_check": False,
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
@@ -56,6 +57,9 @@ class DynamicOrbitController(Node):
         self.obstacle_clearance = max(0.5, float(self.get_parameter("orbit_obstacle_clearance").value))
         self.active_tree_alias_radius = max(
             0.5, float(self.get_parameter("active_tree_alias_radius").value)
+        )
+        self.enable_orbit_corridor_check = bool(
+            self.get_parameter("enable_orbit_corridor_check").value
         )
 
         self.current_pose: Optional[PoseStamped] = None
@@ -184,7 +188,7 @@ class DynamicOrbitController(Node):
             self.publish_status("ORBIT_FAILED")
             return
         if self.phase == "IDLE":
-            if not self.orbit_corridor_clear():
+            if self.enable_orbit_corridor_check and not self.orbit_corridor_clear():
                 self.get_logger().error("Orbit ditolak: koridor lingkaran memotong pohon/rintangan peta.")
                 self.publish_status("ORBIT_FAILED")
                 return
@@ -242,10 +246,6 @@ class DynamicOrbitController(Node):
             return
 
         now = self.now_sec()
-        if not self.orbit_corridor_clear():
-            self.get_logger().error("Orbit dibatalkan: rintangan baru masuk koridor orbit.")
-            self.reset("ORBIT_FAILED")
-            return
         if now - self.phase_start_time > self.orbit_timeout_sec:
             self.get_logger().error("Orbit timeout.")
             self.reset("ORBIT_TIMEOUT")

@@ -119,6 +119,7 @@ class PclTreeMapper(Node):
         # occlusion; spatial association keeps one physical trunk one map ID.
         self.next_tree_id = 1
         self.raw_to_stable: Dict[int, int] = {}
+        self.active_tree_id = -1
         self.last_pcl_msg_time: Optional[float] = None
         self.last_transform_warning = -1e9
         self.last_ready_state: Optional[bool] = None
@@ -142,6 +143,9 @@ class PclTreeMapper(Node):
             TrackedCylinderArray, self.pcl_topic, self.pcl_callback, qos_sensor
         )
         self.create_subscription(Tree, "/map/tree_update", self.tree_update_callback, 10)
+        self.create_subscription(
+            Int32, "/control/active_tree_id", self.active_tree_callback, 10
+        )
         if self.enable_fallback_points:
             self.create_subscription(
                 PointStamped,
@@ -164,6 +168,9 @@ class PclTreeMapper(Node):
 
     def now_sec(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
+
+    def active_tree_callback(self, msg: Int32) -> None:
+        self.active_tree_id = int(msg.data)
 
     @staticmethod
     def _finite(*values: float) -> bool:
@@ -353,6 +360,9 @@ class PclTreeMapper(Node):
                         continue
                     if math.hypot(keep.x - drop.x, keep.y - drop.y) > self.association_distance:
                         continue
+                    if drop_id == self.active_tree_id:
+                        keep_id, drop_id = drop_id, keep_id
+                        keep, drop = drop, keep
                     keep_weight = max(1, keep.seen_count)
                     drop_weight = max(1, drop.seen_count)
                     total = keep_weight + drop_weight

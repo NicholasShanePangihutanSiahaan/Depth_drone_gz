@@ -107,6 +107,9 @@ dynamic_orbit_controller:
     yaw_offset: 0.0
     orbit_obstacle_clearance: 1.0
     active_tree_alias_radius: 2.50
+    # Target has already been validated while HOVER_BEFORE_ORBIT. Do not let
+    # noisy/new PCL tracks cancel an orbit that is already underway.
+    enable_orbit_corridor_check: false
 
 vortex_avoidance_controller:
   ros__parameters:

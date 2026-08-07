@@ -485,8 +485,6 @@ class MissionStateMachine(Node):
                 rejected["far"] += 1
             elif self.mission_mode != "all" and bearing_error > self.target_forward_cone:
                 rejected["side"] += 1
-            elif not self.orbit_path_clear(tree):
-                rejected["orbit"] += 1
             else:
                 candidates.append((bearing_error, distance, -float(tree.confidence), int(tree.id), tree))
         selected = min(candidates, default=(None, None, None, None, None))[4]
@@ -527,7 +525,7 @@ class MissionStateMachine(Node):
         locked.x, locked.y, locked.z = float(x), float(y), float(z)
         self.target_tree = locked
         self.pre_orbit_point = self.compute_pre_orbit_point(locked)
-        return self.orbit_path_clear(locked)
+        return True
 
     def set_active_tree(self, tree_id: int) -> None:
         msg = Int32()
@@ -643,10 +641,7 @@ class MissionStateMachine(Node):
 
         tree_dependent_states = {
             "VERIFY_TARGET",
-            "APPROACH_TREE",
             "HOVER_BEFORE_ORBIT",
-            "PREPARE_ORBIT",
-            "WAIT_ORBIT",
         }
         if self.require_tree_map and self.state in tree_dependent_states:
             if not have_pose:
@@ -763,7 +758,7 @@ class MissionStateMachine(Node):
                 else:
                     self.target_tree = None
                     self.set_active_tree(-1)
-                    self.transition("SEARCH_TREE", "Kandidat tidak stabil atau lintasan orbit terhalang")
+                    self.transition("SEARCH_TREE", "Kandidat tidak stabil")
 
         elif self.state == "APPROACH_TREE":
             if not have_pose:
@@ -771,10 +766,6 @@ class MissionStateMachine(Node):
                 return
             if self.target_tree is None or self.pre_orbit_point is None:
                 self.begin_safe_return("Target/approach point tidak tersedia")
-                return
-
-            if self.find_tree_by_id(int(self.target_tree.id)) is None:
-                self.begin_safe_return("Target pohon hilang dari peta")
                 return
 
             point_x, point_y, _ = self.pre_orbit_point
@@ -790,8 +781,40 @@ class MissionStateMachine(Node):
             if self.target_tree is None or self.pre_orbit_point is None:
                 self.begin_safe_return("Target hilang sebelum orbit")
                 return
-            if self.find_tree_by_id(int(self.target_tree.id)) is None:
+            latest = self.find_tree_by_id(int(self.target_tree.id))
+            if latest is None:
+                latest = min(
+                    self.trees,
+                    key=lambda tree: distance_2d(
+                        float(self.target_tree.x), float(self.target_tree.y),
+                        float(tree.x), float(tree.y),
+                    ),
+                    default=None,
+                )
+                if latest is not None and distance_2d(
+                    float(self.target_tree.x), float(self.target_tree.y),
+                    float(latest.x), float(latest.y),
+                ) > self.active_tree_alias_radius:
+                    latest = None
+            if latest is None:
                 self.begin_safe_return("Target tidak lagi terdeteksi")
+                return
+
+            # This is the single perception cross-check requested by the
+            # mission sequence. Once PREPARE_ORBIT starts the locked center is
+            # authoritative and later PCL churn cannot move/cancel the orbit.
+            center_shift = distance_2d(
+                float(self.target_tree.x), float(self.target_tree.y),
+                float(latest.x), float(latest.y),
+            )
+            if center_shift > self.verify_position_tolerance:
+                self.set_active_tree(-1)
+                self.target_tree = None
+                self.pre_orbit_point = None
+                self.transition(
+                    "SEARCH_TREE",
+                    f"Cross-check gagal: pusat pohon bergeser {center_shift:.2f} m",
+                )
                 return
 
             point_x, point_y, _ = self.pre_orbit_point
@@ -837,9 +860,10 @@ class MissionStateMachine(Node):
                 self.orbit_succeeded = True
                 self.mark_target_inspected()
                 self.stop_orbit(clear_active_tree=False)
-                current_yaw = yaw_from_quaternion(self.current_pose.pose.orientation)
-                self.post_orbit_hold_point = (cx, cy, self.takeoff_target_z, current_yaw)
-                self.transition("POST_ORBIT_HOVER", "Satu putaran 360 derajat selesai")
+                self.transition(
+                    "RETURN_PRE_ORBIT",
+                    "Satu putaran 360 derajat selesai; kembali ke titik hover sebelum orbit",
+                )
             elif self.orbit_status in {"ORBIT_FAILED", "ORBIT_TIMEOUT"} or (
                 self.orbit_start_time is not None
                 and now - self.orbit_start_time > self.orbit_timeout_sec
@@ -848,9 +872,7 @@ class MissionStateMachine(Node):
                 if self.target_tree is not None:
                     self.failed_tree_ids.add(int(self.target_tree.id))
                 self.stop_orbit(clear_active_tree=False)
-                current_yaw = yaw_from_quaternion(self.current_pose.pose.orientation)
-                self.post_orbit_hold_point = (cx, cy, self.takeoff_target_z, current_yaw)
-                self.transition("POST_ORBIT_HOVER", "Orbit gagal/timeout; kembali dengan aman")
+                self.transition("RETURN_PRE_ORBIT", "Orbit gagal/timeout; kembali dengan aman")
 
         elif self.state == "POST_ORBIT_HOVER":
             if not have_pose:
