@@ -28,8 +28,8 @@ def generate_launch_description():
         DeclareLaunchArgument("use_pcl", default_value="true"),
         DeclareLaunchArgument("use_yolo_fallback", default_value="false"),
         DeclareLaunchArgument("use_analyzer", default_value="true"),
-        # First simulation run: takeoff and hold only.
-        DeclareLaunchArgument("hold_after_takeoff", default_value="true"),
+        # Full one-tree mission by default. Set true for a takeoff-only test.
+        DeclareLaunchArgument("hold_after_takeoff", default_value="false"),
         DeclareLaunchArgument(
             "point_cloud_topic", default_value="/zed2i/depth/points"
         ),

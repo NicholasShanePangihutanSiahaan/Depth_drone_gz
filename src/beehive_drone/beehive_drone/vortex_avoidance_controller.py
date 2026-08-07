@@ -24,6 +24,7 @@ class VortexAvoidanceController(Node):
             "influence_radius": MissionConfig.OBSTACLE_INFLUENCE_RADIUS,
             "hard_radius": MissionConfig.OBSTACLE_HARD_RADIUS,
             "active_tree_keepout_radius": MissionConfig.ACTIVE_TARGET_KEEP_OUT_RADIUS,
+            "active_tree_alias_radius": 2.5,
             "emergency_stop_radius": MissionConfig.EMERGENCY_STOP_RADIUS,
             "repulsive_gain": MissionConfig.REPULSIVE_GAIN,
             "vortex_gain": MissionConfig.VORTEX_GAIN,
@@ -40,6 +41,9 @@ class VortexAvoidanceController(Node):
         self.hard_radius = float(self.get_parameter("hard_radius").value)
         self.active_tree_keepout_radius = float(
             self.get_parameter("active_tree_keepout_radius").value
+        )
+        self.active_tree_alias_radius = float(
+            self.get_parameter("active_tree_alias_radius").value
         )
         self.emergency_stop_radius = float(
             self.get_parameter("emergency_stop_radius").value
@@ -210,6 +214,11 @@ class VortexAvoidanceController(Node):
             "TAKEOFF",
             "HOLD",
             "SEARCH_TREE",
+            # During the locked single-tree orbit, feed the geometrically
+            # constrained orbit target through directly. PCL ID fragmentation
+            # can otherwise turn pieces of the inspected trunk into obstacles.
+            "PREPARE_ORBIT",
+            "WAIT_ORBIT",
             "POST_ORBIT_HOVER",
             "HOVER_AT_PRE_ORBIT",
             "HOME_HOVER",
@@ -258,8 +267,21 @@ class VortexAvoidanceController(Node):
         field_y = self.attraction_gain * goal_uy
         closest_obstacle = float("inf")
 
+        active_tree = next(
+            (tree for tree in self.trees if int(tree.id) == self.active_tree_id),
+            None,
+        )
+
         for tree in self.trees:
             is_active = int(tree.id) == self.active_tree_id
+            # PCL may temporarily assign more than one tracking ID to the
+            # same physical trunk. Treat detections around the locked target
+            # center as aliases, otherwise an alias can emergency-stop orbit.
+            if not is_active and active_tree is not None:
+                is_active = math.hypot(
+                    float(tree.x) - float(active_tree.x),
+                    float(tree.y) - float(active_tree.y),
+                ) <= self.active_tree_alias_radius
             dx = cx - float(tree.x)
             dy = cy - float(tree.y)
             distance = math.hypot(dx, dy)

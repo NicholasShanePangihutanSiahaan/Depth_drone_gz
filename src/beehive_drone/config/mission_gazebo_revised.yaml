@@ -19,7 +19,7 @@ mission_state_machine:
     takeoff_timeout_sec: 45.0
     takeoff_progress_check_sec: 20.0
     min_takeoff_progress: 0.20
-    hold_after_takeoff: true
+    hold_after_takeoff: false
     disconnect_grace_sec: 8.0
 
     # SITL mode changes can also validate the pilot-takeover latch.
@@ -97,6 +97,7 @@ vortex_avoidance_controller:
     influence_radius: 4.5
     hard_radius: 2.2
     active_tree_keepout_radius: 2.2
+    active_tree_alias_radius: 2.5
     emergency_stop_radius: 1.8
     repulsive_gain: 2.5
     vortex_gain: 0.8
