@@ -42,12 +42,10 @@ class MissionStateMachine(Node):
             "home_hover_sec": MissionConfig.HOME_HOVER_SEC,
             "hover_wait_timeout_sec": MissionConfig.HOVER_WAIT_TIMEOUT_SEC,
             "command_retry_sec": MissionConfig.COMMAND_RETRY_SEC,
-            "pose_timeout_sec": MissionConfig.POSE_TIMEOUT_SEC,
             "map_timeout_sec": MissionConfig.MAP_TIMEOUT_SEC,
             "require_tree_map": MissionConfig.REQUIRE_TREE_MAP,
             "map_startup_timeout_sec": MissionConfig.MAP_STARTUP_TIMEOUT_SEC,
             "map_loss_grace_sec": MissionConfig.MAP_LOSS_GRACE_SEC,
-            "disconnect_grace_sec": MissionConfig.DISCONNECT_GRACE_SEC,
             "land_complete_altitude": MissionConfig.LAND_COMPLETE_ALTITUDE,
             "home_reached_tolerance": MissionConfig.HOME_REACHED_TOLERANCE,
             "enable_rc_takeover": MissionConfig.ENABLE_RC_TAKEOVER,
@@ -85,7 +83,6 @@ class MissionStateMachine(Node):
             self.get_parameter("hover_wait_timeout_sec").value
         )
         self.command_retry_sec = float(self.get_parameter("command_retry_sec").value)
-        self.pose_timeout_sec = float(self.get_parameter("pose_timeout_sec").value)
         self.map_timeout_sec = float(self.get_parameter("map_timeout_sec").value)
         self.require_tree_map = bool(self.get_parameter("require_tree_map").value)
         self.map_startup_timeout_sec = float(
@@ -93,9 +90,6 @@ class MissionStateMachine(Node):
         )
         self.map_loss_grace_sec = float(
             self.get_parameter("map_loss_grace_sec").value
-        )
-        self.disconnect_grace_sec = float(
-            self.get_parameter("disconnect_grace_sec").value
         )
         self.land_complete_altitude = float(
             self.get_parameter("land_complete_altitude").value
@@ -118,20 +112,17 @@ class MissionStateMachine(Node):
                 "melakukan penyesuaian radial sebelum mulai mengorbit."
             )
 
-        self.state = "WAIT_CONNECTION"
+        self.state = "WAIT_HOME"
         self.state_enter_time = self.now_sec()
         self.last_command_time = -1e9
         self.last_land_command_time = -1e9
 
         self.current_pose: Optional[PoseStamped] = None
-        self.last_pose_time: Optional[float] = None
         self.last_map_time: Optional[float] = None
         self.map_ready = False
         self.map_not_ready_since: Optional[float] = None
-        self.disconnect_since: Optional[float] = None
         self.trees = []
 
-        self.connected = False
         self.armed = False
         self.current_mode = ""
         self.hovering = False
@@ -141,11 +132,11 @@ class MissionStateMachine(Node):
         self.home_x = 0.0
         self.home_y = 0.0
         self.home_z = 0.0
+        self.home_yaw = 0.0
         self.takeoff_target_z = self.flight_altitude
         self.takeoff_start_z = 0.0
         self.takeoff_command_sent = False
         self.unexpected_disarm_since: Optional[float] = None
-        self.last_link_warning_time = -1e9
         self.mode_mismatch_since: Optional[float] = None
         self.pilot_override_latched = False
 
@@ -176,7 +167,6 @@ class MissionStateMachine(Node):
         self.create_subscription(TreeArray, "/map/trees", self.tree_callback, qos_map)
         self.create_subscription(Bool, "/map/trees_ready", self.map_ready_callback, qos_map)
         self.create_subscription(String, "/control/orbit_status", self.orbit_status_callback, 10)
-        self.create_subscription(Bool, "/flight/telemetry/is_connected", self.connected_callback, 10)
         self.create_subscription(Bool, "/flight/telemetry/is_armed", self.armed_callback, 10)
         self.create_subscription(String, "/flight/telemetry/current_mode", self.mode_callback, 10)
         self.create_subscription(Bool, "/flight/telemetry/is_hovering", self.hover_callback, 10)
@@ -233,11 +223,11 @@ class MissionStateMachine(Node):
 
     def pose_callback(self, msg: PoseStamped) -> None:
         self.current_pose = msg
-        self.last_pose_time = self.now_sec()
         if not self.home_captured:
             self.home_x = float(msg.pose.position.x)
             self.home_y = float(msg.pose.position.y)
             self.home_z = float(msg.pose.position.z)
+            self.home_yaw = yaw_from_quaternion(msg.pose.orientation)
             self.takeoff_target_z = self.home_z + self.flight_altitude
             self.home_captured = True
 
@@ -251,9 +241,6 @@ class MissionStateMachine(Node):
     def orbit_status_callback(self, msg: String) -> None:
         self.orbit_status = msg.data
 
-    def connected_callback(self, msg: Bool) -> None:
-        self.connected = bool(msg.data)
-
     def armed_callback(self, msg: Bool) -> None:
         self.armed = bool(msg.data)
 
@@ -265,12 +252,6 @@ class MissionStateMachine(Node):
 
     def altitude_callback(self, msg: Float32) -> None:
         self.altitude = float(msg.data)
-
-    def pose_fresh(self) -> bool:
-        return (
-            self.last_pose_time is not None
-            and self.now_sec() - self.last_pose_time <= self.pose_timeout_sec
-        )
 
     def map_fresh(self) -> bool:
         return (
@@ -404,7 +385,7 @@ class MissionStateMachine(Node):
         self.publish_target_altitude()
 
     def publish_home_hover(self) -> None:
-        self.publish_goal(self.home_x, self.home_y, 0.0)
+        self.publish_goal(self.home_x, self.home_y, self.home_yaw)
 
     def publish_hold_here(self) -> None:
         if self.current_pose is None:
@@ -557,29 +538,14 @@ class MissionStateMachine(Node):
                 self.transition("DONE", "Drone disarm setelah pilot takeover")
             return
 
-        if self.current_pose is None:
-            return
-
-        if self.armed and not self.connected and self.state not in {
-            "LAND",
-            "WAIT_LANDED",
-            "DONE",
-        }:
-            if self.disconnect_since is None:
-                self.disconnect_since = now
-                self.get_logger().warning("Koneksi MAVROS hilang; menunggu grace period.")
-            elif now - self.disconnect_since >= self.disconnect_grace_sec:
-                self.stop_orbit()
-                self.transition("LAND", "Koneksi MAVROS hilang terlalu lama")
-            return
-        self.disconnect_since = None
-
-        if not self.pose_fresh():
-            return
-
-        cx = float(self.current_pose.pose.position.x)
-        cy = float(self.current_pose.pose.position.y)
-        self.record_return_path_sample()
+        have_pose = self.current_pose is not None
+        if have_pose:
+            cx = float(self.current_pose.pose.position.x)
+            cy = float(self.current_pose.pose.position.y)
+            self.record_return_path_sample()
+        else:
+            cx = self.home_x
+            cy = self.home_y
 
         tree_dependent_states = {
             "APPROACH_TREE",
@@ -588,6 +554,9 @@ class MissionStateMachine(Node):
             "WAIT_ORBIT",
         }
         if self.require_tree_map and self.state in tree_dependent_states:
+            if not have_pose:
+                self.publish_home_hover()
+                return
             if not self.map_fresh():
                 if self.map_not_ready_since is None:
                     self.map_not_ready_since = now
@@ -601,9 +570,8 @@ class MissionStateMachine(Node):
                 return
             self.map_not_ready_since = None
 
-        if self.state == "WAIT_CONNECTION":
-            if self.connected and self.home_captured:
-                self.transition("SET_MODE", "MAVROS dan local pose tersedia")
+        if self.state == "WAIT_HOME":
+            self.transition("SET_MODE", "Mulai sequence mode/arm tanpa menunggu pose")
 
         elif self.state == "SET_MODE":
             if self.current_mode == self.flight_mode:
@@ -631,17 +599,6 @@ class MissionStateMachine(Node):
                     f"NAV_TAKEOFF dikirim satu kali: {self.flight_altitude:.1f} m"
                 )
 
-            if not self.connected or not self.pose_fresh():
-                self.unexpected_disarm_since = None
-                if now - self.last_link_warning_time >= 2.0:
-                    self.last_link_warning_time = now
-                    self.get_logger().warning(
-                        "Telemetry MAVROS terputus/stale saat TAKEOFF; menunggu koneksi pulih."
-                    )
-                self.state_enter_time = now
-                self.takeoff_start_z = self.altitude
-                return
-
             if not self.armed:
                 if self.unexpected_disarm_since is None:
                     self.unexpected_disarm_since = now
@@ -661,20 +618,14 @@ class MissionStateMachine(Node):
                     self.transition("SEARCH_TREE", "Hover takeoff stabil; mencari satu pohon")
                 return
 
-            elapsed = now - self.state_enter_time
-            climb = self.altitude - self.takeoff_start_z
-            if elapsed >= self.takeoff_progress_check_sec and climb < self.min_takeoff_progress:
-                self.transition("LAND", "Tidak ada progres ketinggian")
-                return
-            if elapsed >= self.takeoff_timeout_sec:
-                self.transition("LAND", "Takeoff timeout")
-                return
-
         elif self.state == "HOLD":
             self.publish_home_hover()
 
         elif self.state == "SEARCH_TREE":
             # Drone tetap hovering di titik takeoff; pencarian dilakukan dari peta sensor.
+            if not have_pose:
+                self.publish_home_hover()
+                return
             self.publish_home_hover()
             tree = self.find_nearest_tree()
             if tree is not None:
@@ -689,6 +640,9 @@ class MissionStateMachine(Node):
                 self.transition("HOME_HOVER", "Pohon tidak ditemukan sebelum timeout")
 
         elif self.state == "APPROACH_TREE":
+            if not have_pose:
+                self.publish_hold_here()
+                return
             if self.target_tree is None or self.pre_orbit_point is None:
                 self.begin_safe_return("Target/approach point tidak tersedia")
                 return
@@ -706,6 +660,9 @@ class MissionStateMachine(Node):
                 self.transition("HOVER_BEFORE_ORBIT", f"Titik {self.approach_distance:.1f} m sebelum pohon tercapai")
 
         elif self.state == "HOVER_BEFORE_ORBIT":
+            if not have_pose:
+                self.publish_hold_here()
+                return
             if self.target_tree is None or self.pre_orbit_point is None:
                 self.begin_safe_return("Target hilang sebelum orbit")
                 return
@@ -731,6 +688,9 @@ class MissionStateMachine(Node):
                 self.transition("PREPARE_ORBIT", "Hover sebelum orbit stabil")
 
         elif self.state == "PREPARE_ORBIT":
+            if not have_pose:
+                self.publish_hold_here()
+                return
             if self.target_tree is None:
                 self.begin_safe_return("Target kosong saat persiapan orbit")
                 return
@@ -749,6 +709,9 @@ class MissionStateMachine(Node):
                 self.transition("WAIT_ORBIT", "Memulai tepat satu putaran")
 
         elif self.state == "WAIT_ORBIT":
+            if not have_pose:
+                self.publish_hold_here()
+                return
             if self.orbit_status == "ORBIT_COMPLETED":
                 self.orbit_succeeded = True
                 self.mark_target_inspected()
@@ -767,6 +730,9 @@ class MissionStateMachine(Node):
                 self.transition("POST_ORBIT_HOVER", "Orbit gagal/timeout; kembali dengan aman")
 
         elif self.state == "POST_ORBIT_HOVER":
+            if not have_pose:
+                self.publish_hold_here()
+                return
             if self.post_orbit_hold_point is None:
                 current_yaw = yaw_from_quaternion(self.current_pose.pose.orientation)
                 self.post_orbit_hold_point = (cx, cy, self.takeoff_target_z, current_yaw)
@@ -776,6 +742,9 @@ class MissionStateMachine(Node):
                 self.transition("RETURN_PRE_ORBIT", "Hover setelah orbit selesai")
 
         elif self.state == "RETURN_PRE_ORBIT":
+            if not have_pose:
+                self.publish_home_hover()
+                return
             if self.pre_orbit_point is None:
                 self.set_active_tree(-1)
                 self.transition("RETURN_HOME", "Titik sebelum orbit tidak tersedia")
@@ -786,6 +755,9 @@ class MissionStateMachine(Node):
                 self.transition("HOVER_AT_PRE_ORBIT", "Kembali ke posisi sebelum orbit")
 
         elif self.state == "HOVER_AT_PRE_ORBIT":
+            if not have_pose:
+                self.publish_home_hover()
+                return
             if self.pre_orbit_point is None:
                 self.set_active_tree(-1)
                 self.transition("RETURN_HOME")
@@ -798,6 +770,9 @@ class MissionStateMachine(Node):
                 self.transition("RETRACE_HOME", "Hover di titik sebelum orbit selesai")
 
         elif self.state == "RETRACE_HOME":
+            if not have_pose:
+                self.publish_home_hover()
+                return
             if not self.return_path_samples:
                 self.transition("RETURN_HOME", "Jejak balik tidak tersedia; direct home")
                 return
@@ -816,8 +791,10 @@ class MissionStateMachine(Node):
                 self.return_retrace_index -= 1
 
         elif self.state == "RETURN_HOME":
-            yaw = math.atan2(self.home_y - cy, self.home_x - cx)
-            self.publish_goal(self.home_x, self.home_y, yaw)
+            if not have_pose:
+                self.publish_home_hover()
+                return
+            self.publish_goal(self.home_x, self.home_y, self.home_yaw)
             if distance_2d(cx, cy, self.home_x, self.home_y) <= self.home_reached_tolerance:
                 self.transition("HOME_HOVER", "Kembali ke titik awal takeoff")
 

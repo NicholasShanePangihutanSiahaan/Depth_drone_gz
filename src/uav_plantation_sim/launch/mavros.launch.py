@@ -16,7 +16,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            DeclareLaunchArgument("fcu_url", default_value="udp://127.0.0.1:14551@"),
+            DeclareLaunchArgument("fcu_url", default_value="udp://127.0.0.1:14550@"),
             DeclareLaunchArgument("gcs_url", default_value="udp://:14550@"),
             DeclareLaunchArgument("system_id", default_value="1"),
             DeclareLaunchArgument("component_id", default_value="1"),
