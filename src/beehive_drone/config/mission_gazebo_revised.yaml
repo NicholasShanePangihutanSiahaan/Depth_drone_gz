@@ -37,8 +37,10 @@ mission_state_machine:
     verify_duration_sec: 2.0
     verify_position_tolerance: 0.55
     orbit_obstacle_clearance: 1.0
+    active_tree_alias_radius: 2.50
     scan_duration_sec: 26.0
     scan_yaw_rate: 0.25
+    map_settle_sec: 3.0
 
     # Must match orbit_radius to avoid APPROACH/HOVER oscillation.
     approach_distance: 3.0
@@ -83,8 +85,10 @@ pcl_tree_mapper:
     tree_stale_sec: 60.0
     pcl_stream_timeout_sec: 6.0
     min_ready_trees: 1
-    association_distance: 1.25
-    max_update_jump: 1.75
+    # PCL global tracker frequently gives the same trunk a new center 1-2 m
+    # away after occlusion. Plantation trees are spaced farther than this.
+    association_distance: 2.50
+    max_update_jump: 3.00
     validation_observations: 4
     position_alpha: 0.18
     enable_fallback_points: false
@@ -102,6 +106,7 @@ dynamic_orbit_controller:
     orbit_timeout_sec: 150.0
     yaw_offset: 0.0
     orbit_obstacle_clearance: 1.0
+    active_tree_alias_radius: 2.50
 
 vortex_avoidance_controller:
   ros__parameters:

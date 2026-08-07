@@ -37,8 +37,10 @@ class MissionStateMachine(Node):
             "verify_duration_sec": MissionConfig.VERIFY_DURATION_SEC,
             "verify_position_tolerance": MissionConfig.VERIFY_POSITION_TOLERANCE,
             "orbit_obstacle_clearance": MissionConfig.ORBIT_OBSTACLE_CLEARANCE,
+            "active_tree_alias_radius": MissionConfig.TREE_ASSOCIATION_DISTANCE,
             "scan_duration_sec": 18.0,
             "scan_yaw_rate": 0.25,
+            "map_settle_sec": 3.0,
             "approach_distance": MissionConfig.APPROACH_DISTANCE,
             "approach_tolerance": MissionConfig.APPROACH_TOLERANCE,
             "orbit_radius": MissionConfig.ORBIT_RADIUS,
@@ -85,8 +87,12 @@ class MissionStateMachine(Node):
         self.verify_duration_sec = max(0.5, float(self.get_parameter("verify_duration_sec").value))
         self.verify_position_tolerance = max(0.1, float(self.get_parameter("verify_position_tolerance").value))
         self.orbit_obstacle_clearance = max(0.5, float(self.get_parameter("orbit_obstacle_clearance").value))
+        self.active_tree_alias_radius = max(
+            0.5, float(self.get_parameter("active_tree_alias_radius").value)
+        )
         self.scan_duration_sec = max(2.0, float(self.get_parameter("scan_duration_sec").value))
         self.scan_yaw_rate = max(0.05, float(self.get_parameter("scan_yaw_rate").value))
+        self.map_settle_sec = max(0.0, float(self.get_parameter("map_settle_sec").value))
         self.approach_distance = float(self.get_parameter("approach_distance").value)
         self.approach_tolerance = float(self.get_parameter("approach_tolerance").value)
         self.orbit_radius = float(self.get_parameter("orbit_radius").value)
@@ -141,6 +147,8 @@ class MissionStateMachine(Node):
         self.map_ready = False
         self.map_not_ready_since: Optional[float] = None
         self.trees = []
+        self.map_id_signature: Tuple[int, ...] = tuple()
+        self.map_structure_change_time = self.now_sec()
 
         self.armed = False
         self.current_mode = ""
@@ -262,6 +270,10 @@ class MissionStateMachine(Node):
     def tree_callback(self, msg: TreeArray) -> None:
         self.trees = list(msg.trees)
         self.last_map_time = self.now_sec()
+        signature = tuple(sorted(int(tree.id) for tree in self.trees if tree.validated))
+        if signature != self.map_id_signature:
+            self.map_id_signature = signature
+            self.map_structure_change_time = self.last_map_time
 
     def map_ready_callback(self, msg: Bool) -> None:
         self.map_ready = bool(msg.data)
@@ -495,6 +507,8 @@ class MissionStateMachine(Node):
             if int(obstacle.id) == int(target.id) or not bool(obstacle.validated):
                 continue
             center_distance = distance_2d(float(target.x), float(target.y), float(obstacle.x), float(obstacle.y))
+            if center_distance <= self.active_tree_alias_radius:
+                continue
             if abs(center_distance - self.orbit_radius) < self.orbit_obstacle_clearance:
                 return False
         return True
@@ -709,6 +723,8 @@ class MissionStateMachine(Node):
             # On a multi-tree mission search from the last safe pre-orbit
             # location; on the first/single mission this is the home hover.
             self.publish_hold_here()
+            if now - self.map_structure_change_time < self.map_settle_sec:
+                return
             tree = self.find_nearest_tree()
             if tree is not None:
                 self.target_tree = deepcopy(tree)

@@ -32,6 +32,7 @@ class DynamicOrbitController(Node):
             "orbit_timeout_sec": MissionConfig.ORBIT_TIMEOUT_SEC,
             "yaw_offset": MissionConfig.YAW_OFFSET,
             "orbit_obstacle_clearance": MissionConfig.ORBIT_OBSTACLE_CLEARANCE,
+            "active_tree_alias_radius": MissionConfig.TREE_ASSOCIATION_DISTANCE,
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
@@ -53,6 +54,9 @@ class DynamicOrbitController(Node):
         self.orbit_timeout_sec = float(self.get_parameter("orbit_timeout_sec").value)
         self.yaw_offset = float(self.get_parameter("yaw_offset").value)
         self.obstacle_clearance = max(0.5, float(self.get_parameter("orbit_obstacle_clearance").value))
+        self.active_tree_alias_radius = max(
+            0.5, float(self.get_parameter("active_tree_alias_radius").value)
+        )
 
         self.current_pose: Optional[PoseStamped] = None
         self.tree = Point()
@@ -154,6 +158,10 @@ class DynamicOrbitController(Node):
             if int(obstacle.id) == self.active_tree_id or not bool(obstacle.validated):
                 continue
             center_distance = math.hypot(float(obstacle.x) - self.tree.x, float(obstacle.y) - self.tree.y)
+            # Residual PCL aliases near the locked target center represent the
+            # same trunk and must not veto its own orbit.
+            if center_distance <= self.active_tree_alias_radius:
+                continue
             if abs(center_distance - self.orbit_radius) < self.obstacle_clearance:
                 return False
         return True

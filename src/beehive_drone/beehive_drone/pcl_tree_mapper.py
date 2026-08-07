@@ -328,7 +328,55 @@ class PclTreeMapper(Node):
             if record.source == "pcl" and tree_id not in accepted_ids:
                 record.missed_count += 1
 
+        self.merge_duplicate_records()
+
         self.publish_all()
+
+    def merge_duplicate_records(self) -> None:
+        """Merge historical ghost tracks, not only the newest observation.
+
+        The upstream tracker can create two persistent IDs for one trunk after
+        an occlusion. Without this pass both records remain forever and the
+        orbit safety layer interprets the duplicate as an obstacle.
+        """
+        changed = True
+        while changed:
+            changed = False
+            ids = sorted(self.tree_database)
+            for index, keep_id in enumerate(ids):
+                keep = self.tree_database.get(keep_id)
+                if keep is None:
+                    continue
+                for drop_id in ids[index + 1:]:
+                    drop = self.tree_database.get(drop_id)
+                    if drop is None:
+                        continue
+                    if math.hypot(keep.x - drop.x, keep.y - drop.y) > self.association_distance:
+                        continue
+                    keep_weight = max(1, keep.seen_count)
+                    drop_weight = max(1, drop.seen_count)
+                    total = keep_weight + drop_weight
+                    keep.x = (keep.x * keep_weight + drop.x * drop_weight) / total
+                    keep.y = (keep.y * keep_weight + drop.y * drop_weight) / total
+                    keep.z = (keep.z * keep_weight + drop.z * drop_weight) / total
+                    keep.seen_count = total
+                    keep.confidence = max(keep.confidence, drop.confidence)
+                    keep.validated = keep.validated or drop.validated
+                    keep.inspected = keep.inspected or drop.inspected
+                    keep.last_seen = max(keep.last_seen, drop.last_seen)
+                    keep.radius = max(keep.radius, drop.radius)
+                    keep.height = max(keep.height, drop.height)
+                    self.tree_database.pop(drop_id, None)
+                    for raw_id, stable_id in list(self.raw_to_stable.items()):
+                        if stable_id == drop_id:
+                            self.raw_to_stable[raw_id] = keep_id
+                    self.get_logger().info(
+                        f"Ghost tree ID={drop_id} digabung ke ID={keep_id}."
+                    )
+                    changed = True
+                    break
+                if changed:
+                    break
 
     def fallback_point_callback(self, msg: PointStamped) -> None:
         p = msg.point
