@@ -7,7 +7,8 @@ import rclpy
 from geometry_msgs.msg import Point, PoseStamped
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Bool, Float32, String
+from std_msgs.msg import Bool, Float32, Int32, String
+from uav_interfaces.msg import TreeArray
 
 from beehive_drone.math_utils import quaternion_from_yaw, wrap_pi
 from beehive_drone.mission_params import MissionConfig
@@ -30,6 +31,7 @@ class DynamicOrbitController(Node):
             "completion_margin": MissionConfig.ORBIT_COMPLETION_MARGIN,
             "orbit_timeout_sec": MissionConfig.ORBIT_TIMEOUT_SEC,
             "yaw_offset": MissionConfig.YAW_OFFSET,
+            "orbit_obstacle_clearance": MissionConfig.ORBIT_OBSTACLE_CLEARANCE,
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
@@ -50,6 +52,7 @@ class DynamicOrbitController(Node):
         )
         self.orbit_timeout_sec = float(self.get_parameter("orbit_timeout_sec").value)
         self.yaw_offset = float(self.get_parameter("yaw_offset").value)
+        self.obstacle_clearance = max(0.5, float(self.get_parameter("orbit_obstacle_clearance").value))
 
         self.current_pose: Optional[PoseStamped] = None
         self.tree = Point()
@@ -62,6 +65,8 @@ class DynamicOrbitController(Node):
         self.last_status = ""
         self.autonomy_enabled = False
         self.pilot_override = False
+        self.active_tree_id = -1
+        self.trees = []
 
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -73,6 +78,8 @@ class DynamicOrbitController(Node):
         )
         self.create_subscription(Point, "/control/orbit_target", self.target_callback, 10)
         self.create_subscription(Bool, "/control/orbit_start", self.start_callback, 10)
+        self.create_subscription(Int32, "/control/active_tree_id", self.active_tree_callback, 10)
+        self.create_subscription(TreeArray, "/map/trees", self.tree_map_callback, 10)
         self.create_subscription(
             Bool, "/mission/autonomy_enabled", self.autonomy_callback, 10
         )
@@ -136,6 +143,21 @@ class DynamicOrbitController(Node):
         self.tree = msg
         self.target_received_time = self.now_sec()
 
+    def active_tree_callback(self, msg: Int32) -> None:
+        self.active_tree_id = int(msg.data)
+
+    def tree_map_callback(self, msg: TreeArray) -> None:
+        self.trees = list(msg.trees)
+
+    def orbit_corridor_clear(self) -> bool:
+        for obstacle in self.trees:
+            if int(obstacle.id) == self.active_tree_id or not bool(obstacle.validated):
+                continue
+            center_distance = math.hypot(float(obstacle.x) - self.tree.x, float(obstacle.y) - self.tree.y)
+            if abs(center_distance - self.orbit_radius) < self.obstacle_clearance:
+                return False
+        return True
+
     def start_callback(self, msg: Bool) -> None:
         if msg.data and not self.autonomy_enabled:
             self.get_logger().warning("Perintah orbit diabaikan: autonomy disabled.")
@@ -154,6 +176,10 @@ class DynamicOrbitController(Node):
             self.publish_status("ORBIT_FAILED")
             return
         if self.phase == "IDLE":
+            if not self.orbit_corridor_clear():
+                self.get_logger().error("Orbit ditolak: koridor lingkaran memotong pohon/rintangan peta.")
+                self.publish_status("ORBIT_FAILED")
+                return
             self.phase = "ALIGNING"
             self.phase_start_time = self.now_sec()
             self.radius_stable_since = None
@@ -208,6 +234,10 @@ class DynamicOrbitController(Node):
             return
 
         now = self.now_sec()
+        if not self.orbit_corridor_clear():
+            self.get_logger().error("Orbit dibatalkan: rintangan baru masuk koridor orbit.")
+            self.reset("ORBIT_FAILED")
+            return
         if now - self.phase_start_time > self.orbit_timeout_sec:
             self.get_logger().error("Orbit timeout.")
             self.reset("ORBIT_TIMEOUT")

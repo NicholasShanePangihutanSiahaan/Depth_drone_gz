@@ -63,6 +63,10 @@ class PclTreeMapper(Node):
             "min_ready_trees": MissionConfig.MIN_READY_TREES,
             "reject_hold_sec": MissionConfig.TREE_REJECT_HOLD_SEC,
             "fallback_merge_distance": MissionConfig.TREE_FALLBACK_MERGE_DISTANCE,
+            "association_distance": MissionConfig.TREE_ASSOCIATION_DISTANCE,
+            "max_update_jump": MissionConfig.TREE_MAX_UPDATE_JUMP,
+            "validation_observations": MissionConfig.TREE_VALIDATION_OBSERVATIONS,
+            "position_alpha": MissionConfig.TREE_POSITION_ALPHA,
             "enable_fallback_points": False,
             "allow_identity_frame_relabel": MissionConfig.ALLOW_IDENTITY_FRAME_RELABEL,
         }
@@ -88,6 +92,19 @@ class PclTreeMapper(Node):
         self.fallback_merge_distance = float(
             self.get_parameter("fallback_merge_distance").value
         )
+        self.association_distance = max(
+            0.2, float(self.get_parameter("association_distance").value)
+        )
+        self.max_update_jump = max(
+            self.association_distance,
+            float(self.get_parameter("max_update_jump").value),
+        )
+        self.validation_observations = max(
+            2, int(self.get_parameter("validation_observations").value)
+        )
+        self.position_alpha = min(
+            0.5, max(0.02, float(self.get_parameter("position_alpha").value))
+        )
         self.enable_fallback_points = bool(
             self.get_parameter("enable_fallback_points").value
         )
@@ -97,7 +114,11 @@ class PclTreeMapper(Node):
 
         self.tree_database: Dict[int, TreeRecord] = {}
         self.rejected_until: Dict[int, float] = {}
-        self.next_fallback_id = 100_000
+        # IDs published to the mission are deliberately independent from the
+        # PCL track IDs. The latter may be recycled or duplicated after an
+        # occlusion; spatial association keeps one physical trunk one map ID.
+        self.next_tree_id = 1
+        self.raw_to_stable: Dict[int, int] = {}
         self.last_pcl_msg_time: Optional[float] = None
         self.last_transform_warning = -1e9
         self.last_ready_state: Optional[bool] = None
@@ -227,8 +248,8 @@ class PclTreeMapper(Node):
         accepted_ids = set()
 
         for tracked in msg.cylinders:
-            tree_id = int(tracked.id)
-            if self.rejected_until.get(tree_id, 0.0) > now:
+            raw_id = int(tracked.id)
+            if self.rejected_until.get(raw_id, 0.0) > now:
                 continue
             if not self._accepted_cylinder(tracked):
                 continue
@@ -244,18 +265,38 @@ class PclTreeMapper(Node):
             if transformed is None:
                 continue
             x, y, z = transformed
-            accepted_ids.add(tree_id)
             confidence = max(0.0, min(1.0, float(cylinder.confidence)))
-            existing = self.tree_database.get(tree_id)
+            existing = None
+            stable_id = self.raw_to_stable.get(raw_id)
+            if stable_id is not None:
+                candidate = self.tree_database.get(stable_id)
+                if candidate is not None and math.hypot(candidate.x - x, candidate.y - y) <= self.max_update_jump:
+                    existing = candidate
+
+            # A new/raw PCL ID is associated with the closest physical trunk.
+            # Do not associate twice within one input frame: two simultaneous
+            # cylinders cannot represent the same tree observation.
+            if existing is None:
+                candidates = [
+                    (math.hypot(record.x - x, record.y - y), record)
+                    for record in self.tree_database.values()
+                    if record.tree_id not in accepted_ids
+                ]
+                distance, nearest = min(candidates, default=(float("inf"), None), key=lambda item: item[0])
+                if nearest is not None and distance <= self.association_distance:
+                    existing = nearest
+                    stable_id = nearest.tree_id
 
             if existing is None:
-                self.tree_database[tree_id] = TreeRecord(
-                    tree_id=tree_id,
+                stable_id = self.next_tree_id
+                self.next_tree_id += 1
+                existing = TreeRecord(
+                    tree_id=stable_id,
                     x=x,
                     y=y,
                     z=z,
                     confidence=confidence,
-                    validated=True,
+                    validated=False,
                     inspected=False,
                     last_seen=now,
                     seen_count=int(tracked.seen_count),
@@ -263,22 +304,25 @@ class PclTreeMapper(Node):
                     radius=float(cylinder.radius),
                     height=float(cylinder.height),
                 )
+                self.tree_database[stable_id] = existing
                 self.get_logger().info(
-                    f"Pohon PCL baru ID={tree_id} di ({x:.2f}, {y:.2f}) "
+                    f"Pohon stabil baru ID={stable_id} (raw={raw_id}) di ({x:.2f}, {y:.2f}) "
                     f"frame={self.world_frame}."
                 )
             else:
-                alpha = 0.30
+                alpha = self.position_alpha
                 existing.x = (1.0 - alpha) * existing.x + alpha * x
                 existing.y = (1.0 - alpha) * existing.y + alpha * y
                 existing.z = (1.0 - alpha) * existing.z + alpha * z
                 existing.confidence = max(existing.confidence, confidence)
-                existing.validated = True
+                existing.seen_count += 1
+                existing.validated = existing.seen_count >= self.validation_observations
                 existing.last_seen = now
-                existing.seen_count = int(tracked.seen_count)
                 existing.missed_count = int(tracked.missed_count)
                 existing.radius = float(cylinder.radius)
                 existing.height = float(cylinder.height)
+            self.raw_to_stable[raw_id] = int(stable_id)
+            accepted_ids.add(int(stable_id))
 
         for tree_id, record in self.tree_database.items():
             if record.source == "pcl" and tree_id not in accepted_ids:
@@ -316,8 +360,8 @@ class PclTreeMapper(Node):
             nearest.validated = nearest.seen_count >= 3
             nearest.last_seen = now
         else:
-            tree_id = self.next_fallback_id
-            self.next_fallback_id += 1
+            tree_id = self.next_tree_id
+            self.next_tree_id += 1
             self.tree_database[tree_id] = TreeRecord(
                 tree_id=tree_id,
                 x=x,

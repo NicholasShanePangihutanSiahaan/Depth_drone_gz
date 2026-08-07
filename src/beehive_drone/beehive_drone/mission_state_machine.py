@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import math
+from copy import deepcopy
 from typing import Optional, Tuple
 
 import rclpy
@@ -31,6 +32,13 @@ class MissionStateMachine(Node):
             "hold_after_takeoff": False,
             "tree_search_radius": MissionConfig.TREE_SEARCH_RADIUS,
             "tree_min_confidence": MissionConfig.TREE_MIN_CONFIDENCE,
+            "mission_mode": "single",
+            "target_forward_cone_deg": MissionConfig.TARGET_FORWARD_CONE_DEG,
+            "verify_duration_sec": MissionConfig.VERIFY_DURATION_SEC,
+            "verify_position_tolerance": MissionConfig.VERIFY_POSITION_TOLERANCE,
+            "orbit_obstacle_clearance": MissionConfig.ORBIT_OBSTACLE_CLEARANCE,
+            "scan_duration_sec": 18.0,
+            "scan_yaw_rate": 0.25,
             "approach_distance": MissionConfig.APPROACH_DISTANCE,
             "approach_tolerance": MissionConfig.APPROACH_TOLERANCE,
             "orbit_radius": MissionConfig.ORBIT_RADIUS,
@@ -68,6 +76,17 @@ class MissionStateMachine(Node):
         self.hold_after_takeoff = bool(self.get_parameter("hold_after_takeoff").value)
         self.tree_search_radius = float(self.get_parameter("tree_search_radius").value)
         self.tree_min_confidence = float(self.get_parameter("tree_min_confidence").value)
+        self.mission_mode = str(self.get_parameter("mission_mode").value).strip().lower()
+        if self.mission_mode not in {"single", "all"}:
+            raise ValueError("mission_mode harus 'single' atau 'all'")
+        self.target_forward_cone = math.radians(
+            float(self.get_parameter("target_forward_cone_deg").value)
+        )
+        self.verify_duration_sec = max(0.5, float(self.get_parameter("verify_duration_sec").value))
+        self.verify_position_tolerance = max(0.1, float(self.get_parameter("verify_position_tolerance").value))
+        self.orbit_obstacle_clearance = max(0.5, float(self.get_parameter("orbit_obstacle_clearance").value))
+        self.scan_duration_sec = max(2.0, float(self.get_parameter("scan_duration_sec").value))
+        self.scan_yaw_rate = max(0.05, float(self.get_parameter("scan_yaw_rate").value))
         self.approach_distance = float(self.get_parameter("approach_distance").value)
         self.approach_tolerance = float(self.get_parameter("approach_tolerance").value)
         self.orbit_radius = float(self.get_parameter("orbit_radius").value)
@@ -149,6 +168,10 @@ class MissionStateMachine(Node):
         self.orbit_start_time: Optional[float] = None
         self.orbit_status = "IDLE"
         self.orbit_succeeded = False
+        self.target_observations: list[Tuple[float, float, float]] = []
+        self.scan_anchor: Optional[Tuple[float, float, float]] = None
+        self.failed_tree_ids: set[int] = set()
+        self.last_search_diagnostic_time = -1e9
 
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -192,9 +215,14 @@ class MissionStateMachine(Node):
         )
 
         self.create_timer(0.1, self.loop)
-        self.get_logger().info(
-            "Mission satu pohon aktif: takeoff -> 1 orbit -> kembali home -> land."
-        )
+        if self.mission_mode == "all":
+            self.get_logger().info(
+                "Mission multi-pohon aktif: orbit semua target valid, scan, retrace home, land."
+            )
+        else:
+            self.get_logger().info(
+                "Mission satu pohon aktif: takeoff -> 1 orbit -> kembali home -> land."
+            )
 
     def now_sec(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
@@ -279,7 +307,7 @@ class MissionStateMachine(Node):
             "TAKEOFF",
             "HOLD",
             "SEARCH_TREE",
-            "APPROACH_TREE",
+            "VERIFY_TARGET", "APPROACH_TREE", "SCAN_FOR_TREE",
             "HOVER_BEFORE_ORBIT",
             "PREPARE_ORBIT",
             "WAIT_ORBIT",
@@ -426,14 +454,66 @@ class MissionStateMachine(Node):
             return None
         cx = float(self.current_pose.pose.position.x)
         cy = float(self.current_pose.pose.position.y)
+        yaw = yaw_from_quaternion(self.current_pose.pose.orientation)
         candidates = []
+        rejected = {"invalid": 0, "far": 0, "side": 0, "orbit": 0, "failed": 0}
         for tree in self.trees:
+            if int(tree.id) in self.failed_tree_ids:
+                rejected["failed"] += 1
+                continue
             if not self.is_valid_tree(tree, self.tree_min_confidence):
+                rejected["invalid"] += 1
                 continue
             distance = distance_2d(cx, cy, float(tree.x), float(tree.y))
-            if distance <= self.tree_search_radius:
-                candidates.append((distance, -float(tree.confidence), int(tree.id), tree))
-        return min(candidates, default=(None, None, None, None))[3]
+            bearing = math.atan2(float(tree.y) - cy, float(tree.x) - cx)
+            bearing_error = abs(math.atan2(math.sin(bearing - yaw), math.cos(bearing - yaw)))
+            # The single-tree mission must select the tree actually in front of
+            # the aircraft, not simply the nearest trunk at its right/left.
+            if distance > self.tree_search_radius:
+                rejected["far"] += 1
+            elif self.mission_mode != "all" and bearing_error > self.target_forward_cone:
+                rejected["side"] += 1
+            elif not self.orbit_path_clear(tree):
+                rejected["orbit"] += 1
+            else:
+                candidates.append((bearing_error, distance, -float(tree.confidence), int(tree.id), tree))
+        selected = min(candidates, default=(None, None, None, None, None))[4]
+        now = self.now_sec()
+        if selected is None and now - self.last_search_diagnostic_time >= 3.0:
+            self.last_search_diagnostic_time = now
+            self.get_logger().warning(
+                "Tidak ada target lolos filter: "
+                f"map={len(self.trees)}, invalid={rejected['invalid']}, "
+                f"di_luar_radius={rejected['far']}, di_luar_kerucut_depan={rejected['side']}, "
+                f"koridor_orbit_terhalang={rejected['orbit']}, pernah_gagal={rejected['failed']}."
+            )
+        return selected
+
+    def orbit_path_clear(self, target: Tree) -> bool:
+        """Reject an orbit whose circular corridor crosses another mapped trunk."""
+        for obstacle in self.trees:
+            if int(obstacle.id) == int(target.id) or not bool(obstacle.validated):
+                continue
+            center_distance = distance_2d(float(target.x), float(target.y), float(obstacle.x), float(obstacle.y))
+            if abs(center_distance - self.orbit_radius) < self.orbit_obstacle_clearance:
+                return False
+        return True
+
+    def lock_verified_target(self) -> bool:
+        if self.target_tree is None or not self.target_observations:
+            return False
+        xs = [p[0] for p in self.target_observations]
+        ys = [p[1] for p in self.target_observations]
+        zs = [p[2] for p in self.target_observations]
+        x, y, z = sum(xs) / len(xs), sum(ys) / len(ys), sum(zs) / len(zs)
+        spread = max(math.hypot(px - x, py - y) for px, py, _ in self.target_observations)
+        if spread > self.verify_position_tolerance:
+            return False
+        locked = deepcopy(self.target_tree)
+        locked.x, locked.y, locked.z = float(x), float(y), float(z)
+        self.target_tree = locked
+        self.pre_orbit_point = self.compute_pre_orbit_point(locked)
+        return self.orbit_path_clear(locked)
 
     def set_active_tree(self, tree_id: int) -> None:
         msg = Int32()
@@ -548,6 +628,7 @@ class MissionStateMachine(Node):
             cy = self.home_y
 
         tree_dependent_states = {
+            "VERIFY_TARGET",
             "APPROACH_TREE",
             "HOVER_BEFORE_ORBIT",
             "PREPARE_ORBIT",
@@ -622,22 +703,51 @@ class MissionStateMachine(Node):
             self.publish_home_hover()
 
         elif self.state == "SEARCH_TREE":
-            # Drone tetap hovering di titik takeoff; pencarian dilakukan dari peta sensor.
             if not have_pose:
                 self.publish_home_hover()
                 return
-            self.publish_home_hover()
+            # On a multi-tree mission search from the last safe pre-orbit
+            # location; on the first/single mission this is the home hover.
+            self.publish_hold_here()
             tree = self.find_nearest_tree()
             if tree is not None:
-                self.target_tree = tree
-                self.pre_orbit_point = self.compute_pre_orbit_point(tree)
+                self.target_tree = deepcopy(tree)
+                self.target_observations = []
                 self.set_active_tree(int(tree.id))
                 self.transition(
-                    "APPROACH_TREE",
-                    f"Pohon terdekat ID={tree.id}; approach {self.approach_distance:.1f} m",
+                    "VERIFY_TARGET",
+                    f"Kandidat pohon ID={tree.id}; memverifikasi pusat batang",
                 )
             elif now - self.state_enter_time >= self.map_startup_timeout_sec:
-                self.transition("HOME_HOVER", "Pohon tidak ditemukan sebelum timeout")
+                if self.mission_mode == "all" and self.pre_orbit_point is not None:
+                    self.scan_anchor = self.pre_orbit_point
+                    self.transition("SCAN_FOR_TREE", "Tidak ada kandidat baru; scan 360 derajat")
+                else:
+                    self.transition("HOME_HOVER", "Pohon tidak ditemukan sebelum timeout")
+
+        elif self.state == "VERIFY_TARGET":
+            self.publish_hold_here()
+            if self.target_tree is None:
+                self.transition("SEARCH_TREE", "Kandidat kosong")
+                return
+            latest = self.find_tree_by_id(int(self.target_tree.id))
+            if latest is None or not self.is_valid_tree(latest, self.tree_min_confidence):
+                self.target_tree = None
+                self.set_active_tree(-1)
+                self.transition("SEARCH_TREE", "Kandidat hilang saat verifikasi")
+                return
+            self.target_tree.confidence = latest.confidence
+            self.target_observations.append((float(latest.x), float(latest.y), float(latest.z)))
+            if now - self.state_enter_time >= self.verify_duration_sec:
+                if self.lock_verified_target():
+                    self.transition(
+                        "APPROACH_TREE",
+                        f"Pusat pohon ID={self.target_tree.id} dikunci; approach {self.approach_distance:.1f} m",
+                    )
+                else:
+                    self.target_tree = None
+                    self.set_active_tree(-1)
+                    self.transition("SEARCH_TREE", "Kandidat tidak stabil atau lintasan orbit terhalang")
 
         elif self.state == "APPROACH_TREE":
             if not have_pose:
@@ -647,14 +757,12 @@ class MissionStateMachine(Node):
                 self.begin_safe_return("Target/approach point tidak tersedia")
                 return
 
-            latest = self.find_tree_by_id(int(self.target_tree.id))
-            if latest is None:
+            if self.find_tree_by_id(int(self.target_tree.id)) is None:
                 self.begin_safe_return("Target pohon hilang dari peta")
                 return
-            self.target_tree = latest
 
             point_x, point_y, _ = self.pre_orbit_point
-            yaw = math.atan2(float(latest.y) - cy, float(latest.x) - cx)
+            yaw = math.atan2(float(self.target_tree.y) - cy, float(self.target_tree.x) - cx)
             self.publish_goal(point_x, point_y, yaw)
             if distance_2d(cx, cy, point_x, point_y) <= self.approach_tolerance:
                 self.transition("HOVER_BEFORE_ORBIT", f"Titik {self.approach_distance:.1f} m sebelum pohon tercapai")
@@ -666,23 +774,20 @@ class MissionStateMachine(Node):
             if self.target_tree is None or self.pre_orbit_point is None:
                 self.begin_safe_return("Target hilang sebelum orbit")
                 return
-            latest = self.find_tree_by_id(int(self.target_tree.id))
-            if latest is None:
+            if self.find_tree_by_id(int(self.target_tree.id)) is None:
                 self.begin_safe_return("Target tidak lagi terdeteksi")
                 return
-            self.target_tree = latest
 
             point_x, point_y, _ = self.pre_orbit_point
-            yaw = math.atan2(float(latest.y) - point_y, float(latest.x) - point_x)
+            yaw = math.atan2(float(self.target_tree.y) - point_y, float(self.target_tree.x) - point_x)
             self.publish_goal(point_x, point_y, yaw)
 
             radius_error = abs(
-                distance_2d(point_x, point_y, float(latest.x), float(latest.y))
+                distance_2d(point_x, point_y, float(self.target_tree.x), float(self.target_tree.y))
                 - self.orbit_radius
             )
             if radius_error > self.orbit_start_tolerance:
-                self.pre_orbit_point = self.compute_pre_orbit_point(latest)
-                self.transition("APPROACH_TREE", "Posisi pohon bergeser; approach dihitung ulang")
+                self.begin_safe_return("Geometri orbit terkunci tidak valid")
             elif self.hover_stage_complete(self.pre_orbit_hover_sec):
                 self.orbit_prepare_start = now
                 self.transition("PREPARE_ORBIT", "Hover sebelum orbit stabil")
@@ -724,6 +829,8 @@ class MissionStateMachine(Node):
                 and now - self.orbit_start_time > self.orbit_timeout_sec
             ):
                 self.orbit_succeeded = False
+                if self.target_tree is not None:
+                    self.failed_tree_ids.add(int(self.target_tree.id))
                 self.stop_orbit(clear_active_tree=False)
                 current_yaw = yaw_from_quaternion(self.current_pose.pose.orientation)
                 self.post_orbit_hold_point = (cx, cy, self.takeoff_target_z, current_yaw)
@@ -767,7 +874,27 @@ class MissionStateMachine(Node):
             if self.hover_stage_complete(self.return_hover_sec):
                 self.set_active_tree(-1)
                 self.target_tree = None
-                self.transition("RETRACE_HOME", "Hover di titik sebelum orbit selesai")
+                self.target_observations = []
+                if self.mission_mode == "all":
+                    self.transition("SEARCH_TREE", "Pohon selesai; mencari pohon belum diinspeksi")
+                else:
+                    self.transition("RETRACE_HOME", "Hover di titik sebelum orbit selesai")
+
+        elif self.state == "SCAN_FOR_TREE":
+            if not have_pose or self.scan_anchor is None:
+                self.transition("RETURN_HOME", "Anchor scan tidak tersedia")
+                return
+            anchor_x, anchor_y, anchor_yaw = self.scan_anchor
+            elapsed = now - self.state_enter_time
+            self.publish_goal(anchor_x, anchor_y, anchor_yaw + self.scan_yaw_rate * elapsed)
+            tree = self.find_nearest_tree()
+            if tree is not None:
+                self.target_tree = deepcopy(tree)
+                self.target_observations = []
+                self.set_active_tree(int(tree.id))
+                self.transition("VERIFY_TARGET", f"Scan menemukan pohon baru ID={tree.id}")
+            elif elapsed >= self.scan_duration_sec:
+                self.transition("RETRACE_HOME", "Scan penuh tidak menemukan pohon baru")
 
         elif self.state == "RETRACE_HOME":
             if not have_pose:

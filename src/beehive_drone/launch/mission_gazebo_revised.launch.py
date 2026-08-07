@@ -19,6 +19,7 @@ def generate_launch_description():
     use_yolo_fallback = LaunchConfiguration("use_yolo_fallback")
     use_analyzer = LaunchConfiguration("use_analyzer")
     hold_after_takeoff = LaunchConfiguration("hold_after_takeoff")
+    mission_mode = LaunchConfiguration("mission_mode")
     point_cloud_topic = LaunchConfiguration("point_cloud_topic")
     odom_topic = LaunchConfiguration("odom_topic")
     yolo_model_path = LaunchConfiguration("yolo_model_path")
@@ -30,6 +31,7 @@ def generate_launch_description():
         DeclareLaunchArgument("use_analyzer", default_value="true"),
         # Full one-tree mission by default. Set true for a takeoff-only test.
         DeclareLaunchArgument("hold_after_takeoff", default_value="false"),
+        DeclareLaunchArgument("mission_mode", default_value="single"),
         DeclareLaunchArgument(
             "point_cloud_topic", default_value="/zed2i/depth/points"
         ),
@@ -117,6 +119,7 @@ def generate_launch_description():
             parameters=[
                 config_file,
                 {
+                    "mission_mode": ParameterValue(mission_mode, value_type=str),
                     "hold_after_takeoff": ParameterValue(
                         hold_after_takeoff, value_type=bool
                     )

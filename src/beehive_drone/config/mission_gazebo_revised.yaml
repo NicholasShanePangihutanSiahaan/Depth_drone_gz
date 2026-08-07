@@ -33,6 +33,12 @@ mission_state_machine:
 
     tree_search_radius: 18.0
     tree_min_confidence: 0.35
+    target_forward_cone_deg: 80.0
+    verify_duration_sec: 2.0
+    verify_position_tolerance: 0.55
+    orbit_obstacle_clearance: 1.0
+    scan_duration_sec: 26.0
+    scan_yaw_rate: 0.25
 
     # Must match orbit_radius to avoid APPROACH/HOVER oscillation.
     approach_distance: 3.0
@@ -77,6 +83,10 @@ pcl_tree_mapper:
     tree_stale_sec: 60.0
     pcl_stream_timeout_sec: 6.0
     min_ready_trees: 1
+    association_distance: 1.25
+    max_update_jump: 1.75
+    validation_observations: 4
+    position_alpha: 0.18
     enable_fallback_points: false
     allow_identity_frame_relabel: true
 
@@ -91,6 +101,7 @@ dynamic_orbit_controller:
     completion_margin: 0.0
     orbit_timeout_sec: 150.0
     yaw_offset: 0.0
+    orbit_obstacle_clearance: 1.0
 
 vortex_avoidance_controller:
   ros__parameters:

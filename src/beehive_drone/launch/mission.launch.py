@@ -19,6 +19,7 @@ def generate_launch_description():
     use_yolo_fallback = LaunchConfiguration("use_yolo_fallback")
     use_analyzer = LaunchConfiguration("use_analyzer")
     hold_after_takeoff = LaunchConfiguration("hold_after_takeoff")
+    mission_mode = LaunchConfiguration("mission_mode")
     use_depth_pointcloud = LaunchConfiguration("use_depth_pointcloud")
     point_cloud_topic = LaunchConfiguration("point_cloud_topic")
     rgb_topic = LaunchConfiguration("rgb_topic")
@@ -36,7 +37,10 @@ def generate_launch_description():
             DeclareLaunchArgument("use_yolo_fallback", default_value="false"),
             DeclareLaunchArgument("use_analyzer", default_value="true"),
             DeclareLaunchArgument("hold_after_takeoff", default_value="false"),
-            DeclareLaunchArgument("use_depth_pointcloud", default_value="true"),
+            # plantation_sim already bridges /zed2i/depth/points. Enabling both
+            # publishers creates duplicate clouds and unstable PCL tracks.
+            DeclareLaunchArgument("use_depth_pointcloud", default_value="false"),
+            DeclareLaunchArgument("mission_mode", default_value="single"),
             DeclareLaunchArgument(
                 "point_cloud_topic", default_value="/zed2i/depth/points"
             ),
@@ -73,6 +77,7 @@ def generate_launch_description():
                 name="pcl_proc_node",
                 output="screen",
                 condition=IfCondition(use_pcl),
+                parameters=[config_file],
                 remappings=[
                     ("/input_cloud", point_cloud_topic),
                     ("/odom", odom_topic),
@@ -162,6 +167,7 @@ def generate_launch_description():
                 parameters=[
                     config_file,
                     {
+                        "mission_mode": ParameterValue(mission_mode, value_type=str),
                         "hold_after_takeoff": ParameterValue(
                             hold_after_takeoff, value_type=bool
                         )
