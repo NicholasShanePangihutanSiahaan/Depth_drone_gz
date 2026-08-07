@@ -214,6 +214,11 @@ class VortexAvoidanceController(Node):
             "TAKEOFF",
             "HOLD",
             "SEARCH_TREE",
+            # A target is already locked before these states. Do not let PCL
+            # map churn bend the final radial approach or its hover pose.
+            "VERIFY_TARGET",
+            "APPROACH_TREE",
+            "HOVER_BEFORE_ORBIT",
             # During the locked single-tree orbit, feed the geometrically
             # constrained orbit target through directly. PCL ID fragmentation
             # can otherwise turn pieces of the inspected trunk into obstacles.
@@ -236,8 +241,6 @@ class VortexAvoidanceController(Node):
             return
 
         map_required_states = {
-            "APPROACH_TREE",
-            "HOVER_BEFORE_ORBIT",
             "PREPARE_ORBIT",
             "WAIT_ORBIT",
         }

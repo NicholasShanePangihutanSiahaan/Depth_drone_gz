@@ -70,6 +70,9 @@ class DynamicOrbitController(Node):
         self.radius_stable_since: Optional[float] = None
         self.last_angle: Optional[float] = None
         self.accumulated_angle = 0.0
+        self.accumulated_distance = 0.0
+        self.last_xy = None
+        self.last_orbit_log_time = -1e9
         self.last_status = ""
         self.autonomy_enabled = False
         self.pilot_override = False
@@ -120,6 +123,8 @@ class DynamicOrbitController(Node):
             self.radius_stable_since = None
             self.last_angle = None
             self.accumulated_angle = 0.0
+            self.accumulated_distance = 0.0
+            self.last_xy = None
             self.publish_status(
                 "PILOT_OVERRIDE" if self.pilot_override else "IDLE", force=True
             )
@@ -208,6 +213,8 @@ class DynamicOrbitController(Node):
         self.radius_stable_since = None
         self.last_angle = None
         self.accumulated_angle = 0.0
+        self.accumulated_distance = 0.0
+        self.last_xy = None
         self.publish_status(status, force=True)
         self.publish_progress(0.0)
 
@@ -272,6 +279,8 @@ class DynamicOrbitController(Node):
                     self.phase_start_time = now
                     self.last_angle = current_angle
                     self.accumulated_angle = 0.0
+                    self.accumulated_distance = 0.0
+                    self.last_xy = (px, py)
                     self.publish_status("IN_PROGRESS")
             else:
                 self.radius_stable_since = None
@@ -284,13 +293,29 @@ class DynamicOrbitController(Node):
             if 0.0 < directed_delta < 0.35 and abs(current_radius - self.orbit_radius) <= self.radius_tolerance:
                 self.accumulated_angle += directed_delta
         self.last_angle = current_angle
+        if self.last_xy is not None and abs(current_radius - self.orbit_radius) <= self.radius_tolerance:
+            step = math.hypot(px - self.last_xy[0], py - self.last_xy[1])
+            if step < 0.25:
+                self.accumulated_distance += step
+        self.last_xy = (px, py)
 
         required_angle = max(0.1, 2.0 * math.pi - self.completion_margin)
         progress = self.accumulated_angle / required_angle
         self.publish_progress(progress)
 
-        if self.accumulated_angle >= required_angle:
-            self.get_logger().info("Orbit 360 derajat terverifikasi selesai.")
+        minimum_path = 0.85 * 2.0 * math.pi * self.orbit_radius
+        if now - self.last_orbit_log_time >= 5.0:
+            self.last_orbit_log_time = now
+            self.get_logger().info(
+                f"Orbit aktual: radius={current_radius:.2f} m, "
+                f"sudut={math.degrees(self.accumulated_angle):.1f} deg, "
+                f"lintasan={self.accumulated_distance:.1f} m."
+            )
+
+        if self.accumulated_angle >= required_angle and self.accumulated_distance >= minimum_path:
+            self.get_logger().info(
+                f"Orbit 360 derajat terverifikasi: lintasan XY={self.accumulated_distance:.1f} m."
+            )
             self.reset("ORBIT_COMPLETED")
             return
 

@@ -47,6 +47,7 @@ mission_state_machine:
     approach_tolerance: 0.30
     orbit_radius: 3.0
     orbit_start_tolerance: 0.50
+    pre_orbit_position_tolerance: 0.45
     orbit_timeout_sec: 150.0
 
     pre_orbit_hover_sec: 3.0

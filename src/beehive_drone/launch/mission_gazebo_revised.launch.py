@@ -28,7 +28,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("use_pcl", default_value="true"),
         DeclareLaunchArgument("use_yolo_fallback", default_value="false"),
-        DeclareLaunchArgument("use_analyzer", default_value="true"),
+        DeclareLaunchArgument("use_analyzer", default_value="false"),
         # Full one-tree mission by default. Set true for a takeoff-only test.
         DeclareLaunchArgument("hold_after_takeoff", default_value="false"),
         DeclareLaunchArgument("mission_mode", default_value="single"),
@@ -45,8 +45,8 @@ def generate_launch_description():
             package="point-cloud-test",
             executable="pcl_proc_node",
             name="pcl_proc_node",
-            output="screen",
-            arguments=["--ros-args", "--log-level", "pcl_proc_node:=warn"],
+            output="log",
+            arguments=["--ros-args", "--log-level", "pcl_proc_node:=fatal"],
             condition=IfCondition(use_pcl),
             parameters=[config_file],
             remappings=[

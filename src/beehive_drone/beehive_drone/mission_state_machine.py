@@ -45,6 +45,7 @@ class MissionStateMachine(Node):
             "approach_tolerance": MissionConfig.APPROACH_TOLERANCE,
             "orbit_radius": MissionConfig.ORBIT_RADIUS,
             "orbit_start_tolerance": MissionConfig.ORBIT_START_TOLERANCE,
+            "pre_orbit_position_tolerance": 0.45,
             "orbit_timeout_sec": MissionConfig.ORBIT_TIMEOUT_SEC,
             "pre_orbit_hover_sec": MissionConfig.PRE_ORBIT_HOVER_SEC,
             "post_orbit_hover_sec": MissionConfig.POST_ORBIT_HOVER_SEC,
@@ -98,6 +99,10 @@ class MissionStateMachine(Node):
         self.orbit_radius = float(self.get_parameter("orbit_radius").value)
         self.orbit_start_tolerance = float(
             self.get_parameter("orbit_start_tolerance").value
+        )
+        self.pre_orbit_position_tolerance = max(
+            self.approach_tolerance,
+            float(self.get_parameter("pre_orbit_position_tolerance").value),
         )
         self.orbit_timeout_sec = float(self.get_parameter("orbit_timeout_sec").value)
         self.pre_orbit_hover_sec = float(self.get_parameter("pre_orbit_hover_sec").value)
@@ -181,6 +186,7 @@ class MissionStateMachine(Node):
         self.failed_tree_ids: set[int] = set()
         self.completed_tree_ids: set[int] = set()
         self.cross_check_complete = False
+        self.pre_orbit_stable_since: Optional[float] = None
         self.last_search_diagnostic_time = -1e9
 
         qos_sensor = QoSProfile(
@@ -254,6 +260,7 @@ class MissionStateMachine(Node):
             self.return_retrace_index = None
         if new_state == "HOVER_BEFORE_ORBIT":
             self.cross_check_complete = False
+            self.pre_orbit_stable_since = None
         if new_state == "LAND":
             self.last_land_command_time = -1e9
         text = f"{old_state} -> {new_state}"
@@ -810,7 +817,7 @@ class MissionStateMachine(Node):
                     float(self.target_tree.x), float(self.target_tree.y),
                     float(latest.x), float(latest.y),
                 )
-                if center_shift > self.verify_position_tolerance:
+                if center_shift > self.active_tree_alias_radius:
                     self.set_active_tree(-1)
                     self.target_tree = None
                     self.pre_orbit_point = None
@@ -819,6 +826,11 @@ class MissionStateMachine(Node):
                         f"Cross-check gagal: pusat pohon bergeser {center_shift:.2f} m",
                     )
                     return
+                if center_shift > self.verify_position_tolerance:
+                    self.get_logger().warning(
+                        "Cross-check mengoreksi pusat pohon terkunci sebesar "
+                        f"{center_shift:.2f} m; ID target tetap dipertahankan."
+                    )
                 # Accept the final measured center exactly once, then freeze it.
                 self.target_tree = deepcopy(latest)
                 self.pre_orbit_point = self.compute_pre_orbit_point(self.target_tree)
@@ -832,14 +844,37 @@ class MissionStateMachine(Node):
                 distance_2d(cx, cy, float(self.target_tree.x), float(self.target_tree.y))
                 - self.orbit_radius
             )
-            if radius_error > self.orbit_start_tolerance:
+            position_error = distance_2d(cx, cy, point_x, point_y)
+            current_yaw = yaw_from_quaternion(self.current_pose.pose.orientation)
+            yaw_error = abs(math.atan2(math.sin(yaw - current_yaw), math.cos(yaw - current_yaw)))
+            geometry_ready = (
+                radius_error <= self.orbit_start_tolerance
+                and position_error <= self.pre_orbit_position_tolerance
+                and yaw_error <= math.radians(12.0)
+                and self.hovering
+            )
+            if (
+                radius_error > self.orbit_start_tolerance
+                or position_error > self.pre_orbit_position_tolerance
+            ):
                 self.transition(
                     "APPROACH_TREE",
-                    f"Menyesuaikan radius aktual sebelum orbit; error={radius_error:.2f} m",
+                    "Menyesuaikan geometri sebelum orbit; "
+                    f"radius_error={radius_error:.2f} m, posisi_error={position_error:.2f} m",
                 )
-            elif self.hover_stage_complete(self.pre_orbit_hover_sec):
-                self.orbit_prepare_start = now
-                self.transition("PREPARE_ORBIT", "Hover sebelum orbit stabil")
+            elif geometry_ready:
+                if self.pre_orbit_stable_since is None:
+                    self.pre_orbit_stable_since = now
+                elif now - self.pre_orbit_stable_since >= self.pre_orbit_hover_sec:
+                    self.get_logger().info(
+                        "Siap orbit: radius aktual="
+                        f"{distance_2d(cx, cy, float(self.target_tree.x), float(self.target_tree.y)):.2f} m, "
+                        f"yaw_error={math.degrees(yaw_error):.1f} deg."
+                    )
+                    self.orbit_prepare_start = now
+                    self.transition("PREPARE_ORBIT", "Posisi, radius, yaw, dan hover stabil")
+            else:
+                self.pre_orbit_stable_since = None
 
         elif self.state == "PREPARE_ORBIT":
             if not have_pose:

@@ -318,9 +318,10 @@ class PclTreeMapper(Node):
                 )
             else:
                 alpha = self.position_alpha
-                existing.x = (1.0 - alpha) * existing.x + alpha * x
-                existing.y = (1.0 - alpha) * existing.y + alpha * y
-                existing.z = (1.0 - alpha) * existing.z + alpha * z
+                if existing.tree_id != self.active_tree_id:
+                    existing.x = (1.0 - alpha) * existing.x + alpha * x
+                    existing.y = (1.0 - alpha) * existing.y + alpha * y
+                    existing.z = (1.0 - alpha) * existing.z + alpha * z
                 existing.confidence = max(existing.confidence, confidence)
                 existing.seen_count += 1
                 existing.validated = existing.seen_count >= self.validation_observations
@@ -366,9 +367,10 @@ class PclTreeMapper(Node):
                     keep_weight = max(1, keep.seen_count)
                     drop_weight = max(1, drop.seen_count)
                     total = keep_weight + drop_weight
-                    keep.x = (keep.x * keep_weight + drop.x * drop_weight) / total
-                    keep.y = (keep.y * keep_weight + drop.y * drop_weight) / total
-                    keep.z = (keep.z * keep_weight + drop.z * drop_weight) / total
+                    if keep_id != self.active_tree_id:
+                        keep.x = (keep.x * keep_weight + drop.x * drop_weight) / total
+                        keep.y = (keep.y * keep_weight + drop.y * drop_weight) / total
+                        keep.z = (keep.z * keep_weight + drop.z * drop_weight) / total
                     keep.seen_count = total
                     keep.confidence = max(keep.confidence, drop.confidence)
                     keep.validated = keep.validated or drop.validated
@@ -493,7 +495,9 @@ class PclTreeMapper(Node):
             stale_ids = [
                 tree_id
                 for tree_id, record in self.tree_database.items()
-                if not record.inspected and now - record.last_seen > self.tree_stale_sec
+                if tree_id != self.active_tree_id
+                and not record.inspected
+                and now - record.last_seen > self.tree_stale_sec
             ]
             for tree_id in stale_ids:
                 self.tree_database.pop(tree_id, None)
