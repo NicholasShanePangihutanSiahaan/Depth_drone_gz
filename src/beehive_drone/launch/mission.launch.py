@@ -76,6 +76,7 @@ def generate_launch_description():
                 executable="pcl_proc_node",
                 name="pcl_proc_node",
                 output="screen",
+                arguments=["--ros-args", "--log-level", "pcl_proc_node:=warn"],
                 condition=IfCondition(use_pcl),
                 parameters=[config_file],
                 remappings=[

@@ -179,6 +179,8 @@ class MissionStateMachine(Node):
         self.target_observations: list[Tuple[float, float, float]] = []
         self.scan_anchor: Optional[Tuple[float, float, float]] = None
         self.failed_tree_ids: set[int] = set()
+        self.completed_tree_ids: set[int] = set()
+        self.cross_check_complete = False
         self.last_search_diagnostic_time = -1e9
 
         qos_sensor = QoSProfile(
@@ -250,6 +252,8 @@ class MissionStateMachine(Node):
             self.return_retrace_index = None
         if new_state == "RETRACE_HOME":
             self.return_retrace_index = None
+        if new_state == "HOVER_BEFORE_ORBIT":
+            self.cross_check_complete = False
         if new_state == "LAND":
             self.last_land_command_time = -1e9
         text = f"{old_state} -> {new_state}"
@@ -470,7 +474,7 @@ class MissionStateMachine(Node):
         candidates = []
         rejected = {"invalid": 0, "far": 0, "side": 0, "orbit": 0, "failed": 0}
         for tree in self.trees:
-            if int(tree.id) in self.failed_tree_ids:
+            if int(tree.id) in self.failed_tree_ids or int(tree.id) in self.completed_tree_ids:
                 rejected["failed"] += 1
                 continue
             if not self.is_valid_tree(tree, self.tree_min_confidence):
@@ -600,6 +604,7 @@ class MissionStateMachine(Node):
     def mark_target_inspected(self) -> None:
         if self.target_tree is None:
             return
+        self.completed_tree_ids.add(int(self.target_tree.id))
         update = Tree()
         update.id = int(self.target_tree.id)
         update.x = float(self.target_tree.x)
@@ -781,52 +786,57 @@ class MissionStateMachine(Node):
             if self.target_tree is None or self.pre_orbit_point is None:
                 self.begin_safe_return("Target hilang sebelum orbit")
                 return
-            latest = self.find_tree_by_id(int(self.target_tree.id))
-            if latest is None:
-                latest = min(
-                    self.trees,
-                    key=lambda tree: distance_2d(
+            if not self.cross_check_complete:
+                latest = self.find_tree_by_id(int(self.target_tree.id))
+                if latest is None:
+                    latest = min(
+                        self.trees,
+                        key=lambda tree: distance_2d(
+                            float(self.target_tree.x), float(self.target_tree.y),
+                            float(tree.x), float(tree.y),
+                        ),
+                        default=None,
+                    )
+                    if latest is not None and distance_2d(
                         float(self.target_tree.x), float(self.target_tree.y),
-                        float(tree.x), float(tree.y),
-                    ),
-                    default=None,
-                )
-                if latest is not None and distance_2d(
+                        float(latest.x), float(latest.y),
+                    ) > self.active_tree_alias_radius:
+                        latest = None
+                if latest is None:
+                    self.begin_safe_return("Target tidak lagi terdeteksi saat cross-check")
+                    return
+
+                center_shift = distance_2d(
                     float(self.target_tree.x), float(self.target_tree.y),
                     float(latest.x), float(latest.y),
-                ) > self.active_tree_alias_radius:
-                    latest = None
-            if latest is None:
-                self.begin_safe_return("Target tidak lagi terdeteksi")
-                return
-
-            # This is the single perception cross-check requested by the
-            # mission sequence. Once PREPARE_ORBIT starts the locked center is
-            # authoritative and later PCL churn cannot move/cancel the orbit.
-            center_shift = distance_2d(
-                float(self.target_tree.x), float(self.target_tree.y),
-                float(latest.x), float(latest.y),
-            )
-            if center_shift > self.verify_position_tolerance:
-                self.set_active_tree(-1)
-                self.target_tree = None
-                self.pre_orbit_point = None
-                self.transition(
-                    "SEARCH_TREE",
-                    f"Cross-check gagal: pusat pohon bergeser {center_shift:.2f} m",
                 )
-                return
+                if center_shift > self.verify_position_tolerance:
+                    self.set_active_tree(-1)
+                    self.target_tree = None
+                    self.pre_orbit_point = None
+                    self.transition(
+                        "SEARCH_TREE",
+                        f"Cross-check gagal: pusat pohon bergeser {center_shift:.2f} m",
+                    )
+                    return
+                # Accept the final measured center exactly once, then freeze it.
+                self.target_tree = deepcopy(latest)
+                self.pre_orbit_point = self.compute_pre_orbit_point(self.target_tree)
+                self.cross_check_complete = True
 
             point_x, point_y, _ = self.pre_orbit_point
             yaw = math.atan2(float(self.target_tree.y) - point_y, float(self.target_tree.x) - point_x)
             self.publish_goal(point_x, point_y, yaw)
 
             radius_error = abs(
-                distance_2d(point_x, point_y, float(self.target_tree.x), float(self.target_tree.y))
+                distance_2d(cx, cy, float(self.target_tree.x), float(self.target_tree.y))
                 - self.orbit_radius
             )
             if radius_error > self.orbit_start_tolerance:
-                self.begin_safe_return("Geometri orbit terkunci tidak valid")
+                self.transition(
+                    "APPROACH_TREE",
+                    f"Menyesuaikan radius aktual sebelum orbit; error={radius_error:.2f} m",
+                )
             elif self.hover_stage_complete(self.pre_orbit_hover_sec):
                 self.orbit_prepare_start = now
                 self.transition("PREPARE_ORBIT", "Hover sebelum orbit stabil")
@@ -860,9 +870,11 @@ class MissionStateMachine(Node):
                 self.orbit_succeeded = True
                 self.mark_target_inspected()
                 self.stop_orbit(clear_active_tree=False)
+                current_yaw = yaw_from_quaternion(self.current_pose.pose.orientation)
+                self.post_orbit_hold_point = (cx, cy, self.takeoff_target_z, current_yaw)
                 self.transition(
-                    "RETURN_PRE_ORBIT",
-                    "Satu putaran 360 derajat selesai; kembali ke titik hover sebelum orbit",
+                    "POST_ORBIT_HOVER",
+                    "Satu putaran 360 derajat selesai; menstabilkan drone",
                 )
             elif self.orbit_status in {"ORBIT_FAILED", "ORBIT_TIMEOUT"} or (
                 self.orbit_start_time is not None
@@ -884,7 +896,23 @@ class MissionStateMachine(Node):
             hold_x, hold_y, hold_z, hold_yaw = self.post_orbit_hold_point
             self.publish_goal(hold_x, hold_y, hold_yaw, z=hold_z)
             if self.hover_stage_complete(self.post_orbit_hover_sec):
-                self.transition("RETURN_PRE_ORBIT", "Hover setelah orbit selesai")
+                self.set_active_tree(-1)
+                if self.mission_mode == "all":
+                    next_tree = self.find_nearest_tree()
+                    if next_tree is not None:
+                        self.target_tree = deepcopy(next_tree)
+                        self.target_observations = []
+                        self.set_active_tree(int(next_tree.id))
+                        self.transition(
+                            "VERIFY_TARGET",
+                            f"Hover pasca-orbit stabil; mengunci kandidat berikut ID={next_tree.id}",
+                        )
+                    else:
+                        self.target_tree = None
+                        self.transition("SEARCH_TREE", "Hover pasca-orbit stabil; menunggu target baru")
+                else:
+                    self.target_tree = None
+                    self.transition("RETRACE_HOME", "Hover pasca-orbit stabil; kembali home")
 
         elif self.state == "RETURN_PRE_ORBIT":
             if not have_pose:
