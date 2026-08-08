@@ -16,6 +16,15 @@ def euler_to_quaternion(roll, pitch, yaw):
     qw = math.cos(roll/2) * math.cos(pitch/2) * math.cos(yaw/2) + math.sin(roll/2) * math.sin(pitch/2) * math.sin(yaw/2)
     return qx, qy, qz, qw
 
+def quaternion_to_yaw(q):
+    return math.atan2(
+        2.0 * (q.w * q.z + q.x * q.y),
+        1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+    )
+
+def normalize_angle(angle):
+    return math.atan2(math.sin(angle), math.cos(angle))
+
 class MissionStateMachine(Node):
     def __init__(self):
         super().__init__("mission_state_machine")
@@ -26,7 +35,7 @@ class MissionStateMachine(Node):
             depth=10
         )
         qos_map = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
@@ -40,6 +49,14 @@ class MissionStateMachine(Node):
         self.end_of_farm_dist = MissionConfig.END_OF_FARM_DIST
         self.approach_safe_dist = MissionConfig.APPROACH_SAFE_DIST
         self.flight_altitude = MissionConfig.FLIGHT_ALTITUDE
+        self.orbit_radius = MissionConfig.ORBIT_RADIUS
+        self.verify_timeout = MissionConfig.TREE_VERIFY_TIMEOUT
+        self.verify_samples_required = MissionConfig.TREE_VERIFY_SAMPLES
+        self.verify_spread = MissionConfig.TREE_VERIFY_SPREAD
+        self.align_position_tolerance = MissionConfig.ORBIT_ALIGN_POSITION_TOL
+        self.align_radius_tolerance = MissionConfig.ORBIT_ALIGN_RADIUS_TOL
+        self.align_yaw_tolerance = MissionConfig.ORBIT_ALIGN_YAW_TOL
+        self.align_hold_required = MissionConfig.ORBIT_ALIGN_HOLD
 
         # ==========================================
         # Variabel State & Navigasi
@@ -51,6 +68,11 @@ class MissionStateMachine(Node):
         self.current_pose = None
         self.trees = []
         self.target_tree = None
+        self.tree_observations = {}
+        self.tree_observation_counts = {}
+        self.verify_started_at = 0.0
+        self.verify_start_count = 0
+        self.align_stable_since = None
 
         # Variabel Telemetri Penerbangan (Dari Flight Manager)
         self.is_armed = False
@@ -73,6 +95,12 @@ class MissionStateMachine(Node):
         self.pose_sub = self.create_subscription(PoseStamped, "/mavros/local_position/pose", self.pose_cb, qos_sensor)
         self.orbit_status_sub = self.create_subscription(String, "/control/orbit_status", self.orbit_status_cb, 10)
         self.tree_sub = self.create_subscription(TreeArray, "/map/trees", self.tree_cb, qos_map)
+        self.observation_sub = self.create_subscription(
+            Tree,
+            "/perception/tree_observation",
+            self.tree_observation_cb,
+            10
+        )
 
         # Telemetri dari Flight Manager
         self.telemetry_arm_sub = self.create_subscription(Bool, "/flight/telemetry/is_armed", self.arm_cb, 10)
@@ -106,6 +134,13 @@ class MissionStateMachine(Node):
     def pose_cb(self, msg): self.current_pose = msg
     def orbit_status_cb(self, msg): self.orbit_status = msg.data
     def tree_cb(self, msg): self.trees = msg.trees
+    def tree_observation_cb(self, msg):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        sequence = self.tree_observation_counts.get(msg.id, 0) + 1
+        self.tree_observation_counts[msg.id] = sequence
+        history = self.tree_observations.setdefault(msg.id, [])
+        history.append((sequence, now, msg.x, msg.y, msg.z, msg.confidence))
+        del history[:-20]
     
     # --- Callbacks Telemetri ---
     def arm_cb(self, msg): self.is_armed = msg.data
@@ -241,60 +276,110 @@ class MissionStateMachine(Node):
                 self.publish_goal(stop_x, stop_y, target_yaw)
             else:
                 self.state = "VERIFY_TREE"
-                self.hover_timer = 0
-                self.get_logger().info("Titik pengereman tercapai. Hovering 4 detik untuk stabilisasi...")
+                self.verify_started_at = self.get_clock().now().nanoseconds * 1e-9
+                self.verify_start_count = self.tree_observation_counts.get(
+                    self.target_tree.id, 0
+                )
+                self.get_logger().info(
+                    "Titik pendekatan tercapai. Menunggu observasi PCL baru "
+                    "untuk memeriksa ulang koordinat pohon..."
+                )
         
         elif self.state == "VERIFY_TREE":
-            # 1. Tahan posisi (Hovering) menghadap arah pohon target
+            # Tahan posisi dan arahkan kamera ke kandidat selama PCL mengambil
+            # beberapa observasi BARU. Isi /map/trees saja tidak cukup karena
+            # dapat merupakan koordinat lama yang sudah stale.
             target_yaw = math.atan2(self.target_tree.y - cy, self.target_tree.x - cx)
             self.publish_goal(cx, cy, target_yaw)
-            
-            self.hover_timer += 1
-            
-            # Setelah 40 siklus (4 detik hovering stabil)
-            if self.hover_timer >= 40:
-                
-                # --- CARI POHON BERDASARKAN ID ASLI SECARA KETAT ---
-                target_matched_tree = None
-                for tree in self.trees:
-                    if tree.id == self.target_tree.id:
-                        target_matched_tree = tree
-                        break
-                
-                # Cek 1: Apakah ID pohon tersebut masih ada di database mapper?
-                if target_matched_tree is not None:
-                    
-                    # Cek 2: HITUNG JARAK RIILL AKTUAL DARI DRONE KE POHON TERSEBUT
-                    actual_dist_to_tree = self.distance(cx, cy, target_matched_tree.x, target_matched_tree.y)
-                    
-                    # Syarat Mutlak: Jarak riil drone ke pohon HARUS benar-benar di sekitar 2 meter.
-                    # Jika jaraknya jauh (misal 5 meter atau nyasar ke pohon lain), berarti itu hantu!
-                    if 1.5 <= actual_dist_to_tree <= 2.5:
-                        self.target_tree = target_matched_tree  
-                        self.state = "START_ORBIT"
-                        self.get_logger().info(f"Verifikasi sukses! Pohon ID:{target_matched_tree.id} valid di jarak {actual_dist_to_tree:.2f}m. Memulai orbit.")
-                    else:
-                        self.get_logger().warn(f"Pohon ID:{target_matched_tree.id} gagal verifikasi. Jarak aktual nyasar di {actual_dist_to_tree:.2f}m. Dihapus!")
-                        
-                        # Hapus pohon hantu dari database
-                        update_msg = Tree()
-                        update_msg.id = self.target_matched_tree.id if 'target_matched_tree' in locals() and target_matched_tree else self.target_tree.id
-                        update_msg.confidence = -1.0 
-                        self.tree_update_pub.publish(update_msg)
-                        
-                        self.target_tree = None
-                        self.state = "EXPLORE_ROW"
-                        
+            now = self.get_clock().now().nanoseconds * 1e-9
+            history = self.tree_observations.get(self.target_tree.id, [])
+            fresh = [
+                sample for sample in history
+                if sample[0] > self.verify_start_count
+            ]
+
+            if len(fresh) >= self.verify_samples_required:
+                samples = fresh[-self.verify_samples_required:]
+                mean_x = sum(sample[2] for sample in samples) / len(samples)
+                mean_y = sum(sample[3] for sample in samples) / len(samples)
+                mean_z = sum(sample[4] for sample in samples) / len(samples)
+                spread = max(
+                    self.distance(sample[2], sample[3], mean_x, mean_y)
+                    for sample in samples
+                )
+
+                if spread <= self.verify_spread:
+                    old_x, old_y = self.target_tree.x, self.target_tree.y
+                    self.target_tree.x = mean_x
+                    self.target_tree.y = mean_y
+                    self.target_tree.z = mean_z
+                    self.target_tree.validated = True
+                    self.state = "ALIGN_ORBIT"
+                    self.align_stable_since = None
+                    self.get_logger().info(
+                        f"Pohon ID:{self.target_tree.id} terverifikasi dari "
+                        f"{len(samples)} observasi baru; koreksi koordinat "
+                        f"({old_x:.2f},{old_y:.2f}) -> ({mean_x:.2f},{mean_y:.2f}), "
+                        f"spread={spread:.2f}m. Menyelaraskan titik masuk orbit."
+                    )
                 else:
-                    self.get_logger().warn("Pohon Hantu hilang dari peta saat hovering! Membatalkan orbit.")
-                    if self.target_tree is not None:
-                        update_msg = Tree()
-                        update_msg.id = self.target_tree.id
-                        update_msg.confidence = -1.0 
-                        self.tree_update_pub.publish(update_msg)
-                    
-                    self.target_tree = None
-                    self.state = "EXPLORE_ROW"
+                    self.get_logger().warning(
+                        f"Observasi pohon ID:{self.target_tree.id} belum stabil "
+                        f"(spread={spread:.2f}m); menunggu sampel berikutnya."
+                    )
+                    self.verify_start_count = samples[0][0]
+
+            elif now - self.verify_started_at > self.verify_timeout:
+                self.get_logger().warning(
+                    f"Pohon ID:{self.target_tree.id} tidak terlihat ulang oleh "
+                    "PCL. Orbit dibatalkan dan kandidat dihapus."
+                )
+                update_msg = Tree()
+                update_msg.id = self.target_tree.id
+                update_msg.confidence = -1.0
+                self.tree_update_pub.publish(update_msg)
+                self.target_tree = None
+                self.state = "EXPLORE_ROW"
+
+        elif self.state == "ALIGN_ORBIT":
+            # Masuk ke lingkaran orbit dari sisi drone saat ini, lalu hadapkan
+            # kamera ke pusat pohon sebelum controller orbit diaktifkan.
+            dx = cx - self.target_tree.x
+            dy = cy - self.target_tree.y
+            radius = math.hypot(dx, dy)
+            if radius < 0.1:
+                dx, dy, radius = -1.0, 0.0, 1.0
+
+            entry_x = self.target_tree.x + self.orbit_radius * dx / radius
+            entry_y = self.target_tree.y + self.orbit_radius * dy / radius
+            target_yaw = math.atan2(
+                self.target_tree.y - cy,
+                self.target_tree.x - cx
+            )
+            self.publish_goal(entry_x, entry_y, target_yaw)
+
+            position_error = self.distance(cx, cy, entry_x, entry_y)
+            radius_error = abs(radius - self.orbit_radius)
+            current_yaw = quaternion_to_yaw(self.current_pose.pose.orientation)
+            yaw_error = abs(normalize_angle(target_yaw - current_yaw))
+            now = self.get_clock().now().nanoseconds * 1e-9
+
+            aligned = (
+                position_error <= self.align_position_tolerance
+                and radius_error <= self.align_radius_tolerance
+                and yaw_error <= self.align_yaw_tolerance
+            )
+            if aligned:
+                if self.align_stable_since is None:
+                    self.align_stable_since = now
+                elif now - self.align_stable_since >= self.align_hold_required:
+                    self.state = "START_ORBIT"
+                    self.get_logger().info(
+                        f"Posisi pra-orbit stabil: radius={radius:.2f}m, "
+                        f"yaw_error={math.degrees(yaw_error):.1f}deg. Memulai orbit."
+                    )
+            else:
+                self.align_stable_since = None
                     
         elif self.state == "START_ORBIT":
             target_msg = Point()

@@ -19,7 +19,7 @@ class VortexAvoidanceController(Node):
             depth=10
         )
         qos_map = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )

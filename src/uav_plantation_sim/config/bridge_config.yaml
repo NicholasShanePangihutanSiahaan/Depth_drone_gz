@@ -46,6 +46,12 @@
   gz_type_name: "gz.msgs.CameraInfo"
   direction: "GZ_TO_ROS"
 
+- ros_topic_name: "/zed2i/depth/points"
+  gz_topic_name: "/plantation_uav/zed2i/depth/points"
+  ros_type_name: "sensor_msgs/msg/PointCloud2"
+  gz_type_name: "gz.msgs.PointCloudPacked"
+  direction: "GZ_TO_ROS"
+
 - ros_topic_name: "/range"
   gz_topic_name: "/plantation_uav/range"
   ros_type_name: "sensor_msgs/msg/LaserScan"

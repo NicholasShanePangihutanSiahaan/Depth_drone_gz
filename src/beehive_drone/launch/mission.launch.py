@@ -18,7 +18,9 @@ def generate_launch_description():
     )
     optical_frame_arg = DeclareLaunchArgument(
         'input_is_optical_frame',
-        default_value='true'
+        # Gazebo RGB-D PointCloudPacked already uses X-forward sensor axes.
+        # Set this to true explicitly when using a physical ZED optical cloud.
+        default_value='false'
     )
 
     pcl_detector_node = Node(

@@ -64,11 +64,17 @@ class TreeMapper(Node):
         self.min_pcl_seen_count = self.declare_parameter(
             "min_pcl_seen_count", 2
         ).value
+        pcl_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10
+        )
         self.pcl_sub = self.create_subscription(
             TrackedCylinderArray,
             "/perception/tracked_trees",
             self.pcl_tree_callback,
-            10
+            pcl_qos
         )
 
         # hasil inspeksi
@@ -80,7 +86,7 @@ class TreeMapper(Node):
         )
 
         map_qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=10
@@ -98,6 +104,14 @@ class TreeMapper(Node):
         self.marker_pub = self.create_publisher(
             MarkerArray,
             "/tree_markers",
+            10
+        )
+
+        # Event ini hanya terbit ketika PCL benar-benar melihat cylinder pada
+        # frame terbaru. FSM memakainya untuk verifikasi ulang sebelum orbit.
+        self.observation_pub = self.create_publisher(
+            Tree,
+            "/perception/tree_observation",
             10
         )
 
@@ -129,7 +143,19 @@ class TreeMapper(Node):
             point.x = position.x
             point.y = position.y
             point.z = position.z
-            self.tree_callback(point)
+            tree_id = self.tree_callback(point)
+            if tree_id is None:
+                continue
+
+            mapped = self.tree_database[tree_id]
+            observation = Tree()
+            observation.id = tree_id
+            observation.x = mapped["x"]
+            observation.y = mapped["y"]
+            observation.z = mapped["z"]
+            observation.confidence = cylinder.confidence
+            observation.inspected = mapped["inspected"]
+            self.observation_pub.publish(observation)
             accepted += 1
 
         if accepted:
@@ -148,7 +174,7 @@ class TreeMapper(Node):
 
         if not math.isfinite(x) or not math.isfinite(y) or not math.isfinite(z):
             self.get_logger().warning("Invalid tree position ignored")
-            return
+            return None
 
         nearest_id = None
         nearest_distance = float("inf")
@@ -212,6 +238,7 @@ class TreeMapper(Node):
 
         self.publish_tree()
         self.publish_marker()
+        return nearest_id if nearest_id is not None and nearest_distance < self.merge_distance else tree_id
 
 
     ##################################################

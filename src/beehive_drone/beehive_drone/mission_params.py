@@ -17,6 +17,13 @@ class MissionConfig:
     END_OF_ROW_DIST = 10.0       # meter
     END_OF_FARM_DIST = 20.0      # meter
     APPROACH_SAFE_DIST = 2.0     # meter
+    TREE_VERIFY_TIMEOUT = 8.0    # detik menunggu observasi PCL baru
+    TREE_VERIFY_SAMPLES = 3      # minimum observasi baru sebelum orbit
+    TREE_VERIFY_SPREAD = 0.75    # sebaran maksimum koordinat observasi (m)
+    ORBIT_ALIGN_POSITION_TOL = 0.40  # toleransi titik masuk orbit (m)
+    ORBIT_ALIGN_RADIUS_TOL = 0.35    # toleransi radius awal orbit (m)
+    ORBIT_ALIGN_YAW_TOL = math.radians(12.0)
+    ORBIT_ALIGN_HOLD = 1.0       # detik stabil sebelum orbit dimulai
     HOVERING_PERIODE = 30.0      # periode dikali 1.0 adalah waktu hovering sebelum loitering
 
     # ==========================================

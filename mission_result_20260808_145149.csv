@@ -1,0 +1,19 @@
+Mission Summary
+Mission Time (s),39.18798351287842
+Travel Distance (m),0.0
+Total Tree,6
+Inspected Tree,0
+Validated Tree,0
+Coverage (%),0.0
+
+Trajectory
+Index,X,Y
+
+Trees
+ID,X,Y,Confidence,Validated,Inspected
+1,11.488885879516602,1.2506115436553955,1.0,False,False
+2,10.719651222229004,6.041868209838867,1.0,False,False
+3,11.086081504821777,-5.575783729553223,1.0,False,False
+4,7.661736011505127,-4.825051307678223,1.0,False,False
+5,7.889864444732666,-0.7818737626075745,1.0,False,False
+6,5.163599967956543,3.9621617794036865,1.0,False,False

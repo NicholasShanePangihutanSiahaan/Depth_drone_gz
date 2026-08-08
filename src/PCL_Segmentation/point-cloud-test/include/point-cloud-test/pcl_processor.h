@@ -236,8 +236,8 @@ inline std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clusterTrees_RegionGrowi
   pcl::removeNaNFromPointCloud(*cloud_trees, *indices);
 
   pcl::RegionGrowing<pcl::PointXYZ, pcl::Normal> reg;
-  reg.setMinClusterSize(40);   // Retained your original min size
-  reg.setMaxClusterSize(2000); // Retained your original max size
+  reg.setMinClusterSize(20);
+  reg.setMaxClusterSize(10000);
   reg.setSearchMethod(tree);
   reg.setNumberOfNeighbours(30);
   reg.setInputCloud(cloud_trees);
@@ -302,12 +302,6 @@ inline CylinderParams fitCylinderZAxis(
   pcl::PointXYZ minPt, maxPt;
   pcl::getMinMax3D(*cluster, minPt, maxPt);
   
-  if (minPt.z >= 0.5f)
-  {
-    // Poin terendah tidak boleh melayang
-    return result; 
-  }
-
   // 1. Estimate Normals for the entire cluster
   pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> ne;
   pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(
@@ -330,7 +324,9 @@ inline CylinderParams fitCylinderZAxis(
   seg.setNormalDistanceWeight (0.1);
   seg.setMaxIterations(5000);
   seg.setDistanceThreshold(0.5);  
-  seg.setRadiusLimits(0.05, 0.4); 
+  // Model sawit simulasi memakai radius 0.35--0.55 m. Batas lama
+  // 0.40 m menolak sawit normal dan besar walaupun fitting-nya benar.
+  seg.setRadiusLimits(0.15, 0.70);
 
   seg.setAxis(Eigen::Vector3f(0.0, 0.0, 1.0));
   double toleransi_derajat = 30.0;
@@ -389,7 +385,12 @@ inline CylinderParams fitCylinderZAxis(
   result.confidence = static_cast<float>(inliers->indices.size()) /
                       static_cast<float>(cluster->points.size());
 
-  result.isValid = true;
+  // Kamera saat terbang tidak selalu melihat pangkal batang, jadi validasi
+  // tidak boleh mensyaratkan min-z menyentuh tanah. Gunakan panjang bagian
+  // batang yang benar-benar terlihat dan kualitas fitting sebagai gantinya.
+  result.isValid = result.height >= 0.6f &&
+                   result.height <= 6.0f &&
+                   result.confidence >= 0.20f;
   return result;
 }
 

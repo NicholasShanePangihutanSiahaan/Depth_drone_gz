@@ -83,6 +83,9 @@ namespace point_cloud_test
       std::lock_guard<std::mutex> lock(swap_mutex_);
       if (!latest_pose_)
       {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "Point cloud diterima tetapi /pose belum tersedia; frame diabaikan");
         return;
       }
       // Jangan biarkan frame menumpuk ketika backend PCL sedang sibuk.
@@ -134,6 +137,9 @@ namespace point_cloud_test
         pcl::fromROSMsg(*pair.cloud, *cloud);
 
         // Gazebo RGB-D point clouds use NaN for pixels without a valid depth.
+        // Its bridge may nevertheless mark the message as dense. PCL skips
+        // finite-point removal for dense clouds, so do not trust that metadata.
+        cloud->is_dense = false;
         // KdTree / normal estimation asserts when one of those points reaches
         // radiusSearch(), so sanitize every frame before any PCL operation.
         std::vector<int> finite_indices;
@@ -159,7 +165,9 @@ namespace point_cloud_test
         pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::VoxelGrid<pcl::PointXYZ> voxel;
         voxel.setInputCloud(cloud);
-        voxel.setLeafSize(0.3f, 0.3f, 0.3f);
+        // 0.30 m terlalu kasar untuk batang beradius 0.35--0.55 m dan dapat
+        // menyisakan terlalu sedikit sampel untuk cylinder fitting.
+        voxel.setLeafSize(0.15f, 0.15f, 0.15f);
         voxel.filter(*filtered);
 
         pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
@@ -241,7 +249,7 @@ namespace point_cloud_test
       cloud_pub_->publish(output_msg);
 
       auto time_cluster_start = std::chrono::high_resolution_clock::now();
-      auto clusters = clusterTrees_RegionGrowing(trunk_filter, 5, 1);
+      auto clusters = clusterTrees_RegionGrowing(trunk_filter, 15, 1);
       auto time_cluster_end = std::chrono::high_resolution_clock::now();
 
       double time_cluster_ms =
