@@ -129,6 +129,10 @@ class TreeMapper(Node):
     def pcl_tree_callback(self, msg):
         """Masukkan cylinder PCL yang stabil ke database pohon lama."""
         accepted = 0
+        # Satu array berasal dari satu siklus pemrosesan PCL. Jangan menerbitkan
+        # beberapa cylinder yang tergabung ke map ID sama sebagai beberapa
+        # observasi waktu yang berbeda untuk verifikasi pra-orbit.
+        frame_observations = {}
         for tracked in msg.cylinders:
             cylinder = tracked.cylinder
             if (
@@ -147,16 +151,29 @@ class TreeMapper(Node):
             if tree_id is None:
                 continue
 
+            previous = frame_observations.get(tree_id)
+            if previous is None or cylinder.confidence > previous[0]:
+                # Simpan koordinat cylinder saat ini, bukan running-average
+                # database. FSM memerlukan pengukuran baru untuk mengoreksi
+                # pusat pohon yang mungkin sudah bergeser di peta.
+                frame_observations[tree_id] = (
+                    cylinder.confidence,
+                    position.x,
+                    position.y,
+                    position.z,
+                )
+            accepted += 1
+
+        for tree_id, (confidence, x, y, z) in frame_observations.items():
             mapped = self.tree_database[tree_id]
             observation = Tree()
             observation.id = tree_id
-            observation.x = mapped["x"]
-            observation.y = mapped["y"]
-            observation.z = mapped["z"]
-            observation.confidence = cylinder.confidence
+            observation.x = x
+            observation.y = y
+            observation.z = z
+            observation.confidence = confidence
             observation.inspected = mapped["inspected"]
             self.observation_pub.publish(observation)
-            accepted += 1
 
         if accepted:
             self.get_logger().debug(

@@ -32,7 +32,7 @@ class MissionConfig:
     ORBIT_RADIUS = 3.0           # meter (Diperkecil dari 2.5 agar aman dari rintangan)
     ORBIT_ALTITUDE = FLIGHT_ALTITUDE 
     ORBIT_VELOCITY = 1.0         # m/s
-    YAW_OFFSET = math.pi / 4     # radian (45 derajat)
+    YAW_OFFSET = 0.0             # kamera menghadap tepat ke pusat pohon
 
     # ==========================================
     # 3. Parameter Penghindaran (vortex_avoidance_controller.py)

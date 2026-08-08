@@ -314,6 +314,20 @@ class MissionStateMachine(Node):
                     self.target_tree.y = mean_y
                     self.target_tree.z = mean_z
                     self.target_tree.validated = True
+
+                    # Sinkronkan pusat yang sudah dikoreksi ke mapper sebelum
+                    # alignment. Orbit dan collision avoidance dengan demikian
+                    # memakai koordinat pohon yang sama.
+                    corrected_tree = Tree()
+                    corrected_tree.id = self.target_tree.id
+                    corrected_tree.x = mean_x
+                    corrected_tree.y = mean_y
+                    corrected_tree.z = mean_z
+                    corrected_tree.confidence = self.target_tree.confidence
+                    corrected_tree.inspected = False
+                    corrected_tree.validated = True
+                    self.tree_update_pub.publish(corrected_tree)
+
                     self.state = "ALIGN_ORBIT"
                     self.align_stable_since = None
                     self.get_logger().info(

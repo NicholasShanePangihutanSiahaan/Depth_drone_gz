@@ -32,7 +32,6 @@ class DynamicOrbitController(Node):
         self.orbit_radius = MissionConfig.ORBIT_RADIUS       # Jarak ideal dari pohon (meter)
         self.orbit_altitude = MissionConfig.ORBIT_ALTITUDE     # Ketinggian orbit standar (meter)
         self.orbit_velocity = MissionConfig.ORBIT_VELOCITY     # Kecepatan rotasi angular ekuivalen linear (m/s)
-        self.yaw_offset = MissionConfig.YAW_OFFSET # Offset 45 derajat (0.785 radian)
 
         # ==========================================
         # Variabel State
@@ -87,7 +86,9 @@ class DynamicOrbitController(Node):
         self.dt = 0.05
         self.timer = self.create_timer(self.dt, self.control_loop)
 
-        self.get_logger().info("Dynamic Orbit Controller (45-Deg Yaw Offset) Aktif.")
+        self.get_logger().info(
+            "Dynamic Orbit Controller aktif; yaw selalu menghadap pohon."
+        )
 
     def pose_callback(self, msg):
         self.current_pose = msg
@@ -162,13 +163,13 @@ class DynamicOrbitController(Node):
         target_x = self.tree_x + target_r * math.cos(target_angle)
         target_y = self.tree_y + target_r * math.sin(target_angle)
 
-        # 5. Kalkulasi Orientasi Kamera 45 Derajat (Yaw Offset)
-        # Sudut murni jika kamera melihat tepat ke titik pusat pohon:
-        yaw_to_tree = math.atan2(self.tree_y - target_y, self.tree_x - target_x)
-        
-        # Karena kita bergerak CCW, untuk melihat sedikit ke depan lintasan sambil mengawasi pohon,
-        # kita menggeser kamera sebesar -45 derajat dari titik pusat.
-        target_yaw = yaw_to_tree - self.yaw_offset
+        # 5. Heading selalu dihitung dari POSISI DRONE aktual menuju pusat
+        # pohon. Menggunakan posisi look-ahead akan membuat kamera mendahului
+        # gerak translasi dan tidak benar-benar menghadap pohon.
+        target_yaw = math.atan2(
+            self.tree_y - self.current_pose.pose.position.y,
+            self.tree_x - self.current_pose.pose.position.x
+        )
 
         qx, qy, qz, qw = euler_to_quaternion(0, 0, target_yaw)
 
