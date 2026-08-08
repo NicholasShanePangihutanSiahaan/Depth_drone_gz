@@ -1,6 +1,8 @@
 /**:
   ros__parameters:
-    use_sim_time: true
+    # MAVROS and the ZED/depth pipeline use system time. This also avoids a
+    # frozen mission when a Gazebo /clock bridge is restarted or unavailable.
+    use_sim_time: false
     world_frame: map
 
 flight_manager:
@@ -33,7 +35,8 @@ mission_state_machine:
 
     tree_search_radius: 18.0
     tree_min_confidence: 0.35
-    target_forward_cone_deg: 80.0
+    # ZED HFOV is 80 deg total; reserve 5 deg at each noisy image edge.
+    target_forward_cone_deg: 35.0
     verify_duration_sec: 2.0
     verify_position_tolerance: 0.55
     orbit_obstacle_clearance: 1.0
@@ -48,6 +51,10 @@ mission_state_machine:
     orbit_radius: 3.0
     orbit_start_tolerance: 0.50
     pre_orbit_position_tolerance: 0.45
+    depth_topic: /zed2i/depth/depth_registered
+    depth_center_roi_px: 50
+    depth_target_tolerance: 0.65
+    depth_timeout_sec: 1.0
     orbit_timeout_sec: 150.0
 
     pre_orbit_hover_sec: 3.0
@@ -58,6 +65,8 @@ mission_state_machine:
 
 pcl_proc_node:
   ros__parameters:
+    # PointCloud2 follows the camera optical convention: Z forward.
+    input_is_optical_frame: true
     output_frame: plantation
     process_period_ms: 500
     max_buffered_pairs: 2
@@ -92,6 +101,7 @@ pcl_tree_mapper:
     max_update_jump: 3.00
     validation_observations: 4
     position_alpha: 0.18
+    visible_timeout_sec: 1.5
     enable_fallback_points: false
     allow_identity_frame_relabel: true
 

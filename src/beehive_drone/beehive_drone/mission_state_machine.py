@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import math
+import struct
 from copy import deepcopy
 from typing import Optional, Tuple
 
@@ -8,6 +9,7 @@ import rclpy
 from geometry_msgs.msg import Point, PoseStamped
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, Float32, Int32, String
 from uav_interfaces.msg import Tree, TreeArray
 
@@ -46,6 +48,10 @@ class MissionStateMachine(Node):
             "orbit_radius": MissionConfig.ORBIT_RADIUS,
             "orbit_start_tolerance": MissionConfig.ORBIT_START_TOLERANCE,
             "pre_orbit_position_tolerance": 0.45,
+            "depth_topic": "/zed2i/depth/depth_registered",
+            "depth_center_roi_px": 50,
+            "depth_target_tolerance": 0.65,
+            "depth_timeout_sec": 1.0,
             "orbit_timeout_sec": MissionConfig.ORBIT_TIMEOUT_SEC,
             "pre_orbit_hover_sec": MissionConfig.PRE_ORBIT_HOVER_SEC,
             "post_orbit_hover_sec": MissionConfig.POST_ORBIT_HOVER_SEC,
@@ -103,6 +109,16 @@ class MissionStateMachine(Node):
         self.pre_orbit_position_tolerance = max(
             self.approach_tolerance,
             float(self.get_parameter("pre_orbit_position_tolerance").value),
+        )
+        self.depth_topic = str(self.get_parameter("depth_topic").value)
+        self.depth_center_roi_px = max(
+            4, int(self.get_parameter("depth_center_roi_px").value)
+        )
+        self.depth_target_tolerance = max(
+            0.1, float(self.get_parameter("depth_target_tolerance").value)
+        )
+        self.depth_timeout_sec = max(
+            0.1, float(self.get_parameter("depth_timeout_sec").value)
         )
         self.orbit_timeout_sec = float(self.get_parameter("orbit_timeout_sec").value)
         self.pre_orbit_hover_sec = float(self.get_parameter("pre_orbit_hover_sec").value)
@@ -188,6 +204,8 @@ class MissionStateMachine(Node):
         self.cross_check_complete = False
         self.pre_orbit_stable_since: Optional[float] = None
         self.last_search_diagnostic_time = -1e9
+        self.center_depth_m: Optional[float] = None
+        self.last_depth_time: Optional[float] = None
 
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -203,6 +221,7 @@ class MissionStateMachine(Node):
         self.create_subscription(
             PoseStamped, "/mavros/local_position/pose", self.pose_callback, qos_sensor
         )
+        self.create_subscription(Image, self.depth_topic, self.depth_callback, qos_sensor)
         self.create_subscription(TreeArray, "/map/trees", self.tree_callback, qos_map)
         self.create_subscription(Bool, "/map/trees_ready", self.map_ready_callback, qos_map)
         self.create_subscription(String, "/control/orbit_status", self.orbit_status_callback, 10)
@@ -277,6 +296,49 @@ class MissionStateMachine(Node):
             self.home_yaw = yaw_from_quaternion(msg.pose.orientation)
             self.takeoff_target_z = self.home_z + self.flight_altitude
             self.home_captured = True
+
+    def depth_callback(self, msg: Image) -> None:
+        """Read only a center ROI; PCL remains responsible for tree detection."""
+        if msg.width == 0 or msg.height == 0 or msg.step == 0:
+            return
+        encoding = msg.encoding.upper()
+        if encoding in {"32FC1", "TYPE_32FC1"}:
+            fmt, size, scale = "<f", 4, 1.0
+        elif encoding in {"16UC1", "MONO16", "TYPE_16UC1"}:
+            fmt, size, scale = "<H", 2, 0.001
+        else:
+            return
+        half = self.depth_center_roi_px // 2
+        x0 = max(0, int(msg.width) // 2 - half)
+        x1 = min(int(msg.width), int(msg.width) // 2 + half)
+        y0 = max(0, int(msg.height) // 2 - half)
+        y1 = min(int(msg.height), int(msg.height) // 2 + half)
+        values = []
+        data = memoryview(msg.data)
+        for y in range(y0, y1):
+            row = y * int(msg.step)
+            for x in range(x0, x1):
+                offset = row + x * size
+                if offset + size > len(data):
+                    continue
+                value = float(struct.unpack_from(fmt, data, offset)[0]) * scale
+                if math.isfinite(value) and 0.2 <= value <= 20.0:
+                    values.append(value)
+        if values:
+            values.sort()
+            # The trunk can occupy less than half of the ROI; the median then
+            # selects background foliage. A robust near-surface percentile
+            # represents the centered trunk without using a single noisy pixel.
+            self.center_depth_m = values[max(0, len(values) // 5)]
+            self.last_depth_time = self.now_sec()
+
+    def depth_target_ready(self, expected_distance: float) -> bool:
+        return bool(
+            self.center_depth_m is not None
+            and self.last_depth_time is not None
+            and self.now_sec() - self.last_depth_time <= self.depth_timeout_sec
+            and abs(self.center_depth_m - expected_distance) <= self.depth_target_tolerance
+        )
 
     def tree_callback(self, msg: TreeArray) -> None:
         self.trees = list(msg.trees)
@@ -469,6 +531,12 @@ class MissionStateMachine(Node):
             return False
         return all(math.isfinite(float(value)) for value in (tree.x, tree.y, tree.z))
 
+    @staticmethod
+    def is_tree_visible(tree: Tree) -> bool:
+        return bool(getattr(tree, "visible", False)) and float(
+            getattr(tree, "observation_age", float("inf"))
+        ) <= 1.5
+
     def find_tree_by_id(self, tree_id: int) -> Optional[Tree]:
         return next((tree for tree in self.trees if int(tree.id) == tree_id), None)
 
@@ -487,6 +555,9 @@ class MissionStateMachine(Node):
             if not self.is_valid_tree(tree, self.tree_min_confidence):
                 rejected["invalid"] += 1
                 continue
+            if not self.is_tree_visible(tree):
+                rejected["invalid"] += 1
+                continue
             distance = distance_2d(cx, cy, float(tree.x), float(tree.y))
             bearing = math.atan2(float(tree.y) - cy, float(tree.x) - cx)
             bearing_error = abs(math.atan2(math.sin(bearing - yaw), math.cos(bearing - yaw)))
@@ -497,7 +568,9 @@ class MissionStateMachine(Node):
             elif self.mission_mode != "all" and bearing_error > self.target_forward_cone:
                 rejected["side"] += 1
             else:
-                candidates.append((bearing_error, distance, -float(tree.confidence), int(tree.id), tree))
+                # Lock the nearest currently visible trunk. Bearing only
+                # breaks ties after the camera-FOV gate has been satisfied.
+                candidates.append((distance, bearing_error, -float(tree.confidence), int(tree.id), tree))
         selected = min(candidates, default=(None, None, None, None, None))[4]
         now = self.now_sec()
         if selected is None and now - self.last_search_diagnostic_time >= 3.0:
@@ -754,7 +827,11 @@ class MissionStateMachine(Node):
                 self.transition("SEARCH_TREE", "Kandidat kosong")
                 return
             latest = self.find_tree_by_id(int(self.target_tree.id))
-            if latest is None or not self.is_valid_tree(latest, self.tree_min_confidence):
+            if (
+                latest is None
+                or not self.is_valid_tree(latest, self.tree_min_confidence)
+                or not self.is_tree_visible(latest)
+            ):
                 self.target_tree = None
                 self.set_active_tree(-1)
                 self.transition("SEARCH_TREE", "Kandidat hilang saat verifikasi")
@@ -795,9 +872,9 @@ class MissionStateMachine(Node):
                 return
             if not self.cross_check_complete:
                 latest = self.find_tree_by_id(int(self.target_tree.id))
-                if latest is None:
+                if latest is None or not self.is_tree_visible(latest):
                     latest = min(
-                        self.trees,
+                        [tree for tree in self.trees if self.is_tree_visible(tree)],
                         key=lambda tree: distance_2d(
                             float(self.target_tree.x), float(self.target_tree.y),
                             float(tree.x), float(tree.y),
@@ -810,8 +887,39 @@ class MissionStateMachine(Node):
                     ) > self.active_tree_alias_radius:
                         latest = None
                 if latest is None:
-                    self.begin_safe_return("Target tidak lagi terdeteksi saat cross-check")
-                    return
+                    point_x, point_y, _ = self.pre_orbit_point
+                    wait_yaw = math.atan2(
+                        float(self.target_tree.y) - point_y,
+                        float(self.target_tree.x) - point_x,
+                    )
+                    self.publish_goal(point_x, point_y, wait_yaw)
+                    if self.depth_target_ready(self.approach_distance):
+                        # At hover the vehicle is commanded to face the locked
+                        # trunk. Reconstruct its center from the registered
+                        # depth ray when close-range cylinder fitting drops it.
+                        measured_yaw = yaw_from_quaternion(
+                            self.current_pose.pose.orientation
+                        )
+                        corrected = deepcopy(self.target_tree)
+                        corrected.x = float(
+                            cx + self.center_depth_m * math.cos(measured_yaw)
+                        )
+                        corrected.y = float(
+                            cy + self.center_depth_m * math.sin(measured_yaw)
+                        )
+                        latest = corrected
+                        self.get_logger().info(
+                            "Cross-check depth: pusat target dikoreksi dari ROI tengah, "
+                            f"depth={self.center_depth_m:.2f} m."
+                        )
+                    else:
+                        verify_wait = max(6.0, 3.0 * self.verify_duration_sec)
+                        if now - self.state_enter_time >= verify_wait:
+                            self.begin_safe_return(
+                                "Target tidak terdeteksi selama hover cross-check; "
+                                f"depth_tengah={self.center_depth_m}"
+                            )
+                        return
 
                 center_shift = distance_2d(
                     float(self.target_tree.x), float(self.target_tree.y),
@@ -852,6 +960,7 @@ class MissionStateMachine(Node):
                 and position_error <= self.pre_orbit_position_tolerance
                 and yaw_error <= math.radians(12.0)
                 and self.hovering
+                and self.depth_target_ready(self.orbit_radius)
             )
             if (
                 radius_error > self.orbit_start_tolerance
@@ -869,7 +978,8 @@ class MissionStateMachine(Node):
                     self.get_logger().info(
                         "Siap orbit: radius aktual="
                         f"{distance_2d(cx, cy, float(self.target_tree.x), float(self.target_tree.y)):.2f} m, "
-                        f"yaw_error={math.degrees(yaw_error):.1f} deg."
+                        f"yaw_error={math.degrees(yaw_error):.1f} deg, "
+                        f"depth_tengah={self.center_depth_m:.2f} m."
                     )
                     self.orbit_prepare_start = now
                     self.transition("PREPARE_ORBIT", "Posisi, radius, yaw, dan hover stabil")

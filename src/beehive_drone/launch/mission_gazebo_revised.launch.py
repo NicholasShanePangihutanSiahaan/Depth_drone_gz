@@ -16,6 +16,7 @@ def generate_launch_description():
     config_file = os.path.join(share, "config", "mission_gazebo_revised.yaml")
 
     use_pcl = LaunchConfiguration("use_pcl")
+    use_depth_pointcloud = LaunchConfiguration("use_depth_pointcloud")
     use_yolo_fallback = LaunchConfiguration("use_yolo_fallback")
     use_analyzer = LaunchConfiguration("use_analyzer")
     hold_after_takeoff = LaunchConfiguration("hold_after_takeoff")
@@ -27,19 +28,33 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument("use_pcl", default_value="true"),
+        DeclareLaunchArgument("use_depth_pointcloud", default_value="true"),
         DeclareLaunchArgument("use_yolo_fallback", default_value="false"),
         DeclareLaunchArgument("use_analyzer", default_value="false"),
         # Full one-tree mission by default. Set true for a takeoff-only test.
         DeclareLaunchArgument("hold_after_takeoff", default_value="false"),
         DeclareLaunchArgument("mission_mode", default_value="single"),
         DeclareLaunchArgument(
-            "point_cloud_topic", default_value="/zed2i/depth/points"
+            "point_cloud_topic", default_value="/zed2i/depth/points_registered"
         ),
         DeclareLaunchArgument(
-            "odom_topic", default_value="/mavros/odometry/out"
+            "odom_topic", default_value="/mavros/local_position/pose"
         ),
         DeclareLaunchArgument("yolo_model_path", default_value=""),
         DeclareLaunchArgument("yolo_device", default_value="cpu"),
+
+        Node(
+            package="depth_image_proc",
+            executable="point_cloud_xyz_node",
+            name="zed_depth_to_pointcloud",
+            output="screen",
+            condition=IfCondition(use_depth_pointcloud),
+            remappings=[
+                ("image_rect", "/zed2i/depth/depth_registered"),
+                ("camera_info", "/zed2i/depth/camera_info"),
+                ("points", point_cloud_topic),
+            ],
+        ),
 
         Node(
             package="point-cloud-test",
@@ -51,7 +66,7 @@ def generate_launch_description():
             parameters=[config_file],
             remappings=[
                 ("/input_cloud", point_cloud_topic),
-                ("/odom", odom_topic),
+                ("/pose", odom_topic),
                 ("/output_cloud", "/perception/pcl/filtered_cloud"),
                 ("/clusters", "/perception/pcl/clusters"),
                 ("/cylinders", "/perception/pcl/cylinders"),

@@ -67,6 +67,7 @@ class PclTreeMapper(Node):
             "max_update_jump": MissionConfig.TREE_MAX_UPDATE_JUMP,
             "validation_observations": MissionConfig.TREE_VALIDATION_OBSERVATIONS,
             "position_alpha": MissionConfig.TREE_POSITION_ALPHA,
+            "visible_timeout_sec": 1.5,
             "enable_fallback_points": False,
             "allow_identity_frame_relabel": MissionConfig.ALLOW_IDENTITY_FRAME_RELABEL,
         }
@@ -104,6 +105,9 @@ class PclTreeMapper(Node):
         )
         self.position_alpha = min(
             0.5, max(0.02, float(self.get_parameter("position_alpha").value))
+        )
+        self.visible_timeout_sec = max(
+            0.1, float(self.get_parameter("visible_timeout_sec").value)
         )
         self.enable_fallback_points = bool(
             self.get_parameter("enable_fallback_points").value
@@ -295,6 +299,10 @@ class PclTreeMapper(Node):
                     stable_id = nearest.tree_id
 
             if existing is None:
+                # Do not create a database record from a tracker prediction
+                # that is not backed by the current camera frame.
+                if int(tracked.missed_count) > 0:
+                    continue
                 stable_id = self.next_tree_id
                 self.next_tree_id += 1
                 existing = TreeRecord(
@@ -317,20 +325,22 @@ class PclTreeMapper(Node):
                     f"frame={self.world_frame}."
                 )
             else:
-                alpha = self.position_alpha
-                if existing.tree_id != self.active_tree_id:
-                    existing.x = (1.0 - alpha) * existing.x + alpha * x
-                    existing.y = (1.0 - alpha) * existing.y + alpha * y
-                    existing.z = (1.0 - alpha) * existing.z + alpha * z
-                existing.confidence = max(existing.confidence, confidence)
-                existing.seen_count += 1
-                existing.validated = existing.seen_count >= self.validation_observations
-                existing.last_seen = now
+                if int(tracked.missed_count) == 0:
+                    alpha = self.position_alpha
+                    if existing.tree_id != self.active_tree_id:
+                        existing.x = (1.0 - alpha) * existing.x + alpha * x
+                        existing.y = (1.0 - alpha) * existing.y + alpha * y
+                        existing.z = (1.0 - alpha) * existing.z + alpha * z
+                    existing.confidence = max(existing.confidence, confidence)
+                    existing.seen_count += 1
+                    existing.validated = existing.seen_count >= self.validation_observations
+                    existing.last_seen = now
                 existing.missed_count = int(tracked.missed_count)
                 existing.radius = float(cylinder.radius)
                 existing.height = float(cylinder.height)
             self.raw_to_stable[raw_id] = int(stable_id)
-            accepted_ids.add(int(stable_id))
+            if int(tracked.missed_count) == 0:
+                accepted_ids.add(int(stable_id))
 
         for tree_id, record in self.tree_database.items():
             if record.source == "pcl" and tree_id not in accepted_ids:
@@ -507,8 +517,7 @@ class PclTreeMapper(Node):
 
         self.publish_all()
 
-    @staticmethod
-    def _to_tree_msg(record: TreeRecord) -> Tree:
+    def _to_tree_msg(self, record: TreeRecord) -> Tree:
         tree = Tree()
         tree.id = int(record.tree_id)
         tree.x = float(record.x)
@@ -518,6 +527,9 @@ class PclTreeMapper(Node):
         tree.inspected = bool(record.inspected)
         if hasattr(tree, "validated"):
             tree.validated = bool(record.validated)
+        age = max(0.0, self.now_sec() - record.last_seen)
+        tree.visible = bool(age <= self.visible_timeout_sec)
+        tree.observation_age = float(age)
         return tree
 
     def publish_all(self) -> None:

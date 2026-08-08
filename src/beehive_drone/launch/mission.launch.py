@@ -52,7 +52,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "depth_camera_info_topic", default_value="/zed2i/depth/camera_info"
             ),
-            DeclareLaunchArgument("odom_topic", default_value="/mavros/odometry/out"),
+            DeclareLaunchArgument("odom_topic", default_value="/mavros/local_position/pose"),
             DeclareLaunchArgument(
                 "mission_output_dir", default_value="~/beehive_mission_results"
             ),
@@ -81,7 +81,7 @@ def generate_launch_description():
                 parameters=[config_file],
                 remappings=[
                     ("/input_cloud", point_cloud_topic),
-                    ("/odom", odom_topic),
+                    ("/pose", odom_topic),
                     ("/output_cloud", "/perception/pcl/filtered_cloud"),
                     ("/clusters", "/perception/pcl/clusters"),
                     ("/cylinders", "/perception/pcl/cylinders"),
