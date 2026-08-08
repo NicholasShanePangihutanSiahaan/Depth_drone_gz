@@ -10,6 +10,7 @@ from geometry_msgs.msg import Point
 
 from uav_interfaces.msg import Tree
 from uav_interfaces.msg import TreeArray
+from pcl_cstm_msg.msg import TrackedCylinderArray
 from beehive_drone.mission_params import MissionConfig
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
@@ -58,6 +59,18 @@ class TreeMapper(Node):
             10
         )
 
+        # Cylinder PCL sudah berada pada frame global dan tidak perlu
+        # diproyeksikan lagi lewat pixel kamera.
+        self.min_pcl_seen_count = self.declare_parameter(
+            "min_pcl_seen_count", 2
+        ).value
+        self.pcl_sub = self.create_subscription(
+            TrackedCylinderArray,
+            "/perception/tracked_trees",
+            self.pcl_tree_callback,
+            10
+        )
+
         # hasil inspeksi
         self.create_subscription(
             Tree,
@@ -97,6 +110,32 @@ class TreeMapper(Node):
         )
 
         self.get_logger().info("Tree Mapper Started")
+
+
+    def pcl_tree_callback(self, msg):
+        """Masukkan cylinder PCL yang stabil ke database pohon lama."""
+        accepted = 0
+        for tracked in msg.cylinders:
+            cylinder = tracked.cylinder
+            if (
+                not cylinder.is_valid
+                or tracked.missed_count != 0
+                or tracked.seen_count < self.min_pcl_seen_count
+            ):
+                continue
+
+            position = cylinder.pose.position
+            point = Point()
+            point.x = position.x
+            point.y = position.y
+            point.z = position.z
+            self.tree_callback(point)
+            accepted += 1
+
+        if accepted:
+            self.get_logger().debug(
+                f"Accepted {accepted} tracked PCL tree(s)"
+            )
 
 
     ##################################################

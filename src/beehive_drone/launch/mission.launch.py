@@ -1,22 +1,41 @@
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_name = 'beehive_drone'
 
-    # 1. Perception & Mapping Nodes
-    detector_node = Node(
-        package=pkg_name,
-        executable='tree_detector',
-        name='tree_detector',
-        output='screen'
+    # 1. Point-cloud perception & mapping. Cylinder fitting replaces the
+    # OpenCV detector, while the original map/FSM contract stays unchanged.
+    cloud_topic_arg = DeclareLaunchArgument(
+        'input_cloud_topic',
+        default_value='/zed2i/depth/points'
     )
-    
-    localizer_node = Node(
-        package=pkg_name,
-        executable='tree_localizer',
-        name='tree_localizer',
-        output='screen'
+    pose_topic_arg = DeclareLaunchArgument(
+        'pose_topic',
+        default_value='/mavros/local_position/pose'
+    )
+    optical_frame_arg = DeclareLaunchArgument(
+        'input_is_optical_frame',
+        default_value='true'
+    )
+
+    pcl_detector_node = Node(
+        package='point-cloud-test',
+        executable='pcl_proc_node',
+        name='palm_pcl_detector',
+        output='screen',
+        parameters=[{
+            'input_is_optical_frame': LaunchConfiguration(
+                'input_is_optical_frame'
+            )
+        }],
+        remappings=[
+            ('/input_cloud', LaunchConfiguration('input_cloud_topic')),
+            ('/pose', LaunchConfiguration('pose_topic')),
+            ('/global/cylinders', '/perception/tracked_trees'),
+        ]
     )
 
     mapper_node = Node(
@@ -73,8 +92,10 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        detector_node,
-        localizer_node,
+        cloud_topic_arg,
+        pose_topic_arg,
+        optical_frame_arg,
+        pcl_detector_node,
         mapper_node,
         velocity_node,
         vortex_node,
