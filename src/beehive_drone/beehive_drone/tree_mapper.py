@@ -2,6 +2,7 @@
 
 import math
 import time
+import os
 
 import rclpy
 from rclpy.node import Node
@@ -12,6 +13,10 @@ from uav_interfaces.msg import Tree
 from uav_interfaces.msg import TreeArray
 from pcl_cstm_msg.msg import TrackedCylinderArray
 from beehive_drone.mission_params import MissionConfig
+from beehive_drone.world_ground_truth import (
+    load_tree_ground_truth,
+    nearest_ground_truth,
+)
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
@@ -41,6 +46,29 @@ class TreeMapper(Node):
 
         # waktu hilang sebelum confidence turun
         self.timeout = MissionConfig.TREE_TIMEOUT
+
+        # Optional simulation oracle. It is intentionally disabled unless a
+        # world is supplied, so real-drone operation never depends on Gazebo.
+        self.ground_truth_world = self.declare_parameter(
+            "ground_truth_world", ""
+        ).value
+        self.ground_truth_tolerance = self.declare_parameter(
+            "ground_truth_tolerance", MissionConfig.TREE_GROUND_TRUTH_TOLERANCE
+        ).value
+        self.ground_truth_trees = []
+        if self.ground_truth_world:
+            if os.path.isfile(self.ground_truth_world):
+                self.ground_truth_trees = load_tree_ground_truth(
+                    self.ground_truth_world
+                )
+                self.get_logger().info(
+                    f"Ground-truth gate aktif: {len(self.ground_truth_trees)} "
+                    f"pohon, toleransi {self.ground_truth_tolerance:.2f} m"
+                )
+            else:
+                self.get_logger().error(
+                    f"World ground truth tidak ditemukan: {self.ground_truth_world}"
+                )
 
         ##################################################
         # Database
@@ -192,6 +220,15 @@ class TreeMapper(Node):
         if not math.isfinite(x) or not math.isfinite(y) or not math.isfinite(z):
             self.get_logger().warning("Invalid tree position ignored")
             return None
+
+        if self.ground_truth_trees:
+            truth, error = nearest_ground_truth(x, y, self.ground_truth_trees)
+            if error > self.ground_truth_tolerance:
+                self.get_logger().warning(
+                    f"Pohon gaib ditolak ({x:.2f},{y:.2f}); pohon world "
+                    f"terdekat {truth[0]} berjarak {error:.2f} m"
+                )
+                return None
 
         nearest_id = None
         nearest_distance = float("inf")

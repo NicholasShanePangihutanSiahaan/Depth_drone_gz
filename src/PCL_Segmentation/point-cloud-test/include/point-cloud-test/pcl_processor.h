@@ -323,7 +323,9 @@ inline CylinderParams fitCylinderZAxis(
   seg.setMethodType(pcl::SAC_RANSAC);
   seg.setNormalDistanceWeight (0.1);
   seg.setMaxIterations(5000);
-  seg.setDistanceThreshold(0.5);  
+  // 0.5 m allowed walls/canopies to fit as a trunk whose radius itself is
+  // only 0.35--0.55 m. Keep residuals meaningfully below trunk radius.
+  seg.setDistanceThreshold(0.15);
   // Model sawit simulasi memakai radius 0.35--0.55 m. Batas lama
   // 0.40 m menolak sawit normal dan besar walaupun fitting-nya benar.
   seg.setRadiusLimits(0.15, 0.70);
@@ -385,12 +387,17 @@ inline CylinderParams fitCylinderZAxis(
   result.confidence = static_cast<float>(inliers->indices.size()) /
                       static_cast<float>(cluster->points.size());
 
+  const float verticality = std::abs(axis_dir.dot(Eigen::Vector3f::UnitZ()));
+
   // Kamera saat terbang tidak selalu melihat pangkal batang, jadi validasi
   // tidak boleh mensyaratkan min-z menyentuh tanah. Gunakan panjang bagian
   // batang yang benar-benar terlihat dan kualitas fitting sebagai gantinya.
-  result.isValid = result.height >= 0.6f &&
+  result.isValid = result.radius >= 0.15f &&
+                   result.radius <= 0.70f &&
+                   result.height >= 0.8f &&
                    result.height <= 6.0f &&
-                   result.confidence >= 0.20f;
+                   result.confidence >= 0.40f &&
+                   verticality >= std::cos(20.0f * static_cast<float>(M_PI) / 180.0f);
   return result;
 }
 

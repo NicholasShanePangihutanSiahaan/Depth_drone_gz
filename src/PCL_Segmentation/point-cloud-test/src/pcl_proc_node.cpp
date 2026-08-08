@@ -394,6 +394,36 @@ namespace point_cloud_test
 
         global_cylinder_pub_->publish(tracked_msg);
       }
+      else
+      {
+        // An empty perception frame is still evidence. Previously the global
+        // manager was never called here, so stale cylinders could live forever
+        // and keep driving the mapper/FSM toward a non-existent tree.
+        std::vector<CylinderParams> no_detections;
+        std::vector<TrackedCylinder> tracked;
+        global_manager_.process(no_detections, tracked);
+
+        pcl_cstm_msg::msg::TrackedCylinderArray tracked_msg;
+        tracked_msg.header.stamp = now();
+        tracked_msg.header.frame_id = "plantation";
+        for (const auto &t : tracked)
+        {
+          pcl_cstm_msg::msg::TrackedCylinder tc_msg;
+          tc_msg.id = t.id;
+          tc_msg.seen_count = t.seen_count;
+          tc_msg.missed_count = t.missed_count;
+          tc_msg.cylinder.header = tracked_msg.header;
+          tc_msg.cylinder.pose.position.x = t.center_x;
+          tc_msg.cylinder.pose.position.y = t.center_y;
+          tc_msg.cylinder.pose.position.z = t.center_z;
+          tc_msg.cylinder.radius = t.radius;
+          tc_msg.cylinder.height = t.height;
+          tc_msg.cylinder.confidence = t.confidence;
+          tc_msg.cylinder.is_valid = true;
+          tracked_msg.cylinders.push_back(std::move(tc_msg));
+        }
+        global_cylinder_pub_->publish(tracked_msg);
+      }
 
       to_process->clear();
       auto timer_cb_end = std::chrono::high_resolution_clock::now();

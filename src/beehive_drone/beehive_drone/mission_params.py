@@ -63,3 +63,5 @@ class MissionConfig:
     TREE_CONFIDENCE_INCREMENT = 0.15    # Penambahan confidence setiap deteksi
     TREE_CONFIDENCE_DECAY = 0.01         # Penurunan confidence setiap deteksi hilang
     TREE_TIMEOUT = 30.0                 # detik
+    # Hanya digunakan saat launch simulasi memasok SDF world.
+    TREE_GROUND_TRUTH_TOLERANCE = 1.25  # error XY maksimum terhadap world (m)
