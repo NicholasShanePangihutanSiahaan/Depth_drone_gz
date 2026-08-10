@@ -19,6 +19,8 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'auto_start', default_value='false',
             description='true: otomatis GUIDED/arm/takeoff setelah semua sensor preflight sehat'),
+        Node(package='beehive_drone', executable='vision_to_mavros',
+             parameters=[config], output='screen'),
         Node(package='point-cloud-test', executable='pcl_proc_node', output='screen',
              remappings=[('/input_cloud', cloud), ('/odom', odom),
                          ('/output_cloud', '/perception/pcl/non_ground'),

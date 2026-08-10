@@ -15,6 +15,12 @@ pcl_proc_node:
     camera_mount_pitch: 0.0
     camera_mount_yaw: 0.0
 
+vision_to_mavros:
+  ros__parameters:
+    input_topic: /zed/zed_node/pose
+    output_topic: /mavros/vision_pose/pose
+    replace_zero_timestamp: true
+
 tree_mapper:
   ros__parameters:
     frame_id: map
