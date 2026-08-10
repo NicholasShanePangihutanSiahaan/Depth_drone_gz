@@ -18,8 +18,12 @@ class MissionConfig:
     END_OF_FARM_DIST = 20.0      # meter
     APPROACH_SAFE_DIST = 2.0     # meter
     TREE_VERIFY_TIMEOUT = 8.0    # detik menunggu observasi PCL baru
-    TREE_VERIFY_SAMPLES = 3      # minimum observasi baru sebelum orbit
-    TREE_VERIFY_SPREAD = 0.75    # sebaran maksimum koordinat observasi (m)
+    TREE_VERIFY_SAMPLES = 6      # minimum observasi baru saat hover
+    TREE_VERIFY_SPREAD = 0.35    # residual maksimum koordinat observasi (m)
+    TREE_VERIFY_DURATION = 1.5   # rentang waktu minimum sampel stabil (s)
+    TREE_VERIFY_DRIFT = 0.20     # pergeseran pusat awal-akhir maksimum (m)
+    TREE_VERIFY_MIN_CONFIDENCE = 0.40
+    TREE_HOVER_POSITION_TOL = 0.18  # gerakan XY maksimum selama hover (m)
     ORBIT_ALIGN_POSITION_TOL = 0.40  # toleransi titik masuk orbit (m)
     ORBIT_ALIGN_RADIUS_TOL = 0.35    # toleransi radius awal orbit (m)
     ORBIT_ALIGN_YAW_TOL = math.radians(12.0)
@@ -57,11 +61,12 @@ class MissionConfig:
     # ==========================================
     # 5. Parameter Pemetaan Pohon (tree_mapper.py)
     # ==========================================
-    TREE_MERGE_DISTANCE = 3.0           # meter (Jarak minimum untuk menggabungkan pohon yang sama)
+    TREE_MERGE_DISTANCE = 2.0           # pohon berjarak 3m tidak boleh tergabung
     TREE_MAX_CONFIDENCE = 1.0           # Maksimum confidence untuk pohon
     TREE_NEW_CONFIDENCE = 0.2      # Confidence awal untuk pohon baru
     TREE_CONFIDENCE_INCREMENT = 0.15    # Penambahan confidence setiap deteksi
     TREE_CONFIDENCE_DECAY = 0.01         # Penurunan confidence setiap deteksi hilang
     TREE_TIMEOUT = 30.0                 # detik
-    # Hanya digunakan saat launch simulasi memasok SDF world.
-    TREE_GROUND_TRUTH_TOLERANCE = 1.25  # error XY maksimum terhadap world (m)
+    TREE_TRACK_REASSOCIATE_DISTANCE = 1.5
+    TREE_POSITION_WINDOW = 9            # median observasi terbaru
+    TREE_UNVALIDATED_RETENTION = 12.0   # hapus kandidat yang tidak terlihat (s)

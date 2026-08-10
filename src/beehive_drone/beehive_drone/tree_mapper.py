@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 import math
+import statistics
 import time
-import os
 
 import rclpy
 from rclpy.node import Node
@@ -13,10 +13,6 @@ from uav_interfaces.msg import Tree
 from uav_interfaces.msg import TreeArray
 from pcl_cstm_msg.msg import TrackedCylinderArray
 from beehive_drone.mission_params import MissionConfig
-from beehive_drone.world_ground_truth import (
-    load_tree_ground_truth,
-    nearest_ground_truth,
-)
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
@@ -46,35 +42,18 @@ class TreeMapper(Node):
 
         # waktu hilang sebelum confidence turun
         self.timeout = MissionConfig.TREE_TIMEOUT
-
-        # Optional simulation oracle. It is intentionally disabled unless a
-        # world is supplied, so real-drone operation never depends on Gazebo.
-        self.ground_truth_world = self.declare_parameter(
-            "ground_truth_world", ""
-        ).value
-        self.ground_truth_tolerance = self.declare_parameter(
-            "ground_truth_tolerance", MissionConfig.TREE_GROUND_TRUTH_TOLERANCE
-        ).value
-        self.ground_truth_trees = []
-        if self.ground_truth_world:
-            if os.path.isfile(self.ground_truth_world):
-                self.ground_truth_trees = load_tree_ground_truth(
-                    self.ground_truth_world
-                )
-                self.get_logger().info(
-                    f"Ground-truth gate aktif: {len(self.ground_truth_trees)} "
-                    f"pohon, toleransi {self.ground_truth_tolerance:.2f} m"
-                )
-            else:
-                self.get_logger().error(
-                    f"World ground truth tidak ditemukan: {self.ground_truth_world}"
-                )
+        self.unvalidated_retention = MissionConfig.TREE_UNVALIDATED_RETENTION
 
         ##################################################
         # Database
         ##################################################
         self.tree_database = {}
         self.next_tree_id = 1
+        self.pcl_track_to_tree = {}
+        self.position_window = MissionConfig.TREE_POSITION_WINDOW
+        self.track_reassociate_distance = (
+            MissionConfig.TREE_TRACK_REASSOCIATE_DISTANCE
+        )
 
         ##################################################
         # Subscribers
@@ -90,7 +69,7 @@ class TreeMapper(Node):
         # Cylinder PCL sudah berada pada frame global dan tidak perlu
         # diproyeksikan lagi lewat pixel kamera.
         self.min_pcl_seen_count = self.declare_parameter(
-            "min_pcl_seen_count", 2
+            "min_pcl_seen_count", 3
         ).value
         pcl_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -175,9 +154,13 @@ class TreeMapper(Node):
             point.x = position.x
             point.y = position.y
             point.z = position.z
-            tree_id = self.tree_callback(point)
+            preferred_id = self.pcl_track_to_tree.get(tracked.id)
+            if preferred_id not in self.tree_database:
+                preferred_id = None
+            tree_id = self.tree_callback(point, preferred_id=preferred_id)
             if tree_id is None:
                 continue
+            self.pcl_track_to_tree[tracked.id] = tree_id
 
             previous = frame_observations.get(tree_id)
             if previous is None or cylinder.confidence > previous[0]:
@@ -212,7 +195,7 @@ class TreeMapper(Node):
     ##################################################
     # Receive tree detection
     ##################################################
-    def tree_callback(self,msg):
+    def tree_callback(self, msg, preferred_id=None):
         x = msg.x
         y = msg.y
         z = msg.z
@@ -221,22 +204,28 @@ class TreeMapper(Node):
             self.get_logger().warning("Invalid tree position ignored")
             return None
 
-        if self.ground_truth_trees:
-            truth, error = nearest_ground_truth(x, y, self.ground_truth_trees)
-            if error > self.ground_truth_tolerance:
-                self.get_logger().warning(
-                    f"Pohon gaib ditolak ({x:.2f},{y:.2f}); pohon world "
-                    f"terdekat {truth[0]} berjarak {error:.2f} m"
-                )
-                return None
-
         nearest_id = None
         nearest_distance = float("inf")
+
+        if preferred_id in self.tree_database:
+            preferred = self.tree_database[preferred_id]
+            preferred_distance = math.hypot(x - preferred["x"], y - preferred["y"])
+            if preferred_distance <= self.track_reassociate_distance:
+                nearest_id = preferred_id
+                nearest_distance = preferred_distance
+            else:
+                self.get_logger().warning(
+                    f"Lompatan track PCL ditolak untuk tree {preferred_id}: "
+                    f"{preferred_distance:.2f} m"
+                )
+                return None
 
         ##################################################
         # Search nearest tree
         ##################################################
         for tree_id,tree in self.tree_database.items():
+            if nearest_id is not None:
+                break
             distance = math.sqrt(
                 (x-tree["x"])**2 +
                 (y-tree["y"])**2
@@ -252,13 +241,14 @@ class TreeMapper(Node):
         if nearest_id is not None and nearest_distance < self.merge_distance:
             tree = self.tree_database[nearest_id]
             tree["count"] += 1
+            tree["observations"].append((x, y, z))
+            del tree["observations"][:-self.position_window]
 
-            alpha = 1.0 / tree["count"]
-
-            # update posisi
-            tree["x"] += alpha * (x-tree["x"])
-            tree["y"] += alpha * (y-tree["y"])
-            tree["z"] += alpha * (z-tree["z"])
+            # Median window rejects a transient bad cylinder and, unlike a
+            # lifetime average, can still converge as the drone gets closer.
+            tree["x"] = statistics.median(p[0] for p in tree["observations"])
+            tree["y"] = statistics.median(p[1] for p in tree["observations"])
+            tree["z"] = statistics.median(p[2] for p in tree["observations"])
 
             ##################################################
             # Confidence hanya naik jika belum inspected
@@ -285,6 +275,8 @@ class TreeMapper(Node):
                 "confidence": self.new_tree_confidence,
                 "count":1,
                 "inspected":False,
+                "validated":False,
+                "observations":[(x, y, z)],
                 "last_seen": time.time()
             }
             self.next_tree_id += 1
@@ -306,6 +298,11 @@ class TreeMapper(Node):
         if msg.confidence == -1.0:
             if msg.id in self.tree_database:
                 del self.tree_database[msg.id]
+                self.pcl_track_to_tree = {
+                    track_id: tree_id
+                    for track_id, tree_id in self.pcl_track_to_tree.items()
+                    if tree_id != msg.id
+                }
                 self.get_logger().info(f"Pohon Hantu ID:{msg.id} resmi DIHAPUS dari database peta.")
                 
                 # Update visualisasi untuk segera membuang pohon yang dihapus
@@ -329,6 +326,8 @@ class TreeMapper(Node):
         tree["z"] = msg.z
         tree["confidence"] = msg.confidence
         tree["inspected"] = msg.inspected
+        tree["validated"] = msg.validated
+        tree["observations"] = [(msg.x, msg.y, msg.z)]
         tree["last_seen"] = time.time()
 
         self.get_logger().info(f"Tree {msg.id} inspected={msg.inspected}")
@@ -343,7 +342,8 @@ class TreeMapper(Node):
     def update_confidence(self):
         now = time.time()
 
-        for tree in self.tree_database.values():
+        expired_ids = []
+        for tree_id, tree in self.tree_database.items():
             ##################################################
             # Jangan decay pohon selesai inspeksi
             ##################################################
@@ -352,10 +352,26 @@ class TreeMapper(Node):
 
             elapsed = now - tree["last_seen"]
 
+            if not tree["validated"] and elapsed > self.unvalidated_retention:
+                expired_ids.append(tree_id)
+                continue
+
             if elapsed > self.timeout:
                 tree["confidence"] -= self.confidence_decay
                 if tree["confidence"] < 0:
                     tree["confidence"] = 0.0
+
+        for tree_id in expired_ids:
+            del self.tree_database[tree_id]
+        if expired_ids:
+            self.pcl_track_to_tree = {
+                track_id: tree_id
+                for track_id, tree_id in self.pcl_track_to_tree.items()
+                if tree_id not in expired_ids
+            }
+            self.get_logger().info(
+                f"Menghapus {len(expired_ids)} kandidat PCL yang sudah stale"
+            )
 
         self.publish_tree()
         self.publish_marker()
@@ -375,6 +391,7 @@ class TreeMapper(Node):
             t.z = tree["z"]
             t.confidence = tree["confidence"]
             t.inspected = tree["inspected"]
+            t.validated = tree["validated"]
 
             msg.trees.append(t)
 
@@ -458,7 +475,8 @@ def main(args=None):
         pass
 
     node.destroy_node()
-    rclpy.shutdown()
+    if rclpy.ok():
+        rclpy.shutdown()
 
 if __name__ == "__main__":
     main()

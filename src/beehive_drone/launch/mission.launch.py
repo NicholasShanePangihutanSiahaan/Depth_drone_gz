@@ -1,8 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     pkg_name = 'beehive_drone'
@@ -23,14 +22,6 @@ def generate_launch_description():
         # Set this to true explicitly when using a physical ZED optical cloud.
         default_value='false'
     )
-    ground_truth_world_arg = DeclareLaunchArgument(
-        'ground_truth_world',
-        default_value=PathJoinSubstitution([
-            FindPackageShare('uav_plantation_sim'), 'worlds', 'plantation.sdf'
-        ]),
-        description='SDF world used to reject and measure simulated ghost trees'
-    )
-
     pcl_detector_node = Node(
         package='point-cloud-test',
         executable='pcl_proc_node',
@@ -52,10 +43,7 @@ def generate_launch_description():
         package=pkg_name,
         executable='tree_mapper',
         name='tree_mapper',
-        output='screen',
-        parameters=[{
-            'ground_truth_world': LaunchConfiguration('ground_truth_world')
-        }]
+        output='screen'
     )
 
     # 2. Navigation & Control Nodes
@@ -108,7 +96,6 @@ def generate_launch_description():
         cloud_topic_arg,
         pose_topic_arg,
         optical_frame_arg,
-        ground_truth_world_arg,
         pcl_detector_node,
         mapper_node,
         velocity_node,

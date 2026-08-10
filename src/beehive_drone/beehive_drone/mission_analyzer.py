@@ -5,6 +5,10 @@ import time
 import csv
 from datetime import datetime
 
+import matplotlib
+
+# Analyzer must also work on a companion computer without an X/Tk display.
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import rclpy
@@ -147,7 +151,7 @@ class MissionAnalyzer(Node):
         )
 
         self.timer = self.create_timer(
-            0.5,
+            5.0,
             self.update
         )
 
@@ -735,7 +739,8 @@ def main(args=None):
 
         node.destroy_node()
 
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
     
 if __name__ == "__main__":
     

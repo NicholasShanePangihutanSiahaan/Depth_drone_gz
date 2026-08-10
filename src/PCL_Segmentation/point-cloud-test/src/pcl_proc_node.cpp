@@ -1,3 +1,6 @@
+#include <algorithm>
+#include <deque>
+#include <limits>
 #include <mutex>
 #include <vector>
 #include <memory>
@@ -44,12 +47,18 @@ namespace point_cloud_test
       // Keep this explicit instead of silently rotating every source.
       input_is_optical_frame_ = declare_parameter<bool>(
           "input_is_optical_frame", true);
+      max_pose_time_error_ = declare_parameter<double>(
+          "max_pose_time_error", 0.20);
       pose_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
           "/pose", rclcpp::SensorDataQoS(),
           [this](geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
           {
             std::lock_guard<std::mutex> lock(swap_mutex_);
-            latest_pose_ = msg;
+            pose_history_.push_back(msg);
+            while (pose_history_.size() > 200)
+            {
+              pose_history_.pop_front();
+            }
           });
       cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
           "/input_cloud", rclcpp::SensorDataQoS(),
@@ -81,7 +90,7 @@ namespace point_cloud_test
         const sensor_msgs::msg::PointCloud2::ConstSharedPtr &cloud_msg)
     {
       std::lock_guard<std::mutex> lock(swap_mutex_);
-      if (!latest_pose_)
+      if (pose_history_.empty())
       {
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 5000,
@@ -92,7 +101,35 @@ namespace point_cloud_test
       // Cukup simpan dua pasangan cloud-odometry terbaru.
       constexpr std::size_t kMaxBufferedPairs = 2;
 
-      write_buffer_->push_back({cloud_msg, latest_pose_});
+      const double cloud_time = stamp_seconds(cloud_msg->header.stamp);
+      const double newest_pose_time = stamp_seconds(
+          pose_history_.back()->header.stamp);
+      auto closest = pose_history_.back();
+      double closest_error = 0.0;
+      const bool different_clock_domains =
+          std::abs(newest_pose_time - cloud_time) > 60.0;
+      if (!different_clock_domains)
+      {
+        closest_error = std::numeric_limits<double>::infinity();
+        for (const auto &pose : pose_history_)
+        {
+          const double error = std::abs(
+              stamp_seconds(pose->header.stamp) - cloud_time);
+          if (error < closest_error)
+          {
+            closest_error = error;
+            closest = pose;
+          }
+        }
+      }
+      if (closest_error > max_pose_time_error_)
+      {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 3000,
+            "Cloud ditolak: selisih timestamp cloud-pose %.3f s", closest_error);
+        return;
+      }
+      write_buffer_->push_back({cloud_msg, closest});
 
       if (write_buffer_->size() > kMaxBufferedPairs)
       {
@@ -220,6 +257,7 @@ namespace point_cloud_test
       if (merged_cloud->empty())
       {
         RCLCPP_WARN(get_logger(), "No finite points available after filtering");
+        age_and_publish_tracks();
         to_process->clear();
         return;
       }
@@ -229,6 +267,7 @@ namespace point_cloud_test
       if (!non_ground || non_ground->empty())
       {
         RCLCPP_WARN(get_logger(), "Ground removal failed");
+        age_and_publish_tracks();
         to_process->clear();
         return;
       }
@@ -354,45 +393,7 @@ namespace point_cloud_test
             1000.0;
         RCLCPP_INFO(get_logger(), "Total Manager: %lf ms", time_manager_ms);
 
-        pcl_cstm_msg::msg::TrackedCylinderArray tracked_msg;
-        tracked_msg.header.stamp = now();
-        tracked_msg.header.frame_id = "plantation";
-
-        for (const auto &t : tracked)
-        {
-          pcl_cstm_msg::msg::TrackedCylinder tc_msg;
-          tc_msg.id = t.id;
-          tc_msg.seen_count = t.seen_count;
-          tc_msg.missed_count = t.missed_count;
-          tc_msg.cylinder.header.stamp = now();
-          tc_msg.cylinder.header.frame_id = "plantation";
-          tc_msg.cylinder.radius = t.radius;
-          tc_msg.cylinder.height = t.height;
-          tc_msg.cylinder.confidence = t.confidence;
-          tc_msg.cylinder.pose.position.x = t.center_x;
-          tc_msg.cylinder.pose.position.y = t.center_y;
-          tc_msg.cylinder.pose.position.z = t.center_z;
-
-          Eigen::Vector3f z_axis(0.0f, 0.0f, 1.0f);
-          Eigen::Vector3f cylinder_axis(t.dir_x, t.dir_y, t.dir_z);
-          if (cylinder_axis.z() < 0)
-          {
-            cylinder_axis = -cylinder_axis;
-          }
-
-          Eigen::Quaternionf q;
-          q.setFromTwoVectors(z_axis, cylinder_axis);
-
-          tc_msg.cylinder.pose.orientation.x = q.x();
-          tc_msg.cylinder.pose.orientation.y = q.y();
-          tc_msg.cylinder.pose.orientation.z = q.z();
-          tc_msg.cylinder.pose.orientation.w = q.w();
-
-          tc_msg.cylinder.is_valid = true;
-          tracked_msg.cylinders.push_back(std::move(tc_msg));
-        }
-
-        global_cylinder_pub_->publish(tracked_msg);
+        publish_tracks(tracked);
       }
       else
       {
@@ -403,26 +404,7 @@ namespace point_cloud_test
         std::vector<TrackedCylinder> tracked;
         global_manager_.process(no_detections, tracked);
 
-        pcl_cstm_msg::msg::TrackedCylinderArray tracked_msg;
-        tracked_msg.header.stamp = now();
-        tracked_msg.header.frame_id = "plantation";
-        for (const auto &t : tracked)
-        {
-          pcl_cstm_msg::msg::TrackedCylinder tc_msg;
-          tc_msg.id = t.id;
-          tc_msg.seen_count = t.seen_count;
-          tc_msg.missed_count = t.missed_count;
-          tc_msg.cylinder.header = tracked_msg.header;
-          tc_msg.cylinder.pose.position.x = t.center_x;
-          tc_msg.cylinder.pose.position.y = t.center_y;
-          tc_msg.cylinder.pose.position.z = t.center_z;
-          tc_msg.cylinder.radius = t.radius;
-          tc_msg.cylinder.height = t.height;
-          tc_msg.cylinder.confidence = t.confidence;
-          tc_msg.cylinder.is_valid = true;
-          tracked_msg.cylinders.push_back(std::move(tc_msg));
-        }
-        global_cylinder_pub_->publish(tracked_msg);
+        publish_tracks(tracked);
       }
 
       to_process->clear();
@@ -436,9 +418,48 @@ namespace point_cloud_test
       RCLCPP_INFO(get_logger(), "Total Times: %lf ms", timer_cb_ms);
     }
 
+    static double stamp_seconds(const builtin_interfaces::msg::Time &stamp)
+    {
+      return static_cast<double>(stamp.sec) +
+             static_cast<double>(stamp.nanosec) * 1e-9;
+    }
+
+    void age_and_publish_tracks()
+    {
+      std::vector<CylinderParams> empty;
+      std::vector<TrackedCylinder> tracked;
+      global_manager_.process(empty, tracked);
+      publish_tracks(tracked);
+    }
+
+    void publish_tracks(const std::vector<TrackedCylinder> &tracked)
+    {
+      pcl_cstm_msg::msg::TrackedCylinderArray msg;
+      msg.header.stamp = now();
+      msg.header.frame_id = "odom";
+      for (const auto &t : tracked)
+      {
+        pcl_cstm_msg::msg::TrackedCylinder item;
+        item.id = t.id;
+        item.seen_count = t.seen_count;
+        item.missed_count = t.missed_count;
+        item.cylinder.header = msg.header;
+        item.cylinder.radius = t.radius;
+        item.cylinder.height = t.height;
+        item.cylinder.confidence = t.confidence;
+        item.cylinder.pose.position.x = t.center_x;
+        item.cylinder.pose.position.y = t.center_y;
+        item.cylinder.pose.position.z = t.center_z;
+        item.cylinder.pose.orientation.w = 1.0;
+        item.cylinder.is_valid = true;
+        msg.cylinders.push_back(std::move(item));
+      }
+      global_cylinder_pub_->publish(msg);
+    }
+
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
-    geometry_msgs::msg::PoseStamped::ConstSharedPtr latest_pose_;
+    std::deque<geometry_msgs::msg::PoseStamped::ConstSharedPtr> pose_history_;
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_pub_;
     rclcpp::Publisher<pcl_cstm_msg::msg::PointCloudArray>::SharedPtr cluster_pub_;
@@ -452,6 +473,7 @@ namespace point_cloud_test
         std::make_shared<std::vector<CloudOdomPair>>()};
     std::mutex swap_mutex_;
     bool input_is_optical_frame_{true};
+    double max_pose_time_error_{0.20};
 
     Eigen::Matrix3f R_optical_to_robot_{
         (Eigen::Matrix3f() << 0, 0, 1,

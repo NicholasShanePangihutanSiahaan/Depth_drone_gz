@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import math
+import statistics
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
@@ -53,6 +54,10 @@ class MissionStateMachine(Node):
         self.verify_timeout = MissionConfig.TREE_VERIFY_TIMEOUT
         self.verify_samples_required = MissionConfig.TREE_VERIFY_SAMPLES
         self.verify_spread = MissionConfig.TREE_VERIFY_SPREAD
+        self.verify_duration = MissionConfig.TREE_VERIFY_DURATION
+        self.verify_drift = MissionConfig.TREE_VERIFY_DRIFT
+        self.verify_min_confidence = MissionConfig.TREE_VERIFY_MIN_CONFIDENCE
+        self.hover_position_tolerance = MissionConfig.TREE_HOVER_POSITION_TOL
         self.align_position_tolerance = MissionConfig.ORBIT_ALIGN_POSITION_TOL
         self.align_radius_tolerance = MissionConfig.ORBIT_ALIGN_RADIUS_TOL
         self.align_yaw_tolerance = MissionConfig.ORBIT_ALIGN_YAW_TOL
@@ -73,6 +78,9 @@ class MissionStateMachine(Node):
         self.verify_started_at = 0.0
         self.verify_start_count = 0
         self.align_stable_since = None
+        self.verify_hover_x = 0.0
+        self.verify_hover_y = 0.0
+        self.pose_history = []
 
         # Variabel Telemetri Penerbangan (Dari Flight Manager)
         self.is_armed = False
@@ -131,9 +139,30 @@ class MissionStateMachine(Node):
         self.get_logger().info("Mission State Machine (The Brain) Siap!")
 
     # --- Callbacks Sensor & Status ---
-    def pose_cb(self, msg): self.current_pose = msg
+    def pose_cb(self, msg):
+        self.current_pose = msg
+        now = self.get_clock().now().nanoseconds * 1e-9
+        self.pose_history.append(
+            (now, msg.pose.position.x, msg.pose.position.y)
+        )
+        self.pose_history = [
+            sample for sample in self.pose_history if now - sample[0] <= 2.0
+        ]
     def orbit_status_cb(self, msg): self.orbit_status = msg.data
-    def tree_cb(self, msg): self.trees = msg.trees
+    def tree_cb(self, msg):
+        self.trees = msg.trees
+        if self.target_tree is None:
+            return
+        # Lock by map ID, not by nearest coordinate. During approach and hover
+        # the target center follows the mapper's latest robust PCL estimate.
+        updated = next(
+            (tree for tree in msg.trees if tree.id == self.target_tree.id),
+            None,
+        )
+        if updated is not None and self.state in (
+            "APPROACH_TREE", "VERIFY_TREE"
+        ):
+            self.target_tree = updated
     def tree_observation_cb(self, msg):
         now = self.get_clock().now().nanoseconds * 1e-9
         sequence = self.tree_observation_counts.get(msg.id, 0) + 1
@@ -151,6 +180,17 @@ class MissionStateMachine(Node):
     def distance(self, x1, y1, x2, y2):
         return math.sqrt((x1-x2)**2 + (y1-y2)**2)
 
+    def is_position_stable(self, now, duration=1.0):
+        samples = [sample for sample in self.pose_history if now - sample[0] <= duration]
+        if len(samples) < 5 or samples[-1][0] - samples[0][0] < duration * 0.8:
+            return False
+        center_x = statistics.median(sample[1] for sample in samples)
+        center_y = statistics.median(sample[2] for sample in samples)
+        return max(
+            self.distance(sample[1], sample[2], center_x, center_y)
+            for sample in samples
+        ) <= self.hover_position_tolerance
+
     def find_uninspected_tree(self):
         if self.current_pose is None: return None
         cx, cy = self.current_pose.pose.position.x, self.current_pose.pose.position.y
@@ -159,7 +199,10 @@ class MissionStateMachine(Node):
         min_dist = float('inf')
 
         for tree in self.trees:
-            if not tree.inspected:
+            if (
+                not tree.inspected
+                and tree.confidence >= self.verify_min_confidence
+            ):
                 dist = self.distance(cx, cy, tree.x, tree.y)
                 is_ahead = (tree.x - cx) * self.explore_dir_x >= -1.0
                 if is_ahead and dist < min_dist and dist < 15.0: 
@@ -277,6 +320,8 @@ class MissionStateMachine(Node):
             else:
                 self.state = "VERIFY_TREE"
                 self.verify_started_at = self.get_clock().now().nanoseconds * 1e-9
+                self.verify_hover_x = cx
+                self.verify_hover_y = cy
                 self.verify_start_count = self.tree_observation_counts.get(
                     self.target_tree.id, 0
                 )
@@ -290,7 +335,11 @@ class MissionStateMachine(Node):
             # beberapa observasi BARU. Isi /map/trees saja tidak cukup karena
             # dapat merupakan koordinat lama yang sudah stale.
             target_yaw = math.atan2(self.target_tree.y - cy, self.target_tree.x - cx)
-            self.publish_goal(cx, cy, target_yaw)
+            # Keep one fixed hover setpoint. Republishing the current position
+            # made the hold point drift together with odometry/noise.
+            self.publish_goal(
+                self.verify_hover_x, self.verify_hover_y, target_yaw
+            )
             now = self.get_clock().now().nanoseconds * 1e-9
             history = self.tree_observations.get(self.target_tree.id, [])
             fresh = [
@@ -298,17 +347,31 @@ class MissionStateMachine(Node):
                 if sample[0] > self.verify_start_count
             ]
 
-            if len(fresh) >= self.verify_samples_required:
+            if len(fresh) >= self.verify_samples_required and self.is_position_stable(now):
                 samples = fresh[-self.verify_samples_required:]
-                mean_x = sum(sample[2] for sample in samples) / len(samples)
-                mean_y = sum(sample[3] for sample in samples) / len(samples)
-                mean_z = sum(sample[4] for sample in samples) / len(samples)
+                mean_x = statistics.median(sample[2] for sample in samples)
+                mean_y = statistics.median(sample[3] for sample in samples)
+                mean_z = statistics.median(sample[4] for sample in samples)
                 spread = max(
                     self.distance(sample[2], sample[3], mean_x, mean_y)
                     for sample in samples
                 )
+                half = len(samples) // 2
+                first_x = statistics.median(sample[2] for sample in samples[:half])
+                first_y = statistics.median(sample[3] for sample in samples[:half])
+                last_x = statistics.median(sample[2] for sample in samples[half:])
+                last_y = statistics.median(sample[3] for sample in samples[half:])
+                drift = self.distance(first_x, first_y, last_x, last_y)
+                sample_duration = samples[-1][1] - samples[0][1]
+                min_confidence = min(sample[5] for sample in samples)
 
-                if spread <= self.verify_spread:
+                stable_center = (
+                    spread <= self.verify_spread
+                    and drift <= self.verify_drift
+                    and sample_duration >= self.verify_duration
+                    and min_confidence >= self.verify_min_confidence
+                )
+                if stable_center:
                     old_x, old_y = self.target_tree.x, self.target_tree.y
                     self.target_tree.x = mean_x
                     self.target_tree.y = mean_y
@@ -334,12 +397,15 @@ class MissionStateMachine(Node):
                         f"Pohon ID:{self.target_tree.id} terverifikasi dari "
                         f"{len(samples)} observasi baru; koreksi koordinat "
                         f"({old_x:.2f},{old_y:.2f}) -> ({mean_x:.2f},{mean_y:.2f}), "
-                        f"spread={spread:.2f}m. Menyelaraskan titik masuk orbit."
+                        f"spread={spread:.2f}m, drift={drift:.2f}m. "
+                        "Menyelaraskan titik masuk orbit."
                     )
                 else:
                     self.get_logger().warning(
                         f"Observasi pohon ID:{self.target_tree.id} belum stabil "
-                        f"(spread={spread:.2f}m); menunggu sampel berikutnya."
+                        f"(spread={spread:.2f}m, drift={drift:.2f}m, "
+                        f"durasi={sample_duration:.1f}s, conf={min_confidence:.2f}); "
+                        "menunggu sampel berikutnya."
                     )
                     self.verify_start_count = samples[0][0]
 
@@ -423,6 +489,7 @@ class MissionStateMachine(Node):
                     
                     # INI KUNCI UTAMANYA:
                     update_msg.inspected = True 
+                    update_msg.validated = True
                     
                     self.tree_update_pub.publish(update_msg)
                     self.get_logger().info(f"Pohon ID:{self.target_tree.id} ditandai SELESAI (Inspected).")
@@ -520,7 +587,8 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     node.destroy_node()
-    rclpy.shutdown()
+    if rclpy.ok():
+        rclpy.shutdown()
 
 if __name__ == "__main__":
     main()
