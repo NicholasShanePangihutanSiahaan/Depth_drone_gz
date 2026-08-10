@@ -16,6 +16,11 @@ def euler_to_quaternion(roll, pitch, yaw):
     qw = math.cos(roll/2) * math.cos(pitch/2) * math.cos(yaw/2) + math.sin(roll/2) * math.sin(pitch/2) * math.sin(yaw/2)
     return qx, qy, qz, qw
 
+def quaternion_to_yaw(q):
+    siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+    cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+    return math.atan2(siny_cosp, cosy_cosp)
+
 class MissionStateMachine(Node):
     def __init__(self):
         super().__init__("mission_state_machine")
@@ -49,6 +54,10 @@ class MissionStateMachine(Node):
         self.hover_timer = 0
         self.orbit_status = "IDLE"
         self.current_pose = None
+        self.home_pose = None
+        self.hold_x = 0.0
+        self.hold_y = 0.0
+        self.hold_yaw = 0.0
         self.trees = []
         self.target_tree = None
 
@@ -103,7 +112,16 @@ class MissionStateMachine(Node):
         self.get_logger().info("Mission State Machine (The Brain) Siap!")
 
     # --- Callbacks Sensor & Status ---
-    def pose_cb(self, msg): self.current_pose = msg
+    def pose_cb(self, msg):
+        self.current_pose = msg
+        # Pose pertama sebelum takeoff menjadi home dinamis. Salin nilainya,
+        # jangan simpan referensi message yang akan terus diperbarui.
+        if self.home_pose is None and self.state in ("INIT", "WAIT_GUIDED", "WAIT_ARM"):
+            self.home_pose = (
+                msg.pose.position.x,
+                msg.pose.position.y,
+                quaternion_to_yaw(msg.pose.orientation)
+            )
     def orbit_status_cb(self, msg): self.orbit_status = msg.data
     def tree_cb(self, msg): self.trees = msg.trees
     
@@ -115,6 +133,12 @@ class MissionStateMachine(Node):
     # --- Helper Functions ---
     def distance(self, x1, y1, x2, y2):
         return math.sqrt((x1-x2)**2 + (y1-y2)**2)
+
+    def normalize_angle(self, angle):
+        return math.atan2(math.sin(angle), math.cos(angle))
+
+    def current_yaw(self):
+        return quaternion_to_yaw(self.current_pose.pose.orientation)
 
     def find_uninspected_tree(self):
         if self.current_pose is None: return None
@@ -328,14 +352,47 @@ class MissionStateMachine(Node):
                     self.tree_update_pub.publish(update_msg)
                     self.get_logger().info(f"Pohon ID:{self.target_tree.id} ditandai SELESAI (Inspected).")
 
-                # 3. Update posisi terakhir untuk acuan lorong
-                self.last_tree_x = self.target_tree.x
-                self.last_tree_y = self.target_tree.y
-                
-                # 4. Kosongkan target dan kembali mencari
+                # Misi hanya menginspeksi satu pohon. Tahan posisi akhir orbit
+                # sebelum menghadap dan kembali ke titik takeoff.
+                self.hold_x = cx
+                self.hold_y = cy
+                self.hold_yaw = self.current_yaw()
+                self.hover_timer = 0
                 self.target_tree = None
-                self.state = "EXPLORE_ROW"
-                self.get_logger().info("Orbit selesai. Kembali menyusuri lorong mencari pohon baru.")
+                self.state = "POST_ORBIT_HOVER"
+                self.get_logger().info(
+                    "Orbit satu pohon selesai. Hover sebelum kembali ke titik takeoff."
+                )
+
+        elif self.state == "POST_ORBIT_HOVER":
+            self.publish_goal(self.hold_x, self.hold_y, self.hold_yaw)
+            self.hover_timer = self.hover_timer + 1 if self.is_hovering else 0
+
+            required_ticks = int(MissionConfig.POST_ORBIT_HOVER_TIME / 0.1)
+            if self.hover_timer >= required_ticks:
+                self.hover_timer = 0
+                self.state = "ALIGN_HOME"
+                self.get_logger().info("Hover stabil. Menyesuaikan yaw menuju home.")
+
+        elif self.state == "ALIGN_HOME":
+            if self.home_pose is None:
+                self.get_logger().error("Home belum tersimpan; menahan posisi untuk keselamatan.")
+                self.publish_goal(self.hold_x, self.hold_y, self.hold_yaw)
+                return
+
+            home_x, home_y, _ = self.home_pose
+            yaw_to_home = math.atan2(home_y - cy, home_x - cx)
+            self.publish_goal(self.hold_x, self.hold_y, yaw_to_home)
+
+            yaw_error = abs(self.normalize_angle(yaw_to_home - self.current_yaw()))
+            aligned = yaw_error <= MissionConfig.HOME_YAW_TOLERANCE
+            self.hover_timer = self.hover_timer + 1 if aligned and self.is_hovering else 0
+
+            required_ticks = int(MissionConfig.HOME_ALIGN_TIME / 0.1)
+            if self.hover_timer >= required_ticks:
+                self.hover_timer = 0
+                self.state = "RETURN_TO_HOME"
+                self.get_logger().info("Arah ke home stabil. Mulai kembali ke titik takeoff.")
 
         elif self.state == "END_OF_ROW":
             retreat_x = self.last_tree_x - (self.approach_safe_dist * self.explore_dir_x)
@@ -365,18 +422,28 @@ class MissionStateMachine(Node):
                     self.get_logger().info("Lahan habis. Cari jalur untuk pulang (RTH).")
 
         elif self.state == "RETURN_TO_HOME":
-            target_yaw = math.atan2(0.0 - cy, 0.0 - cx)
-            self.publish_goal(0.0, 0.0, target_yaw)
-            
-            if self.distance(cx, cy, 0.0, 0.0) < 1.0:
-                self.state = "FINAL_SPIN"
-                qx = self.current_pose.pose.orientation.x
-                qy = self.current_pose.pose.orientation.y
-                qz = self.current_pose.pose.orientation.z
-                qw = self.current_pose.pose.orientation.w
-                self.last_yaw = math.atan2(2.0*(qw*qz + qx*qy), 1.0 - 2.0*(qy*qy + qz*qz))
-                self.spin_accumulated = 0.0
-                self.get_logger().info("Tiba di Home. Memulai rotasi 360 derajat.")
+            if self.home_pose is None:
+                return
+
+            home_x, home_y, home_yaw = self.home_pose
+            target_yaw = math.atan2(home_y - cy, home_x - cx)
+            self.publish_goal(home_x, home_y, target_yaw)
+
+            if self.distance(cx, cy, home_x, home_y) < MissionConfig.HOME_POSITION_TOLERANCE:
+                self.hold_yaw = home_yaw
+                self.hover_timer = 0
+                self.state = "HOME_HOVER"
+                self.get_logger().info("Tiba di titik takeoff. Hover sebelum landing.")
+
+        elif self.state == "HOME_HOVER":
+            home_x, home_y, _ = self.home_pose
+            self.publish_goal(home_x, home_y, self.hold_yaw)
+            self.hover_timer = self.hover_timer + 1 if self.is_hovering else 0
+
+            required_ticks = int(MissionConfig.HOME_HOVER_TIME / 0.1)
+            if self.hover_timer >= required_ticks:
+                self.state = "LANDING"
+                self.get_logger().info("Hover home selesai. Memulai pendaratan.")
 
         elif self.state == "FINAL_SPIN":
             qx = self.current_pose.pose.orientation.x
@@ -408,7 +475,11 @@ class MissionStateMachine(Node):
         elif self.state == "LANDING":
             land_msg = Bool(); land_msg.data = True
             self.cmd_land_pub.publish(land_msg)
-            self.state = "DONE"
+            # Ulangi command sampai kendaraan benar-benar turun atau disarm,
+            # agar satu pesan yang hilang tidak menggagalkan landing.
+            if not self.is_armed or self.current_pose.pose.position.z < 0.20:
+                self.state = "DONE"
+                self.get_logger().info("Landing selesai. Misi DONE.")
             
         elif self.state == "DONE":
             pass

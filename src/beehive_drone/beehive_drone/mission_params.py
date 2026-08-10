@@ -18,6 +18,11 @@ class MissionConfig:
     END_OF_FARM_DIST = 20.0      # meter
     APPROACH_SAFE_DIST = 2.0     # meter
     HOVERING_PERIODE = 30.0      # periode dikali 1.0 adalah waktu hovering sebelum loitering
+    POST_ORBIT_HOVER_TIME = 3.0  # detik stabilisasi setelah satu orbit selesai
+    HOME_ALIGN_TIME = 2.0        # detik mempertahankan arah menuju titik takeoff
+    HOME_HOVER_TIME = 3.0        # detik hover di atas titik takeoff sebelum land
+    HOME_POSITION_TOLERANCE = 0.7  # meter
+    HOME_YAW_TOLERANCE = math.radians(10.0)
 
     # ==========================================
     # 2. Parameter Orbit (dynamic_orbit_controller.py)
