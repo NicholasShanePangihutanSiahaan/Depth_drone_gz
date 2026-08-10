@@ -241,7 +241,10 @@ class MissionStateMachine(Node):
         if active and self.require_safety and not self.safety_ok:
             self.transition('ABORT')
             self.get_logger().error(f'ABORT watchdog: {self.safety_reason}')
-        if active and self.is_armed and self.current_mode not in ('GUIDED', ''):
+        # Mode LAND adalah transisi yang memang diperintahkan oleh FSM. Jangan
+        # salah mengklasifikasikannya sebagai takeover pilot ketika landing.
+        if (active and self.state != 'LANDING' and self.is_armed
+                and self.current_mode not in ('GUIDED', '')):
             self.transition('MANUAL_OVERRIDE')
             self.get_logger().warning(f'Manual takeover terdeteksi: mode={self.current_mode}')
         elapsed = (self.get_clock().now() - self.state_since).nanoseconds * 1e-9

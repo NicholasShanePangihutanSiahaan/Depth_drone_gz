@@ -56,6 +56,12 @@ position_setpoint_controller:
     target_timeout: 0.75
     output_frame: map
 
+# Dipakai jika real launch dialihkan ke kontrol kecepatan untuk tuning.
+velocity_controller:
+  ros__parameters:
+    minimum_control_altitude: 0.20
+    goal_threshold: 0.10
+
 mission_safety_monitor:
   ros__parameters:
     pointcloud_topic: /zed/zed_node/point_cloud/cloud_registered

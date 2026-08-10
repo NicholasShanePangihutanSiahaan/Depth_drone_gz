@@ -103,11 +103,14 @@ class VortexAvoidanceController(Node):
         # 2. Vektor Tarikan (Attractive Vector) ke Tujuan Asli
         # Dihitung relatif terhadap posisi drone saat ini
         dist_to_goal = math.sqrt((target_x - cx)**2 + (target_y - cy)**2)
-        if dist_to_goal > 0.1:
-            # NORMALISASI VEKTOR: Tarikan selalu konstan (kekuatannya = attraction_gain)
-            # Tidak peduli sejauh apa pun targetnya, tarikan tidak akan pernah membesar.
-            att_dx = ((target_x - cx) / dist_to_goal) * self.attraction_gain
-            att_dy = ((target_y - cy) / dist_to_goal) * self.attraction_gain
+        if dist_to_goal > 0.01:
+            # Batasi panjang langkah saat goal jauh, tetapi kecilkan secara
+            # proporsional ketika mendekati goal. Implementasi lama selalu
+            # memberi langkah 0.5 m sampai jarak tinggal 0.1 m lalu mendadak
+            # nol; diskontinuitas itu membuat drone overshoot dan berosilasi.
+            attraction_step = min(dist_to_goal, self.attraction_gain)
+            att_dx = ((target_x - cx) / dist_to_goal) * attraction_step
+            att_dy = ((target_y - cy) / dist_to_goal) * attraction_step
         else:
             att_dx = 0.0
             att_dy = 0.0

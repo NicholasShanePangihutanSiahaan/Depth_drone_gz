@@ -49,6 +49,7 @@ dynamic_orbit_controller:
 velocity_controller:
   ros__parameters:
     minimum_control_altitude: 0.20
+    goal_threshold: 0.08
 
 mission_safety_monitor:
   ros__parameters:
