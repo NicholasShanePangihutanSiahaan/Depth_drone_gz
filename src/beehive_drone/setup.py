@@ -22,7 +22,6 @@ setup(
     maintainer_email='shane@todo.todo',
     description='Autonomous Plantation Drone Navigation System',
     license='TODO: License declaration',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             # DAFTARKAN SEMUA NODE DI SINI (nama_eksekusi = nama_folder.nama_file:main)

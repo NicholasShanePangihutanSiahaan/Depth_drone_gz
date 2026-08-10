@@ -19,7 +19,6 @@ find_package(message_filters REQUIRED)
 find_package(pcl_cstm_msg REQUIRED)
 
 find_package(PCL 1.12 REQUIRED)
-find_package(VTK REQUIRED)
 
 # Include PCL headers
 include_directories(${PCL_INCLUDE_DIRS})
@@ -30,28 +29,12 @@ link_directories(${PCL_LIBRARY_DIRS})
 # Add PCL definitions
 add_definitions(${PCL_DEFINITIONS})
 
-# Testing pcl proc node
-add_executable(pcl_proc src/main_pcl_proc.cpp)
-
-target_include_directories(pcl_proc PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-target_link_libraries(pcl_proc ${PCL_LIBRARIES} ${VTK_LIBRARIES})
-ament_target_dependencies(pcl_proc rclcpp pcl_cstm_msg)
-
-if (VTK_VERSION VERSION_GREATER_EQUAL "8.90.0")
-  vtk_module_autoinit(
-    TARGETS pcl_proc
-    MODULES ${VTK_LIBRARIES}
-  )
-endif()
-
 add_executable(pcl_proc_node src/pcl_proc_node.cpp)
 
 target_include_directories(pcl_proc_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-target_link_libraries(pcl_proc_node ${PCL_LIBRARIES} ${VTK_LIBRARIES})
+target_link_libraries(pcl_proc_node ${PCL_LIBRARIES})
 ament_target_dependencies(pcl_proc_node
   rclcpp
   std_msgs
@@ -63,63 +46,9 @@ ament_target_dependencies(pcl_proc_node
   pcl_cstm_msg
 )
 
-# ZED PCL Proc Node
-add_executable(zed_pcl_proc_node src/zed_pcl_proc_node.cpp)
-
-target_include_directories(zed_pcl_proc_node PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-target_link_libraries(zed_pcl_proc_node ${PCL_LIBRARIES} ${VTK_LIBRARIES})
-ament_target_dependencies(zed_pcl_proc_node
-  rclcpp
-  std_msgs
-  geometry_msgs
-  nav_msgs
-  sensor_msgs
-  pcl_conversions
-  message_filters
-  pcl_cstm_msg
-)
-
-# pcl_norm_vis
-add_executable(pcl_norm_vis src/pcl_norm_vis.cpp)
-
-target_include_directories(pcl_norm_vis PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-target_link_libraries(pcl_norm_vis ${PCL_LIBRARIES} ${VTK_LIBRARIES})
-ament_target_dependencies(pcl_norm_vis
-  rclcpp
-  std_msgs
-  geometry_msgs
-  nav_msgs
-  sensor_msgs
-  pcl_conversions
-  message_filters
-  pcl_cstm_msg
-)
-
-if (VTK_VERSION VERSION_GREATER_EQUAL "8.90.0")
-  vtk_module_autoinit(
-    TARGETS pcl_proc_node
-    MODULES ${VTK_LIBRARIES}
-  )
-endif()
-
 install(TARGETS
-  pcl_proc
   pcl_proc_node
-  zed_pcl_proc_node
-  pcl_norm_vis
   DESTINATION lib/${PROJECT_NAME}
-)
-
-install(DIRECTORY launch
-  DESTINATION share/${PROJECT_NAME}
-)
-
-install(DIRECTORY config
-  DESTINATION share/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)

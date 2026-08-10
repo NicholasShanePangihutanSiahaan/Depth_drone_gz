@@ -54,6 +54,8 @@ namespace point_cloud_test
       this->declare_parameter("camera_mount_pitch", 0.0);
       this->declare_parameter("camera_mount_yaw", 0.0);
       this->declare_parameter("processing_period_ms", 500);
+      this->declare_parameter("global_frame_id", "odom");
+      global_frame_id_ = this->get_parameter("global_frame_id").as_string();
 
       rclcpp::SubscriptionOptions sub_opts;
       rclcpp::CallbackGroup::SharedPtr sync_cb_group = create_callback_group(
@@ -315,7 +317,7 @@ namespace point_cloud_test
       sensor_msgs::msg::PointCloud2 output_msg;
       pcl::toROSMsg(*trunk_filter, output_msg);
       output_msg.header.stamp = now();
-      output_msg.header.frame_id = "odom";
+      output_msg.header.frame_id = global_frame_id_;
 
       cloud_pub_->publish(output_msg);
 
@@ -333,11 +335,11 @@ namespace point_cloud_test
       {
         pcl_cstm_msg::msg::PointCloudArray cluster_msg;
         cluster_msg.header.stamp = now();
-        cluster_msg.header.frame_id = "odom";
+        cluster_msg.header.frame_id = global_frame_id_;
 
         pcl_cstm_msg::msg::VCylindersFit cyl_array_msg;
         cyl_array_msg.header.stamp = now();
-        cyl_array_msg.header.frame_id = "odom";
+        cyl_array_msg.header.frame_id = global_frame_id_;
 
         std::vector<CylinderParams> params_vec;
         params_vec.reserve(clusters.size());
@@ -350,7 +352,7 @@ namespace point_cloud_test
           sensor_msgs::msg::PointCloud2 cluster_cloud;
           pcl::toROSMsg(*cluster, cluster_cloud);
           cluster_cloud.header.stamp = now();
-          cluster_cloud.header.frame_id = "odom";
+          cluster_cloud.header.frame_id = global_frame_id_;
           cluster_msg.clouds.push_back(std::move(cluster_cloud));
 
           auto params = fitCylinderZAxis(cluster);
@@ -358,7 +360,7 @@ namespace point_cloud_test
 
           pcl_cstm_msg::msg::CylinderFit cyl_msg;
           cyl_msg.header.stamp = now();
-          cyl_msg.header.frame_id = "odom";
+          cyl_msg.header.frame_id = global_frame_id_;
           cyl_msg.radius = params.radius;
           cyl_msg.height = params.height;
           cyl_msg.confidence = params.confidence;
@@ -427,7 +429,7 @@ namespace point_cloud_test
 
         pcl_cstm_msg::msg::TrackedCylinderArray tracked_msg;
         tracked_msg.header.stamp = now();
-        tracked_msg.header.frame_id = "odom";
+        tracked_msg.header.frame_id = global_frame_id_;
 
         for (const auto &t : tracked)
         {
@@ -436,7 +438,7 @@ namespace point_cloud_test
           tc_msg.seen_count = t.seen_count;
           tc_msg.missed_count = t.missed_count;
           tc_msg.cylinder.header.stamp = now();
-          tc_msg.cylinder.header.frame_id = "odom";
+          tc_msg.cylinder.header.frame_id = global_frame_id_;
           tc_msg.cylinder.radius = t.radius;
           tc_msg.cylinder.height = t.height;
           tc_msg.cylinder.confidence = t.confidence;
@@ -497,6 +499,7 @@ namespace point_cloud_test
         std::make_shared<std::vector<CloudOdomPair>>()};
     std::mutex swap_mutex_;
     std::uint64_t dropped_frame_count_{0};
+    std::string global_frame_id_{"odom"};
 
     Eigen::Matrix3f R_optical_to_robot_{
         (Eigen::Matrix3f() << 0, 0, 1,
