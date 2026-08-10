@@ -1,3 +1,9 @@
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: "GZ_TO_ROS"
+
 - ros_topic_name: "/cmd_vel"
   gz_topic_name: "/plantation_uav/gazebo/command/twist"
   ros_type_name: "geometry_msgs/msg/Twist"
@@ -58,7 +64,7 @@
   gz_type_name: "gz.msgs.LaserScan"
   direction: "GZ_TO_ROS"
 
-- ros_topic_name: "/mavros/odometry/out"
+- ros_topic_name: "/sim/dummy_vslam"
   gz_topic_name: "/plantation_uav/dummy_vslam"
   ros_type_name: "nav_msgs/msg/Odometry"
   gz_type_name: "gz.msgs.Odometry"

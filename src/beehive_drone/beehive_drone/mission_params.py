@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
+"""Default configuration shared by all beehive mission nodes."""
 
 import math
 
+
 class MissionConfig:
-    """
-    Pusat Konfigurasi Parameter UAV Plantation
-    Ubah nilai-nilai di sini untuk melakukan tuning performa drone.
-    """
+    # Internal navigation frame for the real vehicle. The mission, PCL map,
+    # and MAVROS local pose must all be aligned to the same local odometry frame.
+    WORLD_FRAME = "map"
+    PCL_FRAME = "plantation"
 
     # ==========================================
     # 1. Parameter Misi & Eksplorasi (mission_state_machine.py)
@@ -24,33 +26,21 @@ class MissionConfig:
     HOME_POSITION_TOLERANCE = 0.7  # meter
     HOME_YAW_TOLERANCE = math.radians(10.0)
 
-    # ==========================================
-    # 2. Parameter Orbit (dynamic_orbit_controller.py)
-    # ==========================================
-    ORBIT_RADIUS = 3.0           # meter (Diperkecil dari 2.5 agar aman dari rintangan)
-    ORBIT_ALTITUDE = FLIGHT_ALTITUDE 
-    ORBIT_VELOCITY = 1.0         # m/s
-    YAW_OFFSET = math.pi / 4     # radian (45 derajat)
+    # RC/pilot takeover. Any confirmed flight-mode change away from the
+    # autonomous mode permanently disables autonomy for the current process.
+    ENABLE_RC_TAKEOVER = True
+    RC_TAKEOVER_CONFIRM_SEC = 0.30
 
-    # ==========================================
-    # 3. Parameter Penghindaran (vortex_avoidance_controller.py)
-    # ==========================================
-    SAFETY_RADIUS = 1.2          # meter (Diperkecil dari 1.5 agar luwes di celah sempit)
-    REPULSIVE_GAIN = 1.5
-    VORTEX_GAIN = 2.0
-    ATTRACTION_GAIN = 1.0
-    MAX_SHIFT = 2.0              # meter
+    # Map safety gate
+    REQUIRE_TREE_MAP = True
+    MAP_STARTUP_TIMEOUT_SEC = 35.0
+    MAP_LOSS_GRACE_SEC = 3.0
+    MIN_READY_TREES = 1
 
-    # ==========================================
-    # 4. Parameter Kontrol (velocity_controller.py)
-    # ==========================================
-    KP_XY = 0.5                  # Gain Proposional Translasi
-    KP_Z = 0.3                   # Gain Proposional Ketinggian
-    KP_YAW = 0.8                 # Gain Proposional Rotasi
-    MAX_VELOCITY_XY = 1.0        # m/s
-    MAX_VELOCITY_Z = 0.5         # m/s
-    MAX_VELOCITY_YAW = 0.5       # rad/s
-    GOAL_THRESHOLD = 0.5         # meter
+    # Stable hover detection
+    HOVER_ALT_TOLERANCE = 0.25
+    HOVER_SPEED_TOLERANCE = 0.20
+    HOVER_STABLE_SEC = 1.5
 
     # ==========================================
     # 5. Parameter Pemetaan Pohon (tree_mapper.py)

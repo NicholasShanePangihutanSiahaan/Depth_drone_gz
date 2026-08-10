@@ -1,202 +1,348 @@
 #!/usr/bin/env python3
 
 import math
-import rclpy
-from rclpy.node import Node
-from beehive_drone.mission_params import MissionConfig
-from geometry_msgs.msg import PoseStamped, Point
-from std_msgs.msg import Bool, String
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from typing import Optional
 
-def euler_to_quaternion(roll, pitch, yaw):
-    """Fungsi pembantu untuk konversi sudut Euler ke Quaternion ROS"""
-    qx = math.sin(roll/2) * math.cos(pitch/2) * math.cos(yaw/2) - math.cos(roll/2) * math.sin(pitch/2) * math.sin(yaw/2)
-    qy = math.cos(roll/2) * math.sin(pitch/2) * math.cos(yaw/2) + math.sin(roll/2) * math.cos(pitch/2) * math.sin(yaw/2)
-    qz = math.cos(roll/2) * math.cos(pitch/2) * math.sin(yaw/2) - math.sin(roll/2) * math.sin(pitch/2) * math.cos(yaw/2)
-    qw = math.cos(roll/2) * math.cos(pitch/2) * math.cos(yaw/2) + math.sin(roll/2) * math.sin(pitch/2) * math.sin(yaw/2)
-    return qx, qy, qz, qw
+import rclpy
+from geometry_msgs.msg import Point, PoseStamped
+from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import Bool, Float32, Int32, String
+from uav_interfaces.msg import TreeArray
+
+from beehive_drone.math_utils import quaternion_from_yaw, wrap_pi
+from beehive_drone.mission_params import MissionConfig
+
 
 class DynamicOrbitController(Node):
-    def __init__(self):
+    """Produces a moving orbit setpoint and verifies real angular progress."""
+
+    def __init__(self) -> None:
         super().__init__("dynamic_orbit_controller")
+
+        defaults = {
+            "world_frame": MissionConfig.WORLD_FRAME,
+            "orbit_radius": MissionConfig.ORBIT_RADIUS,
+            "orbit_altitude": MissionConfig.ORBIT_ALTITUDE,
+            "orbit_velocity": MissionConfig.ORBIT_VELOCITY,
+            "orbit_direction": MissionConfig.ORBIT_DIRECTION,
+            "lookahead_distance": MissionConfig.ORBIT_LOOKAHEAD_DISTANCE,
+            "radius_tolerance": MissionConfig.ORBIT_RADIUS_TOLERANCE,
+            "completion_margin": MissionConfig.ORBIT_COMPLETION_MARGIN,
+            "orbit_timeout_sec": MissionConfig.ORBIT_TIMEOUT_SEC,
+            "yaw_offset": MissionConfig.YAW_OFFSET,
+            "orbit_obstacle_clearance": MissionConfig.ORBIT_OBSTACLE_CLEARANCE,
+            "active_tree_alias_radius": MissionConfig.TREE_ASSOCIATION_DISTANCE,
+            "enable_orbit_corridor_check": False,
+        }
+        for name, value in defaults.items():
+            self.declare_parameter(name, value)
+
+        self.world_frame = str(self.get_parameter("world_frame").value)
+        self.orbit_radius = max(0.5, float(self.get_parameter("orbit_radius").value))
+        self.orbit_altitude = float(self.get_parameter("orbit_altitude").value)
+        self.orbit_velocity = max(0.1, float(self.get_parameter("orbit_velocity").value))
+        self.direction = 1.0 if float(self.get_parameter("orbit_direction").value) >= 0.0 else -1.0
+        self.lookahead_distance = max(
+            0.2, float(self.get_parameter("lookahead_distance").value)
+        )
+        self.radius_tolerance = max(
+            0.1, float(self.get_parameter("radius_tolerance").value)
+        )
+        self.completion_margin = max(
+            0.0, float(self.get_parameter("completion_margin").value)
+        )
+        self.orbit_timeout_sec = float(self.get_parameter("orbit_timeout_sec").value)
+        self.yaw_offset = float(self.get_parameter("yaw_offset").value)
+        self.obstacle_clearance = max(0.5, float(self.get_parameter("orbit_obstacle_clearance").value))
+        self.active_tree_alias_radius = max(
+            0.5, float(self.get_parameter("active_tree_alias_radius").value)
+        )
+        self.enable_orbit_corridor_check = bool(
+            self.get_parameter("enable_orbit_corridor_check").value
+        )
+
+        self.current_pose: Optional[PoseStamped] = None
+        self.tree = Point()
+        self.target_received_time: Optional[float] = None
+        self.phase = "IDLE"
+        self.phase_start_time = self.now_sec()
+        self.radius_stable_since: Optional[float] = None
+        self.last_angle: Optional[float] = None
+        self.accumulated_angle = 0.0
+        self.accumulated_distance = 0.0
+        self.last_xy = None
+        self.last_orbit_log_time = -1e9
+        self.last_status = ""
+        self.autonomy_enabled = False
+        self.pilot_override = False
+        self.active_tree_id = -1
+        self.trees = []
 
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
-            depth=10
+            depth=10,
+        )
+        self.create_subscription(
+            PoseStamped, "/mavros/local_position/pose", self.pose_callback, qos_sensor
+        )
+        self.create_subscription(Point, "/control/orbit_target", self.target_callback, 10)
+        self.create_subscription(Bool, "/control/orbit_start", self.start_callback, 10)
+        self.create_subscription(Int32, "/control/active_tree_id", self.active_tree_callback, 10)
+        self.create_subscription(TreeArray, "/map/trees", self.tree_map_callback, 10)
+        self.create_subscription(
+            Bool, "/mission/autonomy_enabled", self.autonomy_callback, 10
+        )
+        self.create_subscription(
+            Bool, "/mission/pilot_override", self.pilot_override_callback, 10
         )
 
-        # ==========================================
-        # Parameter Orbit Dinamis
-        # ==========================================
-        self.orbit_radius = MissionConfig.ORBIT_RADIUS       # Jarak ideal dari pohon (meter)
-        self.orbit_altitude = MissionConfig.ORBIT_ALTITUDE     # Ketinggian orbit standar (meter)
-        self.orbit_velocity = MissionConfig.ORBIT_VELOCITY     # Kecepatan rotasi angular ekuivalen linear (m/s)
-        self.yaw_offset = MissionConfig.YAW_OFFSET # Offset 45 derajat (0.785 radian)
-
-        # ==========================================
-        # Variabel State
-        # ==========================================
-        self.is_orbiting = False
-        self.tree_x = 0.0
-        self.tree_y = 0.0
-        self.tree_z = 0.0
-        
-        self.current_pose = None
-        self.last_angle = None
-        self.accumulated_angle = 0.0
-
-        # ==========================================
-        # Subscriber
-        # ==========================================
-        self.pose_sub = self.create_subscription(
-            PoseStamped, 
-            "/mavros/local_position/pose", 
-            self.pose_callback, 
-            qos_sensor
-        )
-        self.target_sub = self.create_subscription(
-            Point, 
-            "/control/orbit_target", 
-            self.target_callback, 
-            10
-        )
-        self.start_sub = self.create_subscription(
-            Bool, 
-            "/control/orbit_start", 
-            self.start_callback, 
-            10
-        )
-
-        # ==========================================
-        # Publisher
-        # ==========================================
-        # Mengirim setpoint ke lapisan Vortex Avoidance (bukan langsung ke MAVROS)
         self.setpoint_pub = self.create_publisher(
-            PoseStamped, 
-            "/control/dynamic_target", 
-            10
+            PoseStamped, "/control/dynamic_target", 10
         )
-        self.status_pub = self.create_publisher(
-            String, 
-            "/control/orbit_status", 
-            10
+        self.status_pub = self.create_publisher(String, "/control/orbit_status", 10)
+        self.progress_pub = self.create_publisher(
+            Float32, "/control/orbit_progress", 10
         )
 
-        # Loop kontrol berjalan pada 20Hz (0.05 detik)
-        self.dt = 0.05
-        self.timer = self.create_timer(self.dt, self.control_loop)
+        self.create_timer(0.05, self.control_loop)
+        self.publish_status("IDLE", force=True)
+        self.get_logger().info("Dynamic Orbit Controller revisi aktif.")
 
-        self.get_logger().info("Dynamic Orbit Controller (45-Deg Yaw Offset) Aktif.")
+    def now_sec(self) -> float:
+        return self.get_clock().now().nanoseconds * 1e-9
 
-    def pose_callback(self, msg):
+    def pose_callback(self, msg: PoseStamped) -> None:
         self.current_pose = msg
 
-    def target_callback(self, msg):
-        self.tree_x = msg.x
-        self.tree_y = msg.y
-        self.tree_z = msg.z
-
-    def start_callback(self, msg):
-        if msg.data and not self.is_orbiting:
-            self.is_orbiting = True
-            self.accumulated_angle = 0.0
+    def pilot_override_callback(self, msg: Bool) -> None:
+        self.pilot_override = bool(msg.data)
+        if self.pilot_override:
+            self.phase = "IDLE"
+            self.radius_stable_since = None
             self.last_angle = None
-            self.get_logger().info(f"Memulai orbit pada pohon di ({self.tree_x:.2f}, {self.tree_y:.2f})")
-        elif not msg.data:
-            self.is_orbiting = False
-            self.get_logger().info("Orbit dibatalkan oleh State Machine.")
+            self.accumulated_angle = 0.0
+            self.accumulated_distance = 0.0
+            self.last_xy = None
+            self.publish_status(
+                "PILOT_OVERRIDE" if self.pilot_override else "IDLE", force=True
+            )
+            self.publish_progress(0.0)
 
-    def publish_status(self, text):
+    def autonomy_callback(self, msg: Bool) -> None:
+        enabled = bool(msg.data)
+        if self.autonomy_enabled and not enabled:
+            self.phase = "IDLE"
+            self.radius_stable_since = None
+            self.last_angle = None
+            self.accumulated_angle = 0.0
+            self.publish_status(
+                "PILOT_OVERRIDE" if self.pilot_override else "IDLE", force=True
+            )
+            self.publish_progress(0.0)
+            reason = "pilot takeover" if self.pilot_override else "mission control gate"
+            self.get_logger().warning(
+                f"Autonomy disabled ({reason}): orbit target publication stopped."
+            )
+        self.autonomy_enabled = enabled
+
+    def target_callback(self, msg: Point) -> None:
+        if not self.autonomy_enabled:
+            return
+        if not all(math.isfinite(float(v)) for v in (msg.x, msg.y, msg.z)):
+            self.get_logger().warning("Target orbit invalid diabaikan.")
+            return
+        self.tree = msg
+        self.target_received_time = self.now_sec()
+
+    def active_tree_callback(self, msg: Int32) -> None:
+        self.active_tree_id = int(msg.data)
+
+    def tree_map_callback(self, msg: TreeArray) -> None:
+        self.trees = list(msg.trees)
+
+    def orbit_corridor_clear(self) -> bool:
+        for obstacle in self.trees:
+            if int(obstacle.id) == self.active_tree_id or not bool(obstacle.validated):
+                continue
+            center_distance = math.hypot(float(obstacle.x) - self.tree.x, float(obstacle.y) - self.tree.y)
+            # Residual PCL aliases near the locked target center represent the
+            # same trunk and must not veto its own orbit.
+            if center_distance <= self.active_tree_alias_radius:
+                continue
+            if abs(center_distance - self.orbit_radius) < self.obstacle_clearance:
+                return False
+        return True
+
+    def start_callback(self, msg: Bool) -> None:
+        if msg.data and not self.autonomy_enabled:
+            self.get_logger().warning("Perintah orbit diabaikan: autonomy disabled.")
+            return
+        if not msg.data:
+            if self.phase != "IDLE":
+                self.get_logger().info("Orbit dihentikan oleh mission state machine.")
+            self.reset("IDLE")
+            return
+
+        if self.current_pose is None:
+            self.publish_status("ORBIT_FAILED")
+            return
+        if self.target_received_time is None or self.now_sec() - self.target_received_time > 2.0:
+            self.get_logger().error("Orbit ditolak: target belum tersedia atau stale.")
+            self.publish_status("ORBIT_FAILED")
+            return
+        if self.phase == "IDLE":
+            if self.enable_orbit_corridor_check and not self.orbit_corridor_clear():
+                self.get_logger().error("Orbit ditolak: koridor lingkaran memotong pohon/rintangan peta.")
+                self.publish_status("ORBIT_FAILED")
+                return
+            self.phase = "ALIGNING"
+            self.phase_start_time = self.now_sec()
+            self.radius_stable_since = None
+            self.last_angle = None
+            self.accumulated_angle = 0.0
+            self.publish_status("ALIGNING")
+            self.get_logger().info(
+                f"Orbit dimulai pada ({self.tree.x:.2f}, {self.tree.y:.2f}), radius={self.orbit_radius:.2f}."
+            )
+
+    def reset(self, status: str) -> None:
+        self.phase = "IDLE"
+        self.phase_start_time = self.now_sec()
+        self.radius_stable_since = None
+        self.last_angle = None
+        self.accumulated_angle = 0.0
+        self.accumulated_distance = 0.0
+        self.last_xy = None
+        self.publish_status(status, force=True)
+        self.publish_progress(0.0)
+
+    def publish_status(self, status: str, force: bool = False) -> None:
+        if not force and status == self.last_status:
+            return
         msg = String()
-        msg.data = text
+        msg.data = status
         self.status_pub.publish(msg)
+        self.last_status = status
 
-    def control_loop(self):
-        if not self.is_orbiting or self.current_pose is None:
+    def publish_progress(self, value: float) -> None:
+        msg = Float32()
+        msg.data = float(max(0.0, min(1.0, value)))
+        self.progress_pub.publish(msg)
+
+    def publish_target(self, angle: float, radius: float) -> None:
+        target_x = self.tree.x + radius * math.cos(angle)
+        target_y = self.tree.y + radius * math.sin(angle)
+        yaw_to_tree = math.atan2(self.tree.y - target_y, self.tree.x - target_x)
+        target_yaw = yaw_to_tree + self.direction * self.yaw_offset
+
+        setpoint = PoseStamped()
+        setpoint.header.frame_id = self.world_frame
+        setpoint.header.stamp = self.get_clock().now().to_msg()
+        setpoint.pose.position.x = float(target_x)
+        setpoint.pose.position.y = float(target_y)
+        setpoint.pose.position.z = float(self.orbit_altitude)
+        setpoint.pose.orientation = quaternion_from_yaw(target_yaw)
+        self.setpoint_pub.publish(setpoint)
+
+    def control_loop(self) -> None:
+        if not self.autonomy_enabled:
+            return
+        if self.phase == "IDLE" or self.current_pose is None:
             return
 
-        # 1. Kalkulasi posisi drone terhadap pusat pohon
-        dx = self.current_pose.pose.position.x - self.tree_x
-        dy = self.current_pose.pose.position.y - self.tree_y
-        
-        current_angle = math.atan2(dy, dx)
-        current_r = math.sqrt(dx*dx + dy*dy)
-
-        # 2. Akumulasi total sudut rotasi (mencapai 360 derajat / 2 PI)
-        if self.last_angle is not None:
-            delta = current_angle - self.last_angle
-            # Normalisasi perbedaan sudut agar tetap dalam rentang -PI hingga PI
-            if delta > math.pi: 
-                delta -= 2 * math.pi
-            elif delta < -math.pi: 
-                delta += 2 * math.pi
-            
-            # Hanya catat progres putaran jika drone sudah berada di radius yang mendekati target
-            if abs(current_r - self.orbit_radius) < 1.0:
-                self.accumulated_angle += abs(delta)
-
-        self.last_angle = current_angle
-
-        # 3. Pengecekan status selesai
-        if self.accumulated_angle >= 2 * math.pi:
-            self.is_orbiting = False
-            self.publish_status("ORBIT_COMPLETED")
-            self.get_logger().info("Orbit 360 derajat selesai.")
+        now = self.now_sec()
+        if now - self.phase_start_time > self.orbit_timeout_sec:
+            self.get_logger().error("Orbit timeout.")
+            self.reset("ORBIT_TIMEOUT")
             return
+
+        px = float(self.current_pose.pose.position.x)
+        py = float(self.current_pose.pose.position.y)
+        dx = px - self.tree.x
+        dy = py - self.tree.y
+        current_radius = math.hypot(dx, dy)
+        if current_radius < 0.05:
+            current_angle = 0.0
         else:
-            self.publish_status("IN_PROGRESS")
+            current_angle = math.atan2(dy, dx)
 
-        # 4. Kalkulasi Setpoint Target Posisi (Translasi)
-        # Gunakan konsep "Carrot on a Stick" (Umpan Jauh).
-        # Target harus dilempar cukup jauh ke depan agar tidak terkena auto-rem (threshold 0.5m) dari velocity_controller.
-        lookahead_distance = 1.5 # meter di depan lintasan
-        lookahead_angle = lookahead_distance / self.orbit_radius
-        
-        target_angle = current_angle + lookahead_angle # Bergerak CCW (Berlawanan arah jarum jam)
+        if self.phase == "ALIGNING":
+            self.publish_target(current_angle, self.orbit_radius)
+            radius_ok = abs(current_radius - self.orbit_radius) <= self.radius_tolerance
+            if radius_ok:
+                if self.radius_stable_since is None:
+                    self.radius_stable_since = now
+                elif now - self.radius_stable_since >= 0.6:
+                    self.phase = "ORBITING"
+                    self.phase_start_time = now
+                    self.last_angle = current_angle
+                    self.accumulated_angle = 0.0
+                    self.accumulated_distance = 0.0
+                    self.last_xy = (px, py)
+                    self.publish_status("IN_PROGRESS")
+            else:
+                self.radius_stable_since = None
+            return
 
-        # Koreksi Spiral: Jika drone terlempar menjauh, tarik kembali perlahan (P-Controller kecil)
-        target_r = current_r + (self.orbit_radius - current_r) * 0.15
-        target_r = max(1.5, target_r) # Batas minimum aman agar tidak menabrak inti pohon
+        if self.last_angle is not None:
+            delta = wrap_pi(current_angle - self.last_angle)
+            directed_delta = self.direction * delta
+            # Ignore reverse motion and single-frame jumps.
+            if 0.0 < directed_delta < 0.35 and abs(current_radius - self.orbit_radius) <= self.radius_tolerance:
+                self.accumulated_angle += directed_delta
+        self.last_angle = current_angle
+        if self.last_xy is not None and abs(current_radius - self.orbit_radius) <= self.radius_tolerance:
+            step = math.hypot(px - self.last_xy[0], py - self.last_xy[1])
+            if step < 0.25:
+                self.accumulated_distance += step
+        self.last_xy = (px, py)
 
-        target_x = self.tree_x + target_r * math.cos(target_angle)
-        target_y = self.tree_y + target_r * math.sin(target_angle)
+        required_angle = max(0.1, 2.0 * math.pi - self.completion_margin)
+        progress = self.accumulated_angle / required_angle
+        self.publish_progress(progress)
 
-        # 5. Kalkulasi Orientasi Kamera 45 Derajat (Yaw Offset)
-        # Sudut murni jika kamera melihat tepat ke titik pusat pohon:
-        yaw_to_tree = math.atan2(self.tree_y - target_y, self.tree_x - target_x)
-        
-        # Karena kita bergerak CCW, untuk melihat sedikit ke depan lintasan sambil mengawasi pohon,
-        # kita menggeser kamera sebesar -45 derajat dari titik pusat.
-        target_yaw = yaw_to_tree - self.yaw_offset
+        minimum_path = 0.85 * 2.0 * math.pi * self.orbit_radius
+        if now - self.last_orbit_log_time >= 5.0:
+            self.last_orbit_log_time = now
+            self.get_logger().info(
+                f"Orbit aktual: radius={current_radius:.2f} m, "
+                f"sudut={math.degrees(self.accumulated_angle):.1f} deg, "
+                f"lintasan={self.accumulated_distance:.1f} m."
+            )
 
-        qx, qy, qz, qw = euler_to_quaternion(0, 0, target_yaw)
+        if self.accumulated_angle >= required_angle and self.accumulated_distance >= minimum_path:
+            self.get_logger().info(
+                f"Orbit 360 derajat terverifikasi: lintasan XY={self.accumulated_distance:.1f} m."
+            )
+            self.reset("ORBIT_COMPLETED")
+            return
 
-        # 6. Publikasikan target dinamis
-        sp = PoseStamped()
-        sp.header.frame_id = "odom"
-        sp.header.stamp = self.get_clock().now().to_msg()
-        
-        sp.pose.position.x = target_x
-        sp.pose.position.y = target_y
-        sp.pose.position.z = self.orbit_altitude
-        
-        sp.pose.orientation.x = qx
-        sp.pose.orientation.y = qy
-        sp.pose.orientation.z = qz
-        sp.pose.orientation.w = qw
+        angular_speed = self.orbit_velocity / self.orbit_radius
+        lookahead_angle = max(
+            self.lookahead_distance / self.orbit_radius,
+            angular_speed * 0.8,
+        )
+        target_angle = current_angle + self.direction * lookahead_angle
+        self.publish_target(target_angle, self.orbit_radius)
+        self.publish_status("IN_PROGRESS")
 
-        self.setpoint_pub.publish(sp)
 
-def main(args=None):
+def main(args=None) -> None:
     rclpy.init(args=args)
     node = DynamicOrbitController()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    node.destroy_node()
-    rclpy.shutdown()
+    finally:
+        if rclpy.ok():
+            node.reset("IDLE")
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()

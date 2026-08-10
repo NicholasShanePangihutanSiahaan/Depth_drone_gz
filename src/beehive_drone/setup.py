@@ -1,26 +1,26 @@
-import os
 from glob import glob
-from setuptools import setup
+import os
 
-package_name = 'beehive_drone'
+from setuptools import find_packages, setup
+
+package_name = "beehive_drone"
 
 setup(
     name=package_name,
-    version='0.0.0',
-    packages=[package_name],
+    version="2.1.0",
+    packages=find_packages(exclude=["test"]),
     data_files=[
-        ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
-        ('share/' + package_name, ['package.xml']),
-        # DAFTARKAN FOLDER LAUNCH DI SINI:
-        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
+        ("share/" + package_name, ["package.xml"]),
+        (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
+        (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
     ],
-    install_requires=['setuptools'],
+    install_requires=["setuptools"],
     zip_safe=True,
-    maintainer='shane',
-    maintainer_email='shane@todo.todo',
-    description='Autonomous Plantation Drone Navigation System',
-    license='TODO: License declaration',
-    tests_require=['pytest'],
+    maintainer="beehive_drone_team",
+    maintainer_email="maintainer@example.com",
+    description="Gazebo/SITL validation package for the revised one-tree mission.",
+    license="Apache-2.0",
     entry_points={
         'console_scripts': [
             # DAFTARKAN SEMUA NODE DI SINI (nama_eksekusi = nama_folder.nama_file:main)
