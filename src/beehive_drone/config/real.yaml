@@ -33,6 +33,8 @@ mission_state_machine:
     flight_altitude: 1.5
     approach_distance: 2.0
     tree_distance_tolerance: 0.5
+    approach_goal_tolerance: 0.15
+    verification_retry_limit: 3
     require_safety_monitor: true
     auto_start: false
     state_timeout: 120.0
@@ -61,6 +63,8 @@ position_setpoint_controller:
 velocity_controller:
   ros__parameters:
     minimum_control_altitude: 0.20
+    # Sisakan margin terhadap approach_goal_tolerance (0.15 m).
+    goal_threshold: 0.10
     goal_threshold: 0.10
 
 mission_safety_monitor:

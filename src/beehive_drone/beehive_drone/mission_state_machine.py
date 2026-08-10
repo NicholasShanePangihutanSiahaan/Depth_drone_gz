@@ -48,21 +48,25 @@ class MissionStateMachine(Node):
         self.declare_parameter('flight_altitude', self.flight_altitude)
         self.declare_parameter('approach_distance', self.approach_safe_dist)
         self.declare_parameter('tree_distance_tolerance', 0.5)
+        self.declare_parameter('approach_goal_tolerance', 0.15)
+        self.declare_parameter('verification_retry_limit', 3)
         self.declare_parameter('require_safety_monitor', True)
         self.declare_parameter('auto_start', True)
         self.declare_parameter('state_timeout', 120.0)
         self.declare_parameter('pose_timeout', 1.0)
-        self.declare_parameter('abort_mode', 'BRAKE')
         self.flight_altitude = float(self.get_parameter('flight_altitude').value)
-        self.approach_safe_dist = float(self.get_parameter('approach_distance').value)
+        self.approach_safe_dist = float(
+            self.get_parameter('approach_distance').value)
         self.tree_distance_tolerance = float(
             self.get_parameter('tree_distance_tolerance').value)
+        self.approach_goal_tolerance = float(
+            self.get_parameter('approach_goal_tolerance').value)
+        self.verification_retry_limit = int(
+            self.get_parameter('verification_retry_limit').value)
         self.require_safety = bool(self.get_parameter('require_safety_monitor').value)
         self.auto_start = bool(self.get_parameter('auto_start').value)
         self.state_timeout = float(self.get_parameter('state_timeout').value)
         self.pose_timeout = float(self.get_parameter('pose_timeout').value)
-        self.abort_mode = str(self.get_parameter('abort_mode').value)
-        self.abort_command_sent = False
 
         # ==========================================
         # Variabel State & Navigasi
@@ -74,6 +78,7 @@ class MissionStateMachine(Node):
         self.safety_reason = 'watchdog_not_ready'
         self.last_pose_time = None
         self.retry_counter = 0
+        self.verification_retries = 0
         self.hover_timer = 0
         self.orbit_status = "IDLE"
         self.current_pose = None
@@ -164,8 +169,6 @@ class MissionStateMachine(Node):
     def transition(self, state):
         self.state = state
         self.state_since = self.get_clock().now()
-        if state == 'ABORT':
-            self.abort_command_sent = False
 
     def publish_setpoint_enabled(self, enabled):
         msg = Bool(); msg.data = enabled
@@ -219,19 +222,13 @@ class MissionStateMachine(Node):
     # ==========================================
     def fsm_loop(self):
         if self.current_pose is None:
-            msg = String(); msg.data = 'WAIT_LOCAL_POSE'
-            self.fsm_status_pub.publish(msg)
-            self.publish_setpoint_enabled(False)
             return
 
         active = self.state not in ('WAIT_START', 'DONE', 'ABORT', 'MANUAL_OVERRIDE')
-        # Jangan kirim position-hold saat CommandTOL takeoff sedang bekerja.
-        # Setpoint posisi tanah dapat membatalkan/melawan climb dari autopilot.
-        navigation_states = {
+        navigation_states = (
             'EXPLORE_ROW', 'APPROACH_TREE', 'VERIFY_TREE', 'START_ORBIT',
             'WAIT_ORBIT', 'POST_ORBIT_HOVER', 'ALIGN_HOME', 'END_OF_ROW',
-            'CRAB_SCAN', 'RETURN_TO_HOME', 'HOME_HOVER', 'FINAL_SPIN'
-        }
+            'CRAB_SCAN', 'RETURN_TO_HOME', 'HOME_HOVER', 'FINAL_SPIN')
         self.publish_setpoint_enabled(self.state in navigation_states)
         pose_age = float('inf') if self.last_pose_time is None else \
             (self.get_clock().now() - self.last_pose_time).nanoseconds * 1e-9
@@ -241,10 +238,7 @@ class MissionStateMachine(Node):
         if active and self.require_safety and not self.safety_ok:
             self.transition('ABORT')
             self.get_logger().error(f'ABORT watchdog: {self.safety_reason}')
-        # Mode LAND adalah transisi yang memang diperintahkan oleh FSM. Jangan
-        # salah mengklasifikasikannya sebagai takeover pilot ketika landing.
-        if (active and self.state != 'LANDING' and self.is_armed
-                and self.current_mode not in ('GUIDED', '')):
+        if active and self.is_armed and self.current_mode not in ('GUIDED', ''):
             self.transition('MANUAL_OVERRIDE')
             self.get_logger().warning(f'Manual takeover terdeteksi: mode={self.current_mode}')
         elapsed = (self.get_clock().now() - self.state_since).nanoseconds * 1e-9
@@ -316,6 +310,7 @@ class MissionStateMachine(Node):
             self.target_tree = self.find_uninspected_tree()
             
             if self.target_tree is not None:
+                self.verification_retries = 0
                 self.transition("APPROACH_TREE")
                 self.get_logger().info(f"Pohon ditemukan di ({self.target_tree.x:.1f}, {self.target_tree.y:.1f})")
             else:
@@ -339,10 +334,9 @@ class MissionStateMachine(Node):
             # 2. Hitung jarak drone ke TITIK PENGEREMAN (bukan ke pohon)
             dist_to_stop = self.distance(cx, cy, stop_x, stop_y)
             
-            # 3. Logika Bebas Deadlock
-            # Karena velocity_controller akan mengerem di jarak 0.5m dari titik target,
-            # FSM cukup menunggu sampai drone berada di jarak 0.6m dari titik pengereman.
-            if dist_to_stop > 0.6:
+            # Arrival tolerance harus lebih kecil daripada toleransi verifikasi.
+            # Nilai lama 0.6 m membuat drone mulai verifikasi terlalu jauh.
+            if dist_to_stop > self.approach_goal_tolerance:
                 self.publish_goal(stop_x, stop_y, target_yaw)
             else:
                 self.transition("VERIFY_TREE")
@@ -372,9 +366,6 @@ class MissionStateMachine(Node):
                     # Cek 2: HITUNG JARAK RIILL AKTUAL DARI DRONE KE POHON TERSEBUT
                     actual_dist_to_tree = self.distance(cx, cy, target_matched_tree.x, target_matched_tree.y)
                     
-                    # Gunakan jarak approach yang dikonfigurasi, bukan rentang
-                    # hardcode 1.5..2.5 m. Dengan demikian perubahan radius
-                    # orbit tidak membuat pohon valid ikut terhapus.
                     min_verify = max(
                         0.1, self.approach_safe_dist - self.tree_distance_tolerance)
                     max_verify = (
@@ -384,16 +375,26 @@ class MissionStateMachine(Node):
                         self.transition("START_ORBIT")
                         self.get_logger().info(f"Verifikasi sukses! Pohon ID:{target_matched_tree.id} valid di jarak {actual_dist_to_tree:.2f}m. Memulai orbit.")
                     else:
-                        self.get_logger().warn(f"Pohon ID:{target_matched_tree.id} gagal verifikasi. Jarak aktual nyasar di {actual_dist_to_tree:.2f}m. Dihapus!")
-                        
-                        # Hapus pohon hantu dari database
-                        update_msg = Tree()
-                        update_msg.id = self.target_matched_tree.id if 'target_matched_tree' in locals() and target_matched_tree else self.target_tree.id
-                        update_msg.confidence = -1.0 
-                        self.tree_update_pub.publish(update_msg)
-                        
-                        self.target_tree = None
-                        self.transition("EXPLORE_ROW")
+                        self.verification_retries += 1
+                        if self.verification_retries <= self.verification_retry_limit:
+                            self.target_tree = target_matched_tree
+                            self.hover_timer = 0
+                            self.transition("APPROACH_TREE")
+                            self.get_logger().warning(
+                                f"Pohon ID:{target_matched_tree.id} di {actual_dist_to_tree:.2f}m, "
+                                f"di luar rentang {min_verify:.2f}..{max_verify:.2f}m; "
+                                f"koreksi approach {self.verification_retries}/"
+                                f"{self.verification_retry_limit}.")
+                        else:
+                            self.get_logger().warning(
+                                f"Pohon ID:{target_matched_tree.id} gagal verifikasi "
+                                f"{self.verification_retries} kali; dihapus.")
+                            update_msg = Tree()
+                            update_msg.id = target_matched_tree.id
+                            update_msg.confidence = -1.0
+                            self.tree_update_pub.publish(update_msg)
+                            self.target_tree = None
+                            self.transition("EXPLORE_ROW")
                         
                 else:
                     self.get_logger().warn("Pohon Hantu hilang dari peta saat hovering! Membatalkan orbit.")
@@ -575,14 +576,11 @@ class MissionStateMachine(Node):
 
         elif self.state == 'ABORT':
             self.publish_setpoint_enabled(False)
-            if not self.abort_command_sent:
-                stop = Bool(); stop.data = False
-                self.orbit_start_pub.publish(stop)
-                # Simulasi boleh kosong agar kegagalan riset tidak memaksa BRAKE.
-                if self.abort_mode:
-                    mode = String(); mode.data = self.abort_mode
-                    self.cmd_mode_pub.publish(mode)
-                self.abort_command_sent = True
+            stop = Bool(); stop.data = False
+            self.orbit_start_pub.publish(stop)
+            # BRAKE meminta flight controller menghentikan kendaraan saat estimasi masih tersedia.
+            mode = String(); mode.data = 'BRAKE'
+            self.cmd_mode_pub.publish(mode)
 
         elif self.state == 'MANUAL_OVERRIDE':
             # Tidak mengirim setpoint/mode apa pun; pilot RC memegang kendali penuh.

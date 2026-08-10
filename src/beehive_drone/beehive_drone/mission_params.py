@@ -23,6 +23,8 @@ class MissionConfig:
     HOME_HOVER_TIME = 3.0        # detik hover di atas titik takeoff sebelum land
     HOME_POSITION_TOLERANCE = 0.7  # meter
     HOME_YAW_TOLERANCE = math.radians(10.0)
+    MINIMUM_DISTANCE_TO_DELETE = 0.5  # meter; jarak minimum untuk menghapus pohon dari database
+    MAXIMUM_DISTANCE_TO_DELETE = 2.5  # meter; jarak maksimum untuk menghapus pohon dari database
 
     # ==========================================
     # 2. Parameter Orbit (dynamic_orbit_controller.py)
