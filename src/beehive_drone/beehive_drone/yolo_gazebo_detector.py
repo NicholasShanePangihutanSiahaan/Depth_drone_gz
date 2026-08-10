@@ -160,8 +160,15 @@ class YoloGazeboDetector(Node):
                 self.get_logger().error(f"YOLO/depth callback gagal: {exc}")
             return
 
-        objects_msg = ObjectsStamped()
-        objects_msg.header = rgb_msg.header
+        # ==========================================
+        # JALANKAN INFERENSI DENGAN CONFIDENCE RENDAH
+        # ==========================================
+        results = self.model.predict(
+                    source=cv_image,
+                    device="cpu",
+                    conf=0.10,  # <-- Turunkan batas ke 5% untuk memaksa deteksi
+                    verbose=False
+                )
 
         if results and results[0].boxes is not None:
             for box in results[0].boxes:

@@ -15,21 +15,23 @@ def generate_launch_description():
     package_share = get_package_share_directory("beehive_drone")
     config_file = os.path.join(package_share, "config", "mission.yaml")
 
-    use_pcl = LaunchConfiguration("use_pcl")
-    use_yolo_fallback = LaunchConfiguration("use_yolo_fallback")
-    use_analyzer = LaunchConfiguration("use_analyzer")
-    hold_after_takeoff = LaunchConfiguration("hold_after_takeoff")
-    mission_mode = LaunchConfiguration("mission_mode")
-    use_depth_pointcloud = LaunchConfiguration("use_depth_pointcloud")
-    point_cloud_topic = LaunchConfiguration("point_cloud_topic")
-    rgb_topic = LaunchConfiguration("rgb_topic")
-    depth_topic = LaunchConfiguration("depth_topic")
-    camera_info_topic = LaunchConfiguration("camera_info_topic")
-    depth_camera_info_topic = LaunchConfiguration("depth_camera_info_topic")
-    odom_topic = LaunchConfiguration("odom_topic")
-    mission_output_dir = LaunchConfiguration("mission_output_dir")
-    yolo_model_path = LaunchConfiguration("yolo_model_path")
-    yolo_device = LaunchConfiguration("yolo_device")
+    # 1. Perception & Mapping Nodes
+    pcl_detector_node = Node(
+        package='point-cloud-test',
+        executable='pcl_proc_node',
+        name='pcl_proc_node',
+        output='screen',
+        remappings=[
+            ('/input_cloud', '/zed2i/depth/points'),
+            ('/odom', '/mavros/odometry/out'),
+            ('/output_cloud', '/perception/pcl/non_ground'),
+            ('/clusters', '/perception/pcl/clusters'),
+            ('/cylinders', '/perception/pcl/cylinders'),
+            ('/global/cylinders', '/global_cylinders'),
+        ],
+        # PointCloudPacked dari Gazebo sudah menggunakan X-forward/Z-up.
+        parameters=[{'use_transform_pcl': False}]
+    )
 
     return LaunchDescription(
         [
@@ -209,3 +211,52 @@ def generate_launch_description():
             ),
         ]
     )
+
+    vortex_node = Node(
+        package=pkg_name,
+        executable='vortex_avoidance_controller',
+        name='vortex_avoidance_controller',
+        output='screen'
+    )
+
+    orbit_node = Node(
+        package=pkg_name,
+        executable='dynamic_orbit_controller',
+        name='dynamic_orbit_controller',
+        output='screen'
+    )
+
+    # 3. Hardware Abstraction Layer (HAL) & Analyzer
+    # INI YANG SEBELUMNYA HILANG
+    flight_manager_node = Node(
+        package=pkg_name,
+        executable='flight_manager',
+        name='flight_manager',
+        output='screen'
+    )
+    
+    analyzer_node = Node(
+        package=pkg_name,
+        executable='mission_analyzer',
+        name='mission_analyzer',
+        output='screen'
+    )
+
+    # 4. The Brain (FSM)
+    fsm_node = Node(
+        package=pkg_name,
+        executable='mission_state_machine',
+        name='mission_state_machine',
+        output='screen'
+    )
+
+    return LaunchDescription([
+        pcl_detector_node,
+        mapper_node,
+        velocity_node,
+        vortex_node,
+        orbit_node,
+        flight_manager_node,
+        analyzer_node,
+        fsm_node
+    ])

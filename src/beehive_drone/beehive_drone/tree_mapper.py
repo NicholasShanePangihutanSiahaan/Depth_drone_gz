@@ -21,6 +21,11 @@ from tf2_ros import Buffer, TransformException, TransformListener
 from uav_interfaces.msg import Tree, TreeArray
 from visualization_msgs.msg import Marker, MarkerArray
 
+from geometry_msgs.msg import Point
+from pcl_cstm_msg.msg import TrackedCylinderArray
+
+from uav_interfaces.msg import Tree
+from uav_interfaces.msg import TreeArray
 from beehive_drone.mission_params import MissionConfig
 
 
@@ -95,12 +100,26 @@ class PclTreeMapper(Node):
             self.get_parameter("allow_identity_frame_relabel").value
         )
 
-        self.tree_database: Dict[int, TreeRecord] = {}
-        self.rejected_until: Dict[int, float] = {}
-        self.next_fallback_id = 100_000
-        self.last_pcl_msg_time: Optional[float] = None
-        self.last_transform_warning = -1e9
-        self.last_ready_state: Optional[bool] = None
+        # Hasil segmentasi PCL sudah berada pada frame odometri/global, sehingga
+        # tidak memerlukan proyeksi pixel dan depth seperti jalur YOLO.
+        self.pcl_sub = self.create_subscription(
+            TrackedCylinderArray,
+            "/global_cylinders",
+            self.pcl_cylinders_callback,
+            QoSProfile(
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                history=HistoryPolicy.KEEP_LAST,
+                depth=1
+            )
+        )
+
+        # hasil inspeksi
+        self.create_subscription(
+            Tree,
+            "/map/tree_update",
+            self.tree_update_callback,
+            10
+        )
 
         self.tf_buffer = Buffer(cache_time=Duration(seconds=20.0))
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -120,13 +139,59 @@ class PclTreeMapper(Node):
         self.create_subscription(
             TrackedCylinderArray, self.pcl_topic, self.pcl_callback, qos_sensor
         )
-        self.create_subscription(Tree, "/map/tree_update", self.tree_update_callback, 10)
-        if self.enable_fallback_points:
-            self.create_subscription(
-                PointStamped,
-                "/perception/tree_position_world",
-                self.fallback_point_callback,
-                qos_sensor,
+
+        self.marker_pub = self.create_publisher(
+            MarkerArray,
+            "/tree_markers",
+            10
+        )
+
+        ##################################################
+        # Timer
+        ##################################################
+        self.timer = self.create_timer(
+            5.0,
+            self.update_confidence
+        )
+
+        self.get_logger().info("Tree Mapper Started")
+
+    def pcl_cylinders_callback(self, msg):
+        """Masukkan cylinder PCL yang sedang terlihat ke database pohon."""
+        for tracked in msg.cylinders:
+            cylinder = tracked.cylinder
+            if not cylinder.is_valid or tracked.missed_count != 0:
+                continue
+
+            point = Point()
+            point.x = cylinder.pose.position.x
+            point.y = cylinder.pose.position.y
+            point.z = cylinder.pose.position.z
+            self.tree_callback(point)
+
+
+    ##################################################
+    # Receive tree detection
+    ##################################################
+    def tree_callback(self,msg):
+        x = msg.x
+        y = msg.y
+        z = msg.z
+
+        if not math.isfinite(x) or not math.isfinite(y) or not math.isfinite(z):
+            self.get_logger().warning("Invalid tree position ignored")
+            return
+
+        nearest_id = None
+        nearest_distance = float("inf")
+
+        ##################################################
+        # Search nearest tree
+        ##################################################
+        for tree_id,tree in self.tree_database.items():
+            distance = math.sqrt(
+                (x-tree["x"])**2 +
+                (y-tree["y"])**2
             )
 
         self.tree_pub = self.create_publisher(TreeArray, "/map/trees", qos_map)
