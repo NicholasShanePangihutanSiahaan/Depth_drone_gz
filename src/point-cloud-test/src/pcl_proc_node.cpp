@@ -119,6 +119,31 @@ namespace point_cloud_test
       {
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::fromROSMsg(*pair.cloud, *cloud);
+
+        // Gazebo represents pixels without a depth return as +/-Inf. These
+        // values must be removed before VoxelGrid; otherwise its bounds become
+        // infinite and the complete frame collapses into an invalid voxel.
+        pcl::PointCloud<pcl::PointXYZ>::Ptr valid_cloud(
+            new pcl::PointCloud<pcl::PointXYZ>);
+        valid_cloud->reserve(cloud->size());
+        for (const auto &point : cloud->points)
+        {
+          if (std::isfinite(point.x) && std::isfinite(point.y) &&
+              std::isfinite(point.z) &&
+              point.getVector3fMap().norm() <= 20.0f)
+          {
+            valid_cloud->push_back(point);
+          }
+        }
+        valid_cloud->width = valid_cloud->size();
+        valid_cloud->height = 1;
+        valid_cloud->is_dense = true;
+        cloud = valid_cloud;
+
+        if (cloud->empty())
+        {
+          continue;
+        }
         pcl::RandomSample<pcl::PointXYZ> random_sampler;
 
         if (total_point_clouds > 1200000)
@@ -134,16 +159,40 @@ namespace point_cloud_test
         }
 
         pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointXYZ raw_min;
+        pcl::PointXYZ raw_max;
+        pcl::getMinMax3D(*cloud, raw_min, raw_max);
+        RCLCPP_DEBUG(
+            get_logger(),
+            "Raw bounds x=[%.2f, %.2f] y=[%.2f, %.2f] z=[%.2f, %.2f]",
+            raw_min.x, raw_max.x, raw_min.y, raw_max.y, raw_min.z, raw_max.z);
         pcl::VoxelGrid<pcl::PointXYZ> voxel;
         voxel.setInputCloud(cloud);
         voxel.setLeafSize(0.3f, 0.3f, 0.3f);
         voxel.filter(*filtered);
 
+        RCLCPP_DEBUG(
+            get_logger(), "Cloud filter counts: raw=%zu voxel=%zu",
+            cloud->size(), filtered->size());
+
         pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
         sor.setInputCloud(filtered);
         sor.setMeanK(50);            // Default often used is 50
         sor.setStddevMulThresh(1.0); // Default often used is 1.0
-        sor.filter(*filtered);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr denoised(
+            new pcl::PointCloud<pcl::PointXYZ>);
+        sor.filter(*denoised);
+        // Gazebo RGBD clouds can be sparse after voxelization. In that case
+        // MeanK=50 rejects every point; retain the voxel cloud instead of
+        // stopping the complete detection pipeline.
+        if (!denoised->empty())
+        {
+          filtered = denoised;
+        }
+
+        RCLCPP_DEBUG(
+            get_logger(), "Cloud filter count after outlier removal: %zu",
+            filtered->size());
 
         const auto &pos = pair.odom->pose.pose.position;
         const auto &q = pair.odom->pose.pose.orientation;
@@ -190,11 +239,30 @@ namespace point_cloud_test
       merged_cloud->height = 1;
       merged_cloud->is_dense = true;
 
+      if (merged_cloud->empty())
+      {
+        RCLCPP_WARN(get_logger(), "Point cloud empty after voxel/outlier filtering");
+        to_process->clear();
+        return;
+      }
+
+      pcl::PointXYZ merged_min;
+      pcl::PointXYZ merged_max;
+      pcl::getMinMax3D(*merged_cloud, merged_min, merged_max);
+      RCLCPP_DEBUG(
+          get_logger(),
+          "Merged cloud: %zu points, bounds x=[%.2f, %.2f] y=[%.2f, %.2f] z=[%.2f, %.2f]",
+          merged_cloud->size(), merged_min.x, merged_max.x, merged_min.y,
+          merged_max.y, merged_min.z, merged_max.z);
+
       auto time_ransac_start = std::chrono::high_resolution_clock::now();
       auto non_ground = processRANSAC(merged_cloud);
       if (!non_ground || non_ground->empty())
       {
-        RCLCPP_WARN(get_logger(), "Ground removal failed");
+        RCLCPP_WARN(
+            get_logger(),
+            "Ground removal failed (%zu points, z range %.2f..%.2f)",
+            merged_cloud->size(), merged_min.z, merged_max.z);
         to_process->clear();
         return;
       }

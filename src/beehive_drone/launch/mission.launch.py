@@ -18,7 +18,8 @@ def generate_launch_description():
             ('/cylinders', '/perception/pcl/cylinders'),
             ('/global/cylinders', '/global_cylinders'),
         ],
-        parameters=[{'use_transform_pcl': True}]
+        # PointCloudPacked dari Gazebo sudah menggunakan X-forward/Z-up.
+        parameters=[{'use_transform_pcl': False}]
     )
 
     mapper_node = Node(
