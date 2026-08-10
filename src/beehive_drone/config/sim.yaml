@@ -1,0 +1,35 @@
+tree_mapper:
+  ros__parameters:
+    frame_id: odom
+    merge_distance: 1.0
+    minimum_seen_count: 3
+    min_radius: 0.10
+    max_radius: 0.65
+    min_height: 0.8
+    max_height: 8.0
+    position_alpha: 0.25
+
+mission_state_machine:
+  ros__parameters:
+    flight_altitude: 3.0
+    require_safety_monitor: true
+    auto_start: true
+    state_timeout: 120.0
+    pose_timeout: 1.0
+
+dynamic_orbit_controller:
+  ros__parameters:
+    orbit_radius: 3.0
+    orbit_altitude: 3.0
+    orbit_velocity: 0.8
+    orbit_timeout: 90.0
+    radial_tolerance: 1.0
+
+mission_safety_monitor:
+  ros__parameters:
+    pointcloud_topic: /zed2i/depth/points
+    range_topic: /mavros/rangefinder/rangefinder
+    require_rangefinder: false
+    pose_timeout: 1.0
+    cloud_timeout: 3.0
+

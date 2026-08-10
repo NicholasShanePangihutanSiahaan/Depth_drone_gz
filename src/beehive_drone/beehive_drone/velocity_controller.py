@@ -5,6 +5,7 @@ import rclpy
 from rclpy.node import Node
 from beehive_drone.mission_params import MissionConfig
 from geometry_msgs.msg import PoseStamped, TwistStamped
+from std_msgs.msg import Bool
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 def quaternion_to_yaw(qx, qy, qz, qw):
@@ -44,6 +45,7 @@ class VelocityController(Node):
         # ==================================================
         self.current_pose = None
         self.target_pose = None
+        self.enabled = False
 
         # ==================================================
         # Subscriber & Publisher
@@ -63,6 +65,7 @@ class VelocityController(Node):
             self.target_callback,
             10
         )
+        self.create_subscription(Bool, "/control/setpoint_enabled", self.enabled_callback, 10)
 
         # Mengirim Twist (Kecepatan) ke MAVROS
         self.velocity_pub = self.create_publisher(
@@ -82,6 +85,9 @@ class VelocityController(Node):
     def target_callback(self, msg):
         self.target_pose = msg
 
+    def enabled_callback(self, msg):
+        self.enabled = msg.data
+
     def limit(self, value, maximum):
         """Membatasi nilai agar tidak melebihi kecepatan maksimum"""
         if value > maximum: return maximum
@@ -89,7 +95,7 @@ class VelocityController(Node):
         return value
 
     def control_loop(self):
-        if self.current_pose is None or self.target_pose is None:
+        if not self.enabled or self.current_pose is None or self.target_pose is None:
             return
         if self.current_pose.pose.position.z < 1.5:
             return

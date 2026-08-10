@@ -14,6 +14,9 @@ class FlightManager(Node):
 
         self.current_state = State()
         self.current_alt = 0.0
+        self.last_pose = None
+        self.horizontal_speed = 0.0
+        self.vertical_speed = 0.0
         self.target_takeoff_alt = 0.0
         self.hover_tolerance = 0.2
 
@@ -75,6 +78,17 @@ class FlightManager(Node):
 
     def pose_callback(self, msg):
         self.current_alt = msg.pose.position.z
+        now = self.get_clock().now()
+        if self.last_pose is not None:
+            previous, previous_time = self.last_pose
+            dt = (now - previous_time).nanoseconds * 1e-9
+            if dt > 0.001:
+                dx = msg.pose.position.x - previous.pose.position.x
+                dy = msg.pose.position.y - previous.pose.position.y
+                dz = msg.pose.position.z - previous.pose.position.z
+                self.horizontal_speed = (dx * dx + dy * dy) ** 0.5 / dt
+                self.vertical_speed = abs(dz) / dt
+        self.last_pose = (msg, now)
 
     # --- Callbacks Perintah FSM ---
     def cmd_mode_cb(self, msg):
@@ -132,7 +146,8 @@ class FlightManager(Node):
         # Logika khusus untuk melaporkan status HOVER yang stabil
         is_hovering = False
         if self.current_state.armed and self.target_takeoff_alt > 0:
-            if abs(self.current_alt - self.target_takeoff_alt) < self.hover_tolerance:
+            if (abs(self.current_alt - self.target_takeoff_alt) < self.hover_tolerance
+                    and self.horizontal_speed < 0.20 and self.vertical_speed < 0.15):
                 is_hovering = True
         
         msg_hover = Bool()

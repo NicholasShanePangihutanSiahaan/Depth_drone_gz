@@ -43,6 +43,15 @@ namespace point_cloud_test
         : Node("pcl_proc_node")
     {
       this->declare_parameter("use_transform_pcl", true);
+      this->declare_parameter("min_sensor_range", 0.3);
+      this->declare_parameter("max_sensor_range", 15.0);
+      this->declare_parameter("voxel_leaf_size", 0.20);
+      this->declare_parameter("camera_offset_x", 0.0);
+      this->declare_parameter("camera_offset_y", 0.0);
+      this->declare_parameter("camera_offset_z", 0.0);
+      this->declare_parameter("camera_mount_roll", 0.0);
+      this->declare_parameter("camera_mount_pitch", 0.0);
+      this->declare_parameter("camera_mount_yaw", 0.0);
 
       rclcpp::SubscriptionOptions sub_opts;
       rclcpp::CallbackGroup::SharedPtr sync_cb_group = create_callback_group(
@@ -126,11 +135,14 @@ namespace point_cloud_test
         pcl::PointCloud<pcl::PointXYZ>::Ptr valid_cloud(
             new pcl::PointCloud<pcl::PointXYZ>);
         valid_cloud->reserve(cloud->size());
+        const float min_range = get_parameter("min_sensor_range").as_double();
+        const float max_range = get_parameter("max_sensor_range").as_double();
         for (const auto &point : cloud->points)
         {
+          const float range = point.getVector3fMap().norm();
           if (std::isfinite(point.x) && std::isfinite(point.y) &&
               std::isfinite(point.z) &&
-              point.getVector3fMap().norm() <= 20.0f)
+              range >= min_range && range <= max_range)
           {
             valid_cloud->push_back(point);
           }
@@ -168,7 +180,8 @@ namespace point_cloud_test
             raw_min.x, raw_max.x, raw_min.y, raw_max.y, raw_min.z, raw_max.z);
         pcl::VoxelGrid<pcl::PointXYZ> voxel;
         voxel.setInputCloud(cloud);
-        voxel.setLeafSize(0.3f, 0.3f, 0.3f);
+        const float leaf = get_parameter("voxel_leaf_size").as_double();
+        voxel.setLeafSize(leaf, leaf, leaf);
         voxel.filter(*filtered);
 
         RCLCPP_DEBUG(
@@ -199,6 +212,17 @@ namespace point_cloud_test
         Eigen::Quaternionf rotation(q.w, q.x, q.y, q.z);
         Eigen::Matrix3f R = rotation.toRotationMatrix();
         Eigen::Vector3f t(pos.x, pos.y, pos.z);
+        Eigen::Vector3f camera_offset(
+            get_parameter("camera_offset_x").as_double(),
+            get_parameter("camera_offset_y").as_double(),
+            get_parameter("camera_offset_z").as_double());
+        const float mount_roll = get_parameter("camera_mount_roll").as_double();
+        const float mount_pitch = get_parameter("camera_mount_pitch").as_double();
+        const float mount_yaw = get_parameter("camera_mount_yaw").as_double();
+        const Eigen::Matrix3f mount_rotation =
+            (Eigen::AngleAxisf(mount_yaw, Eigen::Vector3f::UnitZ()) *
+             Eigen::AngleAxisf(mount_pitch, Eigen::Vector3f::UnitY()) *
+             Eigen::AngleAxisf(mount_roll, Eigen::Vector3f::UnitX())).toRotationMatrix();
 
         bool is_use_transform_pcl = this->get_parameter("use_transform_pcl").as_bool();
 
@@ -209,13 +233,13 @@ namespace point_cloud_test
           }
           Eigen::Vector3f optical_pt(pt.x, pt.y, pt.z);
 
-          if (optical_pt.norm() > 20.0f) {
+          if (optical_pt.norm() > max_range) {
             continue; 
           }
           
           Eigen::Vector3f robot_pt;
           if (is_use_transform_pcl) {
-            robot_pt = R_optical_to_robot_ * optical_pt;
+            robot_pt = mount_rotation * R_optical_to_robot_ * optical_pt + camera_offset;
           } else {
             robot_pt = optical_pt;
           }

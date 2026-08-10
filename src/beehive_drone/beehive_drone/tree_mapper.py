@@ -28,10 +28,24 @@ class TreeMapper(Node):
         ##################################################
         # Parameters
         ##################################################
-        self.frame_id = "odom"
+        self.declare_parameter("frame_id", "odom")
+        self.declare_parameter("merge_distance", 1.0)
+        self.declare_parameter("minimum_seen_count", 3)
+        self.declare_parameter("min_radius", 0.10)
+        self.declare_parameter("max_radius", 0.65)
+        self.declare_parameter("min_height", 0.8)
+        self.declare_parameter("max_height", 8.0)
+        self.declare_parameter("position_alpha", 0.25)
+        self.frame_id = self.get_parameter("frame_id").value
 
         # maksimum jarak agar dianggap pohon yang sama
-        self.merge_distance = MissionConfig.TREE_MERGE_DISTANCE
+        self.merge_distance = float(self.get_parameter("merge_distance").value)
+        self.minimum_seen_count = int(self.get_parameter("minimum_seen_count").value)
+        self.min_radius = float(self.get_parameter("min_radius").value)
+        self.max_radius = float(self.get_parameter("max_radius").value)
+        self.min_height = float(self.get_parameter("min_height").value)
+        self.max_height = float(self.get_parameter("max_height").value)
+        self.position_alpha = float(self.get_parameter("position_alpha").value)
 
         # confidence model
         self.max_confidence = MissionConfig.TREE_MAX_CONFIDENCE
@@ -118,6 +132,12 @@ class TreeMapper(Node):
             cylinder = tracked.cylinder
             if not cylinder.is_valid or tracked.missed_count != 0:
                 continue
+            if tracked.seen_count < self.minimum_seen_count:
+                continue
+            if not (self.min_radius <= cylinder.radius <= self.max_radius):
+                continue
+            if not (self.min_height <= cylinder.height <= self.max_height):
+                continue
 
             point = Point()
             point.x = cylinder.pose.position.x
@@ -161,7 +181,8 @@ class TreeMapper(Node):
             tree = self.tree_database[nearest_id]
             tree["count"] += 1
 
-            alpha = 1.0 / tree["count"]
+            # EMA tidak membuat filter semakin lambat tanpa batas seperti running mean.
+            alpha = self.position_alpha
 
             # update posisi
             tree["x"] += alpha * (x-tree["x"])

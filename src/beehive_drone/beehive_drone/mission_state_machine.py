@@ -45,11 +45,26 @@ class MissionStateMachine(Node):
         self.end_of_farm_dist = MissionConfig.END_OF_FARM_DIST
         self.approach_safe_dist = MissionConfig.APPROACH_SAFE_DIST
         self.flight_altitude = MissionConfig.FLIGHT_ALTITUDE
+        self.declare_parameter('flight_altitude', self.flight_altitude)
+        self.declare_parameter('require_safety_monitor', True)
+        self.declare_parameter('auto_start', True)
+        self.declare_parameter('state_timeout', 120.0)
+        self.declare_parameter('pose_timeout', 1.0)
+        self.flight_altitude = float(self.get_parameter('flight_altitude').value)
+        self.require_safety = bool(self.get_parameter('require_safety_monitor').value)
+        self.auto_start = bool(self.get_parameter('auto_start').value)
+        self.state_timeout = float(self.get_parameter('state_timeout').value)
+        self.pose_timeout = float(self.get_parameter('pose_timeout').value)
 
         # ==========================================
         # Variabel State & Navigasi
         # ==========================================
-        self.state = "INIT"
+        self.state = "WAIT_START"
+        self.state_since = self.get_clock().now()
+        self.start_requested = self.auto_start
+        self.safety_ok = False
+        self.safety_reason = 'watchdog_not_ready'
+        self.last_pose_time = None
         self.retry_counter = 0
         self.hover_timer = 0
         self.orbit_status = "IDLE"
@@ -87,6 +102,9 @@ class MissionStateMachine(Node):
         self.telemetry_arm_sub = self.create_subscription(Bool, "/flight/telemetry/is_armed", self.arm_cb, 10)
         self.telemetry_mode_sub = self.create_subscription(String, "/flight/telemetry/current_mode", self.mode_cb, 10)
         self.telemetry_hover_sub = self.create_subscription(Bool, "/flight/telemetry/is_hovering", self.hover_cb, 10)
+        self.create_subscription(Bool, '/mission/start', self.start_cb, 10)
+        self.create_subscription(Bool, '/mission/safety_ok', self.safety_cb, 10)
+        self.create_subscription(String, '/mission/safety_reason', self.safety_reason_cb, 10)
 
         # ==========================================
         # Publisher
@@ -106,6 +124,7 @@ class MissionStateMachine(Node):
         self.fsm_status_pub = self.create_publisher(String, "/mission/fsm_state", 10)
         # Publisher untuk memperbarui status pohon ke Tree Mapper
         self.tree_update_pub = self.create_publisher(Tree, "/map/tree_update", 10)
+        self.setpoint_enable_pub = self.create_publisher(Bool, '/control/setpoint_enabled', 10)
 
         # Timer FSM berjalan pada 10 Hz
         self.timer = self.create_timer(0.1, self.fsm_loop)
@@ -114,9 +133,10 @@ class MissionStateMachine(Node):
     # --- Callbacks Sensor & Status ---
     def pose_cb(self, msg):
         self.current_pose = msg
+        self.last_pose_time = self.get_clock().now()
         # Pose pertama sebelum takeoff menjadi home dinamis. Salin nilainya,
         # jangan simpan referensi message yang akan terus diperbarui.
-        if self.home_pose is None and self.state in ("INIT", "WAIT_GUIDED", "WAIT_ARM"):
+        if self.home_pose is None and self.state in ("WAIT_START", "INIT", "WAIT_GUIDED", "WAIT_ARM"):
             self.home_pose = (
                 msg.pose.position.x,
                 msg.pose.position.y,
@@ -129,6 +149,17 @@ class MissionStateMachine(Node):
     def arm_cb(self, msg): self.is_armed = msg.data
     def mode_cb(self, msg): self.current_mode = msg.data
     def hover_cb(self, msg): self.is_hovering = msg.data
+    def start_cb(self, msg): self.start_requested = msg.data
+    def safety_cb(self, msg): self.safety_ok = msg.data
+    def safety_reason_cb(self, msg): self.safety_reason = msg.data
+
+    def transition(self, state):
+        self.state = state
+        self.state_since = self.get_clock().now()
+
+    def publish_setpoint_enabled(self, enabled):
+        msg = Bool(); msg.data = enabled
+        self.setpoint_enable_pub.publish(msg)
 
     # --- Helper Functions ---
     def distance(self, x1, y1, x2, y2):
@@ -180,6 +211,26 @@ class MissionStateMachine(Node):
         if self.current_pose is None:
             return
 
+        active = self.state not in ('WAIT_START', 'DONE', 'ABORT', 'MANUAL_OVERRIDE')
+        self.publish_setpoint_enabled(active)
+        pose_age = float('inf') if self.last_pose_time is None else \
+            (self.get_clock().now() - self.last_pose_time).nanoseconds * 1e-9
+        if active and pose_age > self.pose_timeout:
+            self.transition('ABORT')
+            self.get_logger().error('ABORT: local pose kedaluwarsa.')
+        if active and self.require_safety and not self.safety_ok:
+            self.transition('ABORT')
+            self.get_logger().error(f'ABORT watchdog: {self.safety_reason}')
+        if active and self.is_armed and self.current_mode not in ('GUIDED', ''):
+            self.transition('MANUAL_OVERRIDE')
+            self.get_logger().warning(f'Manual takeover terdeteksi: mode={self.current_mode}')
+        elapsed = (self.get_clock().now() - self.state_since).nanoseconds * 1e-9
+        timeout_exempt = ('WAIT_START', 'EXPLORE_ROW', 'WAIT_ORBIT', 'LANDING', 'DONE',
+                          'ABORT', 'MANUAL_OVERRIDE')
+        if active and self.state not in timeout_exempt and elapsed > self.state_timeout:
+            self.transition('ABORT')
+            self.get_logger().error(f'ABORT: timeout state setelah {elapsed:.1f}s.')
+
         cx = self.current_pose.pose.position.x
         cy = self.current_pose.pose.position.y
 
@@ -187,10 +238,17 @@ class MissionStateMachine(Node):
         self.fsm_status_pub.publish(msg)
 
         # --- FASE PRE-FLIGHT ---
-        if self.state == "INIT":
+        if self.state == 'WAIT_START':
+            if self.start_requested and (self.safety_ok or not self.require_safety):
+                # Capture terakhir tepat sebelum arm sebagai titik takeoff lokal.
+                self.home_pose = (cx, cy, self.current_yaw())
+                self.transition('INIT')
+                self.get_logger().info('Start diterima dan sensor sehat; memulai preflight.')
+
+        elif self.state == "INIT":
             mode_msg = String(); mode_msg.data = "GUIDED"
             self.cmd_mode_pub.publish(mode_msg)
-            self.state = "WAIT_GUIDED"
+            self.transition("WAIT_GUIDED")
             self.retry_counter = 0
             self.get_logger().info("Meminta transisi ke mode GUIDED...")
 
@@ -198,7 +256,7 @@ class MissionStateMachine(Node):
             if self.current_mode == "GUIDED":
                 arm_msg = Bool(); arm_msg.data = True
                 self.cmd_arm_pub.publish(arm_msg)
-                self.state = "WAIT_ARM"
+                self.transition("WAIT_ARM")
                 self.retry_counter = 0
                 self.get_logger().info("Mode GUIDED aktif. Meminta Arming Motor...")
             else:
@@ -212,7 +270,7 @@ class MissionStateMachine(Node):
             if self.is_armed:
                 takeoff_msg = Float32(); takeoff_msg.data = self.flight_altitude
                 self.cmd_takeoff_pub.publish(takeoff_msg)
-                self.state = "WAIT_TAKEOFF"
+                self.transition("WAIT_TAKEOFF")
                 self.retry_counter = 0
                 self.get_logger().info(f"Motor Bersenjata (Armed). Takeoff ke ketinggian {self.flight_altitude}m...")
             else:
@@ -227,7 +285,7 @@ class MissionStateMachine(Node):
             if self.is_hovering:
                 self.last_tree_x = cx
                 self.last_tree_y = cy
-                self.state = "EXPLORE_ROW"
+                self.transition("EXPLORE_ROW")
                 self.get_logger().info("Hover stabil tercapai. Mulai EXPLORE_ROW (Mencari Pohon).")
 
         # --- FASE MISI UTAMA ---
@@ -235,7 +293,7 @@ class MissionStateMachine(Node):
             self.target_tree = self.find_uninspected_tree()
             
             if self.target_tree is not None:
-                self.state = "APPROACH_TREE"
+                self.transition("APPROACH_TREE")
                 self.get_logger().info(f"Pohon ditemukan di ({self.target_tree.x:.1f}, {self.target_tree.y:.1f})")
             else:
                 target_x = cx + (self.explore_speed * self.explore_dir_x)
@@ -244,7 +302,7 @@ class MissionStateMachine(Node):
 
                 dist_from_last = self.distance(cx, cy, self.last_tree_x, self.last_tree_y)
                 if dist_from_last > self.end_of_row_dist:
-                    self.state = "END_OF_ROW"
+                    self.transition("END_OF_ROW")
                     self.get_logger().info("Lorong Habis. Bersiap pindah lorong.")
 
         elif self.state == "APPROACH_TREE":
@@ -264,7 +322,7 @@ class MissionStateMachine(Node):
             if dist_to_stop > 0.6:
                 self.publish_goal(stop_x, stop_y, target_yaw)
             else:
-                self.state = "VERIFY_TREE"
+                self.transition("VERIFY_TREE")
                 self.hover_timer = 0
                 self.get_logger().info("Titik pengereman tercapai. Hovering 4 detik untuk stabilisasi...")
         
@@ -295,7 +353,7 @@ class MissionStateMachine(Node):
                     # Jika jaraknya jauh (misal 5 meter atau nyasar ke pohon lain), berarti itu hantu!
                     if 1.5 <= actual_dist_to_tree <= 2.5:
                         self.target_tree = target_matched_tree  
-                        self.state = "START_ORBIT"
+                        self.transition("START_ORBIT")
                         self.get_logger().info(f"Verifikasi sukses! Pohon ID:{target_matched_tree.id} valid di jarak {actual_dist_to_tree:.2f}m. Memulai orbit.")
                     else:
                         self.get_logger().warn(f"Pohon ID:{target_matched_tree.id} gagal verifikasi. Jarak aktual nyasar di {actual_dist_to_tree:.2f}m. Dihapus!")
@@ -307,7 +365,7 @@ class MissionStateMachine(Node):
                         self.tree_update_pub.publish(update_msg)
                         
                         self.target_tree = None
-                        self.state = "EXPLORE_ROW"
+                        self.transition("EXPLORE_ROW")
                         
                 else:
                     self.get_logger().warn("Pohon Hantu hilang dari peta saat hovering! Membatalkan orbit.")
@@ -318,7 +376,7 @@ class MissionStateMachine(Node):
                         self.tree_update_pub.publish(update_msg)
                     
                     self.target_tree = None
-                    self.state = "EXPLORE_ROW"
+                    self.transition("EXPLORE_ROW")
                     
         elif self.state == "START_ORBIT":
             target_msg = Point()
@@ -329,7 +387,7 @@ class MissionStateMachine(Node):
             
             start_msg = Bool(); start_msg.data = True
             self.orbit_start_pub.publish(start_msg)
-            self.state = "WAIT_ORBIT"
+            self.transition("WAIT_ORBIT")
 
         elif self.state == "WAIT_ORBIT":
             if self.orbit_status == "ORBIT_COMPLETED":
@@ -359,10 +417,13 @@ class MissionStateMachine(Node):
                 self.hold_yaw = self.current_yaw()
                 self.hover_timer = 0
                 self.target_tree = None
-                self.state = "POST_ORBIT_HOVER"
+                self.transition("POST_ORBIT_HOVER")
                 self.get_logger().info(
                     "Orbit satu pohon selesai. Hover sebelum kembali ke titik takeoff."
                 )
+            elif self.orbit_status.startswith('ORBIT_FAILED'):
+                self.transition('ABORT')
+                self.get_logger().error(f'ABORT: {self.orbit_status}')
 
         elif self.state == "POST_ORBIT_HOVER":
             self.publish_goal(self.hold_x, self.hold_y, self.hold_yaw)
@@ -371,7 +432,7 @@ class MissionStateMachine(Node):
             required_ticks = int(MissionConfig.POST_ORBIT_HOVER_TIME / 0.1)
             if self.hover_timer >= required_ticks:
                 self.hover_timer = 0
-                self.state = "ALIGN_HOME"
+                self.transition("ALIGN_HOME")
                 self.get_logger().info("Hover stabil. Menyesuaikan yaw menuju home.")
 
         elif self.state == "ALIGN_HOME":
@@ -391,7 +452,7 @@ class MissionStateMachine(Node):
             required_ticks = int(MissionConfig.HOME_ALIGN_TIME / 0.1)
             if self.hover_timer >= required_ticks:
                 self.hover_timer = 0
-                self.state = "RETURN_TO_HOME"
+                self.transition("RETURN_TO_HOME")
                 self.get_logger().info("Arah ke home stabil. Mulai kembali ke titik takeoff.")
 
         elif self.state == "END_OF_ROW":
@@ -403,7 +464,7 @@ class MissionStateMachine(Node):
             if abs(cx - retreat_x) < 0.5:
                 self.explore_dir_x *= -1.0 
                 self.crab_start_y = cy
-                self.state = "CRAB_SCAN"
+                self.transition("CRAB_SCAN")
                 self.get_logger().info("Mundur selesai. Memulai Crab Scan 90 derajat.")
 
         elif self.state == "CRAB_SCAN":
@@ -414,11 +475,11 @@ class MissionStateMachine(Node):
             self.target_tree = self.find_uninspected_tree()
             if self.target_tree is not None:
                 self.last_tree_y = self.target_tree.y
-                self.state = "APPROACH_TREE"
+                self.transition("APPROACH_TREE")
                 self.get_logger().info("Lorong baru ditemukan!")
             else:
                 if abs(cy - self.crab_start_y) > self.end_of_farm_dist:
-                    self.state = "RETURN_TO_HOME"
+                    self.transition("RETURN_TO_HOME")
                     self.get_logger().info("Lahan habis. Cari jalur untuk pulang (RTH).")
 
         elif self.state == "RETURN_TO_HOME":
@@ -432,7 +493,7 @@ class MissionStateMachine(Node):
             if self.distance(cx, cy, home_x, home_y) < MissionConfig.HOME_POSITION_TOLERANCE:
                 self.hold_yaw = home_yaw
                 self.hover_timer = 0
-                self.state = "HOME_HOVER"
+                self.transition("HOME_HOVER")
                 self.get_logger().info("Tiba di titik takeoff. Hover sebelum landing.")
 
         elif self.state == "HOME_HOVER":
@@ -442,7 +503,7 @@ class MissionStateMachine(Node):
 
             required_ticks = int(MissionConfig.HOME_HOVER_TIME / 0.1)
             if self.hover_timer >= required_ticks:
-                self.state = "LANDING"
+                self.transition("LANDING")
                 self.get_logger().info("Hover home selesai. Memulai pendaratan.")
 
         elif self.state == "FINAL_SPIN":
@@ -461,12 +522,12 @@ class MissionStateMachine(Node):
             
             self.target_tree = self.find_uninspected_tree()
             if self.target_tree is not None:
-                self.state = "APPROACH_TREE"
+                self.transition("APPROACH_TREE")
                 self.get_logger().info("Pohon terlewat ditemukan saat Final Spin!")
                 return
                 
             if self.spin_accumulated >= 2 * math.pi:
-                self.state = "LANDING"
+                self.transition("LANDING")
                 self.get_logger().info("Area bersih. Memulai Pendaratan.")
             else:
                 target_yaw = current_yaw + 0.2
@@ -478,11 +539,23 @@ class MissionStateMachine(Node):
             # Ulangi command sampai kendaraan benar-benar turun atau disarm,
             # agar satu pesan yang hilang tidak menggagalkan landing.
             if not self.is_armed or self.current_pose.pose.position.z < 0.20:
-                self.state = "DONE"
+                self.transition("DONE")
                 self.get_logger().info("Landing selesai. Misi DONE.")
             
         elif self.state == "DONE":
-            pass
+            self.publish_setpoint_enabled(False)
+
+        elif self.state == 'ABORT':
+            self.publish_setpoint_enabled(False)
+            stop = Bool(); stop.data = False
+            self.orbit_start_pub.publish(stop)
+            # BRAKE meminta flight controller menghentikan kendaraan saat estimasi masih tersedia.
+            mode = String(); mode.data = 'BRAKE'
+            self.cmd_mode_pub.publish(mode)
+
+        elif self.state == 'MANUAL_OVERRIDE':
+            # Tidak mengirim setpoint/mode apa pun; pilot RC memegang kendali penuh.
+            self.publish_setpoint_enabled(False)
 
 def main(args=None):
     rclpy.init(args=args)

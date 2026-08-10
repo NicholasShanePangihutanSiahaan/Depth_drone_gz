@@ -11,8 +11,10 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name, ['REAL_FLIGHT.md']),
         # DAFTARKAN FOLDER LAUNCH DI SINI:
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -31,6 +33,8 @@ setup(
             'tree_mapper = beehive_drone.tree_mapper:main',
             'flight_manager = beehive_drone.flight_manager:main',
             'mission_analyzer = beehive_drone.mission_analyzer:main',
+            'position_setpoint_controller = beehive_drone.position_setpoint_controller:main',
+            'mission_safety_monitor = beehive_drone.mission_safety_monitor:main',
         ],
     },
 )

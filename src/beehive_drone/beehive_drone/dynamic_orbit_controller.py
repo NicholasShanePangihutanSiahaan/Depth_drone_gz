@@ -29,9 +29,16 @@ class DynamicOrbitController(Node):
         # ==========================================
         # Parameter Orbit Dinamis
         # ==========================================
-        self.orbit_radius = MissionConfig.ORBIT_RADIUS       # Jarak ideal dari pohon (meter)
-        self.orbit_altitude = MissionConfig.ORBIT_ALTITUDE     # Ketinggian orbit standar (meter)
-        self.orbit_velocity = MissionConfig.ORBIT_VELOCITY     # Kecepatan rotasi angular ekuivalen linear (m/s)
+        self.declare_parameter('orbit_radius', MissionConfig.ORBIT_RADIUS)
+        self.declare_parameter('orbit_altitude', MissionConfig.ORBIT_ALTITUDE)
+        self.declare_parameter('orbit_velocity', MissionConfig.ORBIT_VELOCITY)
+        self.declare_parameter('orbit_timeout', 120.0)
+        self.declare_parameter('radial_tolerance', 0.7)
+        self.orbit_radius = float(self.get_parameter('orbit_radius').value)
+        self.orbit_altitude = float(self.get_parameter('orbit_altitude').value)
+        self.orbit_velocity = float(self.get_parameter('orbit_velocity').value)
+        self.orbit_timeout = float(self.get_parameter('orbit_timeout').value)
+        self.radial_tolerance = float(self.get_parameter('radial_tolerance').value)
         self.yaw_offset = MissionConfig.YAW_OFFSET # Offset 45 derajat (0.785 radian)
 
         # ==========================================
@@ -45,6 +52,7 @@ class DynamicOrbitController(Node):
         self.current_pose = None
         self.last_angle = None
         self.accumulated_angle = 0.0
+        self.orbit_start_time = None
 
         # ==========================================
         # Subscriber
@@ -102,6 +110,7 @@ class DynamicOrbitController(Node):
             self.is_orbiting = True
             self.accumulated_angle = 0.0
             self.last_angle = None
+            self.orbit_start_time = self.get_clock().now()
             self.get_logger().info(f"Memulai orbit pada pohon di ({self.tree_x:.2f}, {self.tree_y:.2f})")
         elif not msg.data:
             self.is_orbiting = False
@@ -114,6 +123,12 @@ class DynamicOrbitController(Node):
 
     def control_loop(self):
         if not self.is_orbiting or self.current_pose is None:
+            return
+        if self.orbit_start_time is not None and \
+                (self.get_clock().now() - self.orbit_start_time).nanoseconds * 1e-9 > self.orbit_timeout:
+            self.is_orbiting = False
+            self.publish_status("ORBIT_FAILED_TIMEOUT")
+            self.get_logger().error("Orbit timeout; target dibatalkan.")
             return
 
         # 1. Kalkulasi posisi drone terhadap pusat pohon
@@ -133,8 +148,9 @@ class DynamicOrbitController(Node):
                 delta += 2 * math.pi
             
             # Hanya catat progres putaran jika drone sudah berada di radius yang mendekati target
-            if abs(current_r - self.orbit_radius) < 1.0:
-                self.accumulated_angle += abs(delta)
+            # Orbit CCW: osilasi maju-mundur tidak boleh dihitung sebagai satu putaran.
+            if abs(current_r - self.orbit_radius) < self.radial_tolerance and delta > 0.0:
+                self.accumulated_angle += delta
 
         self.last_angle = current_angle
 
@@ -150,7 +166,7 @@ class DynamicOrbitController(Node):
         # 4. Kalkulasi Setpoint Target Posisi (Translasi)
         # Gunakan konsep "Carrot on a Stick" (Umpan Jauh).
         # Target harus dilempar cukup jauh ke depan agar tidak terkena auto-rem (threshold 0.5m) dari velocity_controller.
-        lookahead_distance = 1.5 # meter di depan lintasan
+        lookahead_distance = max(0.5, self.orbit_velocity * 1.5)
         lookahead_angle = lookahead_distance / self.orbit_radius
         
         target_angle = current_angle + lookahead_angle # Bergerak CCW (Berlawanan arah jarum jam)
