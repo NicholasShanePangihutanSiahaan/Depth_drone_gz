@@ -15,7 +15,7 @@ mission_state_machine:
     require_safety_monitor: true
     auto_start: true
     state_timeout: 120.0
-    pose_timeout: 1.0
+    pose_timeout: 5.0
 
 dynamic_orbit_controller:
   ros__parameters:
@@ -30,6 +30,5 @@ mission_safety_monitor:
     pointcloud_topic: /zed2i/depth/points
     range_topic: /mavros/rangefinder/rangefinder
     require_rangefinder: false
-    pose_timeout: 1.0
+    pose_timeout: 5.0
     cloud_timeout: 3.0
-

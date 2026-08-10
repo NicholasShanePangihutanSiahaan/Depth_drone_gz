@@ -11,10 +11,14 @@ def generate_launch_description():
     config = os.path.join(get_package_share_directory('beehive_drone'), 'config', 'real.yaml')
     cloud = LaunchConfiguration('pointcloud_topic')
     odom = LaunchConfiguration('odometry_topic')
+    auto_start = LaunchConfiguration('auto_start')
     return LaunchDescription([
         DeclareLaunchArgument('pointcloud_topic',
                               default_value='/zed/zed_node/point_cloud/cloud_registered'),
         DeclareLaunchArgument('odometry_topic', default_value='/mavros/local_position/odom'),
+        DeclareLaunchArgument(
+            'auto_start', default_value='false',
+            description='true: otomatis GUIDED/arm/takeoff setelah semua sensor preflight sehat'),
         Node(package='point-cloud-test', executable='pcl_proc_node', output='screen',
              remappings=[('/input_cloud', cloud), ('/odom', odom),
                          ('/output_cloud', '/perception/pcl/non_ground'),
@@ -41,5 +45,6 @@ def generate_launch_description():
         Node(package='beehive_drone', executable='mission_safety_monitor',
              parameters=[config, {'pointcloud_topic': cloud}], output='screen'),
         Node(package='beehive_drone', executable='mission_analyzer', output='screen'),
-        Node(package='beehive_drone', executable='mission_state_machine', parameters=[config], output='screen'),
+        Node(package='beehive_drone', executable='mission_state_machine',
+             parameters=[config, {'auto_start': auto_start}], output='screen'),
     ])

@@ -19,11 +19,14 @@ class MissionSafetyMonitor(Node):
                     'require_rangefinder': False, 'pose_timeout': 1.0,
                     'cloud_timeout': 3.0, 'state_timeout': 1.0,
                     'range_timeout': 1.0, 'min_range': 0.08, 'max_range': 20.0}
+        defaults['range_arm_grace'] = 5.0
         for key, value in defaults.items():
             self.declare_parameter(key, value)
         self.last = {'pose': None, 'cloud': None, 'state': None, 'range': None}
         self.range_valid = False
         self.connected = False
+        self.armed = False
+        self.armed_since = None
         cloud_topic = str(self.get_parameter('pointcloud_topic').value)
         range_topic = str(self.get_parameter('range_topic').value)
         self.create_subscription(PoseStamped, '/mavros/local_position/pose',
@@ -41,6 +44,11 @@ class MissionSafetyMonitor(Node):
 
     def state_cb(self, msg):
         self.connected = msg.connected
+        if msg.armed and not self.armed:
+            self.armed_since = self.get_clock().now()
+        elif not msg.armed:
+            self.armed_since = None
+        self.armed = msg.armed
         self.touch('state')
 
     def range_cb(self, msg):
@@ -61,7 +69,14 @@ class MissionSafetyMonitor(Node):
                 failures.append(f'{name}_stale')
         if not self.connected:
             failures.append('fcu_disconnected')
-        if bool(self.get_parameter('require_rangefinder').value):
+        # Banyak rangefinder memberi 0/NaN saat kendaraan masih tepat di tanah.
+        # Jangan membuat preflight deadlock; jadikan wajib setelah armed.
+        armed_age = 0.0 if self.armed_since is None else \
+            (self.get_clock().now() - self.armed_since).nanoseconds * 1e-9
+        require_range_now = (bool(self.get_parameter('require_rangefinder').value)
+                             and self.armed
+                             and armed_age >= float(self.get_parameter('range_arm_grace').value))
+        if require_range_now:
             if not self.fresh('range', float(self.get_parameter('range_timeout').value)):
                 failures.append('range_stale')
             elif not self.range_valid:

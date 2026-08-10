@@ -14,7 +14,7 @@ setup(
         ('share/' + package_name, ['REAL_FLIGHT.md']),
         # DAFTARKAN FOLDER LAUNCH DI SINI:
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
-        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'config'), glob('config/*')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -35,6 +35,7 @@ setup(
             'mission_analyzer = beehive_drone.mission_analyzer:main',
             'position_setpoint_controller = beehive_drone.position_setpoint_controller:main',
             'mission_safety_monitor = beehive_drone.mission_safety_monitor:main',
+            'sim_external_odometry = beehive_drone.sim_external_odometry:main',
         ],
     },
 )

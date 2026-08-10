@@ -454,6 +454,16 @@ Agar Gazebo, SITL dan program-program ROS dapat terhubung, protokol komunikasi p
 sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON --console --out=udp:127.0.0.1:14551
 ```
 
+Jika SITL sebelumnya pernah memakai parameter ExternalNav drone nyata, gunakan
+parameter khusus simulasi berikut. Opsi `-w` hanya mereset EEPROM SITL, bukan
+parameter Pixhawk fisik:
+
+```bash
+sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON -w \
+  --add-param-file=src/beehive_drone/config/sitl_sim.parm \
+  --console --out=udp:127.0.0.1:14551
+```
+
 #### ROS
 ```bash
 ros2 run mavros mavros_node --ros-args -p fcu_url:=udp://127.0.0.1:14551@

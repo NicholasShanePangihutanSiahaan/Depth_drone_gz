@@ -209,10 +209,20 @@ class MissionStateMachine(Node):
     # ==========================================
     def fsm_loop(self):
         if self.current_pose is None:
+            msg = String(); msg.data = 'WAIT_LOCAL_POSE'
+            self.fsm_status_pub.publish(msg)
+            self.publish_setpoint_enabled(False)
             return
 
         active = self.state not in ('WAIT_START', 'DONE', 'ABORT', 'MANUAL_OVERRIDE')
-        self.publish_setpoint_enabled(active)
+        # Jangan kirim position-hold saat CommandTOL takeoff sedang bekerja.
+        # Setpoint posisi tanah dapat membatalkan/melawan climb dari autopilot.
+        navigation_states = {
+            'EXPLORE_ROW', 'APPROACH_TREE', 'VERIFY_TREE', 'START_ORBIT',
+            'WAIT_ORBIT', 'POST_ORBIT_HOVER', 'ALIGN_HOME', 'END_OF_ROW',
+            'CRAB_SCAN', 'RETURN_TO_HOME', 'HOME_HOVER', 'FINAL_SPIN'
+        }
+        self.publish_setpoint_enabled(self.state in navigation_states)
         pose_age = float('inf') if self.last_pose_time is None else \
             (self.get_clock().now() - self.last_pose_time).nanoseconds * 1e-9
         if active and pose_age > self.pose_timeout:

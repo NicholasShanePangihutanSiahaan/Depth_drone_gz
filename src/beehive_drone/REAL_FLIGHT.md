@@ -35,6 +35,13 @@ Misi hanya dimulai oleh perintah eksplisit berikut:
 ros2 topic pub --once /mission/start std_msgs/msg/Bool "{data: true}"
 ```
 
+Untuk pengujian terkendali yang memang menghendaki start otomatis setelah
+watchdog sehat:
+
+```bash
+ros2 launch beehive_drone real_mission.launch.py auto_start:=true
+```
+
 Perpindahan mode melalui RC menghentikan publikasi setpoint otomatis. Watchdog
 sensor saat misi aktif meminta mode `BRAKE`; pilot tetap harus siap mengambil
 alih melalui RC.

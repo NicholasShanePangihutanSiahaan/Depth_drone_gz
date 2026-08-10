@@ -42,6 +42,6 @@ mission_safety_monitor:
     cloud_timeout: 2.0
     state_timeout: 1.0
     range_timeout: 1.0
+    range_arm_grace: 5.0
     min_range: 0.08
     max_range: 20.0
-
