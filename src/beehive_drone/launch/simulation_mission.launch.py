@@ -24,6 +24,7 @@ def generate_launch_description():
         Node(package='beehive_drone', executable='dynamic_orbit_controller', parameters=[config], remappings=sim_pose_remap, output='screen'),
         Node(package='beehive_drone', executable='flight_manager', remappings=sim_pose_remap, output='screen'),
         Node(package='beehive_drone', executable='mission_safety_monitor', parameters=[config], remappings=sim_pose_remap, output='screen'),
-        Node(package='beehive_drone', executable='mission_analyzer', output='screen'),
+        Node(package='beehive_drone', executable='mission_analyzer', parameters=[config],
+             remappings=sim_pose_remap, output='screen'),
         Node(package='beehive_drone', executable='mission_state_machine', parameters=[config], remappings=sim_pose_remap, output='screen'),
     ])

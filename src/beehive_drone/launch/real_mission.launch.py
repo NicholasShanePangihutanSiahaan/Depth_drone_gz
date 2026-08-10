@@ -34,6 +34,8 @@ def generate_launch_description():
         Node(package='beehive_drone', executable='flight_manager', output='screen'),
         Node(package='beehive_drone', executable='mission_safety_monitor',
              parameters=[config, {'pointcloud_topic': cloud}], output='screen'),
+        Node(package='beehive_drone', executable='mission_analyzer',
+             parameters=[config], output='screen'),
         Node(package='beehive_drone', executable='mission_state_machine',
              parameters=[config, {'auto_start': auto_start}], output='screen'),
     ])

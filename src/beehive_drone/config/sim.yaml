@@ -27,8 +27,8 @@ tree_mapper:
 
 mission_state_machine:
   ros__parameters:
-    flight_altitude: 1.5
-    approach_distance: 1.5
+    flight_altitude: 2.0
+    approach_distance: 1.75
     tree_distance_tolerance: 0.3
     approach_goal_tolerance: 0.15
     verification_retry_limit: 3
@@ -40,8 +40,8 @@ mission_state_machine:
 
 dynamic_orbit_controller:
   ros__parameters:
-    orbit_radius: 1.5
-    orbit_altitude: 1.5
+    orbit_radius: 1.6
+    orbit_altitude: 2.0
     orbit_velocity: 0.25
     orbit_timeout: 90.0
     radial_tolerance: 0.2
@@ -62,3 +62,11 @@ mission_safety_monitor:
     require_rangefinder: false
     pose_timeout: 5.0
     cloud_timeout: 3.0
+
+mission_analyzer:
+  ros__parameters:
+    output_directory: ~/beehive_mission_reports/simulation
+    map_frame: odom
+    sample_period: 0.20
+    console_period: 2.0
+    autosave_period: 10.0

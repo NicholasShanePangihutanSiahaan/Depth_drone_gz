@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><title>Manual Operasional Beehive Drone</title>
+<style>
+@page{size:A4;margin:17mm} body{font-family:"Liberation Sans",Arial;color:#17202a;font-size:10pt;line-height:1.42}
+h1{color:#154360;font-size:25pt} h2{color:#196f8f;border-bottom:2px solid #85c1e9;padding-bottom:4px;margin-top:22px}
+h3{color:#117864;margin:17px 0 5px} p{margin:5px 0 9px} li{margin-bottom:4px}
+code{font-family:"Liberation Mono";background:#edf2f7;padding:1px 3px} pre{font-family:"Liberation Mono";font-size:8.3pt;background:#17202a;color:#f4f6f7;padding:9px;white-space:pre-wrap}
+table{width:100%;border-collapse:collapse;margin:8px 0 14px;font-size:8.5pt} th{background:#21618c;color:white;text-align:left}
+th,td{border:1px solid #aab7b8;padding:5px;vertical-align:top} tr:nth-child(even) td{background:#f4f6f7}
+.cover{text-align:center;padding-top:45mm;page-break-after:always}.subtitle{font-size:15pt;color:#566573;margin:20px 0 48px}
+.note,.warn,.danger,.ok{padding:9px 12px;margin:10px 0;border-left:5px solid}.note{background:#d6eaf8;border-color:#2874a6}
+.warn{background:#fdebd0;border-color:#e67e22}.danger{background:#fadbd8;border-color:#c0392b}.ok{background:#d5f5e3;border-color:#239b56}
+.page{page-break-before:always}.small{font-size:8.5pt;color:#566573}
+</style></head><body>
+<section class="cover"><h1>Manual Operasional<br>Beehive Drone</h1>
+<div class="subtitle">Drone nyata: ZED2i · Pixhawk 6C · Jetson Orin Nano Super · LiDAR bawah</div>
+<p><b>Misi:</b> takeoff → deteksi batang PCL → approach → orbit satu putaran → kembali ke takeoff → landing</p>
+<p>Workspace: <code>/home/shane/ProjekAtaka/gazebo_sim</code></p>
+<p>Versi dokumen: 10 Agustus 2026</p></section>
+
+<h2>1. Tujuan dan batasan</h2>
+<p>Manual ini menjelaskan instalasi, konfigurasi, pengoperasian, takeover remote, tuning, analisis hasil, dan troubleshooting sistem Beehive Drone pada dunia nyata.</p>
+<div class="danger"><b>Keselamatan:</b> perangkat lunak penelitian tidak menggantikan pilot, geofence, failsafe RC/baterai, pemeriksaan mekanis, atau prosedur lapangan. Uji bertahap: tanpa propeller → area steril/tether → penerbangan terbatas → misi penuh. Jangan bypass pemeriksaan arming Pixhawk.</div>
+<p>Algoritma nyata mengikuti state machine yang sama dengan Gazebo, tetapi karakter fisik tidak identik akibat angin, delay, noise point cloud, drift Visual Odometry, getaran, cahaya, bentuk pohon, dan dinamika airframe.</p>
+
+<h2>2. Arsitektur</h2>
+<table><tr><th>Komponen</th><th>Fungsi</th></tr>
+<tr><td>Pixhawk 6C/ArduCopter</td><td>Attitude, EKF, arming, mode, takeoff/land dan eksekusi setpoint.</td></tr>
+<tr><td>Jetson</td><td>ROS 2, ZED, PCL, mapping, FSM, orbit dan analyzer.</td></tr>
+<tr><td>ZED2i</td><td>Point cloud dan Visual Odometry.</td></tr>
+<tr><td>LiDAR bawah</td><td>Jarak permukaan bawah.</td></tr>
+<tr><td>Remote</td><td>Pilihan mode, takeover dan landing darurat.</td></tr></table>
+<pre>ZED cloud → pcl_proc_node → /global_cylinders → tree_mapper → /map/trees
+ZED odometry → bridge frame/covariance → /mavros/odometry/in → EKF3
+/mavros/local_position/pose → FSM + controller + analyzer
+FSM → safe target → position_setpoint_controller → MAVROS setpoint</pre>
+
+<h2>3. Instalasi Jetson</h2>
+<p>Siapkan ROS 2 Humble, JetPack/CUDA, ZED SDK, zed-ros2-wrapper, MAVROS, GeographicLib, PCL, matplotlib, serta package lokal <code>beehive_drone</code>, <code>point-cloud-test</code>, <code>pcl_cstm_msg</code>, dan <code>uav_interfaces</code>.</p>
+<pre>cd ~/gazebo_sim
+source /opt/ros/humble/setup.bash
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install
+source install/setup.bash</pre>
+<div class="note"><b>Build saja tidak cukup.</b> Port serial, ZED, transform kamera, bridge Visual Odometry, LiDAR, EKF, dan remote tetap wajib dikonfigurasi dan diuji.</div>
+<pre>ls -l /dev/serial/by-id/
+sudo usermod -aG dialout $USER</pre>
+<p>Logout/login setelah menambah grup. Gunakan <code>/dev/serial/by-id/...</code> agar nama port stabil.</p>
+
+<h2>4. Konfigurasi wajib</h2>
+<h3>4.1 MAVROS</h3>
+<pre>source /opt/ros/humble/setup.bash
+source ~/gazebo_sim/install/setup.bash
+ros2 run mavros mavros_node --ros-args \
+  -p fcu_url:=serial:///dev/serial/by-id/NAMA_PIXHAWK:921600</pre>
+<pre>ros2 topic echo --once /mavros/state
+ros2 topic hz /mavros/local_position/pose
+ros2 service list | grep mavros</pre>
+<p><code>connected</code> harus true. Jangan menjalankan dua controller/publisher setpoint untuk kendaraan yang sama.</p>
+
+<h3>4.2 ZED2i</h3>
+<p>Jalankan launch ZED2i yang sesuai instalasi Jetson, lalu validasi:</p>
+<pre>ros2 topic hz /zed/zed_node/point_cloud/cloud_registered
+ros2 topic hz /zed/zed_node/odom
+ros2 topic echo --once /zed/zed_node/pose/status</pre>
+
+<h3>4.3 Visual Odometry ke Pixhawk</h3>
+<div class="danger"><b>Wajib:</b> <code>real_mission.launch.py</code> tidak membuat bridge ZED ke <code>/mavros/odometry/in</code>. Bridge/konverter tervalidasi harus dijalankan sebelum mission. Nama topic yang ada tidak membuktikan terdapat publisher.</div>
+<pre>ros2 topic info /mavros/odometry/in -v
+ros2 topic hz /mavros/odometry/in
+ros2 topic hz /mavros/local_position/pose</pre>
+<ul><li>Pastikan publisher kontinu, frame/handedness/sumbu Z/yaw benar.</li>
+<li>Timestamp, child frame, dan covariance harus masuk akal.</li>
+<li>Pose lokal tidak boleh melompat atau drift cepat saat drone diam.</li>
+<li>Pixhawk tidak boleh lagi memberi <code>EK3 sources require VisualOdom</code> atau <code>waiting for home</code>.</li></ul>
+
+<h3>4.4 Transform ZED</h3>
+<p>Ukur optical center relatif pusat/body drone, dalam meter dan radian, lalu isi <code>config/real.yaml</code>:</p>
+<pre>camera_offset_x/y/z
+camera_mount_roll/pitch/yaw</pre>
+<p>Tanpa propeller, letakkan tiang tetap lalu geser dan putar drone. Koordinat pohon pada <code>/map/trees</code> harus tetap. Jika pohon ikut bergerak, jangan terbang.</p>
+
+<h3>4.5 LiDAR bawah</h3>
+<pre>ros2 topic type /mavros/rangefinder/rangefinder
+ros2 topic hz /mavros/rangefinder/rangefinder
+ros2 topic echo /mavros/rangefinder/rangefinder</pre>
+<p>Tipe harus <code>sensor_msgs/msg/Range</code>, finite, berubah sesuai jarak, dan berada di antara batas min/max.</p>
+
+<h3>4.6 Remote takeover</h3>
+<table><tr><th>Switch</th><th>Mode</th><th>Fungsi</th></tr>
+<tr><td>1</td><td>GUIDED</td><td>Otomatis.</td></tr><tr><td>2</td><td>LOITER</td><td>Takeover jika posisi EKF sehat.</td></tr>
+<tr><td>3</td><td>ALT_HOLD</td><td>Cadangan bila navigasi posisi bermasalah.</td></tr>
+<tr><td>Terpisah</td><td>LAND</td><td>Pendaratan terkendali.</td></tr></table>
+<p>Perubahan mode dari GUIDED membuat FSM masuk <code>MANUAL_OVERRIDE</code> dan menghentikan setpoint. Jangan mengandalkan gerakan stick selama mode tetap GUIDED.</p>
+
+<div class="page"></div><h2>5. Menjalankan program</h2>
+<h3>Terminal 1 — MAVROS</h3>
+<pre>source /opt/ros/humble/setup.bash
+source ~/gazebo_sim/install/setup.bash
+ros2 run mavros mavros_node --ros-args \
+  -p fcu_url:=serial:///dev/serial/by-id/NAMA_PIXHAWK:921600</pre>
+<h3>Terminal 2 — ZED wrapper</h3><pre># Jalankan launch ZED2i sesuai instalasi Jetson</pre>
+<h3>Terminal 3 — bridge Visual Odometry</h3><pre># Jalankan node yang menerbitkan odometri tervalidasi ke:
+/mavros/odometry/in</pre>
+<h3>Terminal 4 — mission</h3>
+<pre>cd ~/gazebo_sim
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch beehive_drone real_mission.launch.py</pre>
+<p>Default <code>auto_start:=false</code>. Sebelum start:</p>
+<pre>ros2 topic echo --once /mission/safety_ok
+ros2 topic echo --once /mission/safety_reason
+ros2 topic echo --once /mavros/state
+ros2 topic echo --once /mavros/local_position/pose</pre>
+<div class="ok">Mulai hanya bila safety_ok true, FCU connected, pose stabil, cloud aktif, VO diterima EKF, LiDAR valid, area steril, dan pilot memegang remote.</div>
+<pre>ros2 topic pub --once /mission/start std_msgs/msg/Bool "{data: true}"</pre>
+<p>Monitoring:</p>
+<pre>ros2 topic echo /mission/fsm_state
+ros2 topic echo /mission/safety_reason
+ros2 topic echo /map/trees</pre>
+<pre>WAIT_START → INIT → WAIT_GUIDED → WAIT_ARM → WAIT_TAKEOFF
+→ EXPLORE_ROW → APPROACH_TREE → VERIFY_TREE → START_ORBIT
+→ WAIT_ORBIT → POST_ORBIT_HOVER → ALIGN_HOME → RETURN_TO_HOME
+→ HOME_HOVER → LANDING → DONE</pre>
+
+<h2>6. Checklist lapangan</h2>
+<h3>Tanpa propeller</h3>
+<ul><li>Mode remote dan takeover benar.</li><li>Hanya satu node menerbitkan setpoint.</li>
+<li>Transform kamera lolos uji geser/putar.</li><li>VO masuk Pixhawk dan LiDAR valid.</li>
+<li>Arah/urutan motor benar dan emergency procedure dipahami.</li></ul>
+<h3>Sebelum setiap terbang</h3>
+<ul><li>Frame, propeller, kabel, kamera, LiDAR dan baterai terkunci.</li>
+<li>Baterai drone/remote/Jetson cukup; area orbit + margin steril.</li>
+<li>Tidak ada warning EKF/pre-arm; topic dan rate stabil; safety_ok true.</li>
+<li>Pilot siap memindah mode.</li></ul>
+<h3>Sesudah terbang</h3>
+<ul><li>Disarm terkonfirmasi.</li><li>Simpan ROS log dan laporan analyzer.</li>
+<li>Periksa temperatur dan mekanik.</li><li>Catat hanya satu kelompok perubahan untuk uji berikutnya.</li></ul>
+
+<h2>7. Metode tuning</h2>
+<ol><li>Simpan baseline <code>real.yaml</code> yang diketahui bekerja.</li>
+<li>Ubah satu kelompok parameter per pengujian.</li><li>Gunakan CSV, map 2D/3D, log dan video.</li>
+<li>Mulai lambat/konservatif lalu naikkan bertahap.</li><li>Ulangi minimal tiga kali.</li></ol>
+<table><tr><th>Urutan</th><th>Tujuan</th><th>Parameter</th></tr>
+<tr><td>1 Estimator</td><td>Pose/yaw stabil</td><td>ZED, bridge VO, EKF.</td></tr>
+<tr><td>2 PCL</td><td>Satu batang = satu pohon</td><td>Range, voxel, radius, height, confidence.</td></tr>
+<tr><td>3 Hover</td><td>Altitude stabil</td><td>flight_altitude dan tuning Pixhawk.</td></tr>
+<tr><td>4 Approach</td><td>Berhenti pada jarak target</td><td>approach distance/tolerance, slew.</td></tr>
+<tr><td>5 Orbit</td><td>Radius/yaw stabil, satu putaran</td><td>radius, velocity, radial/yaw/completion.</td></tr>
+<tr><td>6 Return</td><td>Kembali dan land</td><td>VO/EKF, slew, toleransi home.</td></tr></table>
+<div class="warn"><b>Hubungan penting:</b> bila memakai velocity controller, <code>goal_threshold &lt; approach_goal_tolerance</code>. Approach distance sebaiknya sama atau sedikit lebih besar dari radius orbit. Jangan menutupi deadlock dengan hanya memperbesar timeout.</div>
+<p>Waktu orbit ideal: <b>T ≈ 2πR/v</b>. Untuk R=1,5 m dan v=0,25 m/s, sekitar 37,7 detik; timeout 120 detik memberikan margin koreksi.</p>
+
+<h2>8. Referensi parameter real.yaml</h2>
+<h3>8.1 pcl_proc_node</h3>
+<table><tr><th>Parameter</th><th>Fungsi/tuning</th></tr>
+<tr><td>use_transform_pcl</td><td>Transform cloud optical; true untuk konfigurasi nyata terkalibrasi.</td></tr>
+<tr><td>min/max_sensor_range</td><td>Buang titik terlalu dekat/jauh. Max lebih kecil mengurangi noise jauh.</td></tr>
+<tr><td>voxel_leaf_size</td><td>Lebih besar lebih ringan tetapi detail batang berkurang.</td></tr>
+<tr><td>processing_period_ms</td><td>Interval PCL. Naikkan jika compute overload.</td></tr>
+<tr><td>global_frame_id</td><td>Frame global; harus konsisten.</td></tr>
+<tr><td>camera_offset_*</td><td>Translasi kamera terhadap body dalam meter.</td></tr>
+<tr><td>camera_mount_*</td><td>Rotasi kamera terhadap body dalam radian.</td></tr></table>
+
+<h3>8.2 tree_mapper</h3>
+<table><tr><th>Parameter</th><th>Fungsi/tuning</th></tr>
+<tr><td>frame_id</td><td>Frame peta/marker.</td></tr>
+<tr><td>merge_distance</td><td>Terlalu besar menggabungkan pohon; terlalu kecil membuat duplikat.</td></tr>
+<tr><td>minimum_seen_count</td><td>Naikkan untuk menekan false positive; turunkan agar cepat.</td></tr>
+<tr><td>min/max_radius</td><td>Batas radius batang hasil cylinder fit.</td></tr>
+<tr><td>min/max_height</td><td>Batas tinggi cylinder.</td></tr>
+<tr><td>max_trunk_base_height</td><td>Mencegah kanopi/objek menggantung dianggap batang.</td></tr>
+<tr><td>min_cylinder_confidence</td><td>Ambang kualitas fit.</td></tr>
+<tr><td>position_alpha</td><td>Kecil lebih halus/lambat; besar responsif/noisy.</td></tr></table>
+
+<h3>8.3 mission_state_machine</h3>
+<table><tr><th>Parameter</th><th>Fungsi/catatan</th></tr>
+<tr><td>flight_altitude</td><td>Ketinggian takeoff/misi; saat ini 1,5 m.</td></tr>
+<tr><td>approach_distance</td><td>Jarak berhenti dari pohon; saat ini 2,0 m.</td></tr>
+<tr><td>tree_distance_tolerance</td><td>Margin verifikasi; kecil sering retry, besar menerima posisi salah.</td></tr>
+<tr><td>approach_goal_tolerance</td><td>Jarak titik pengereman dianggap tercapai.</td></tr>
+<tr><td>verification_retry_limit</td><td>Jumlah koreksi sebelum kandidat dibuang.</td></tr>
+<tr><td>require_safety_monitor</td><td>Pertahankan true untuk nyata.</td></tr>
+<tr><td>auto_start</td><td>Pertahankan false untuk operasi lapangan.</td></tr>
+<tr><td>state_timeout</td><td>Batas waktu state non-exempt.</td></tr>
+<tr><td>pose_timeout</td><td>Usia maksimum local pose.</td></tr>
+<tr><td>abort_mode</td><td>Mode abort yang dikonfigurasi; validasi lewat uji dan log.</td></tr></table>
+
+<h3>8.4 dynamic_orbit_controller</h3>
+<table><tr><th>Parameter</th><th>Fungsi/tuning</th></tr>
+<tr><td>orbit_radius</td><td>Radius target; mulai besar lalu kecilkan.</td></tr>
+<tr><td>orbit_altitude</td><td>Samakan dengan flight altitude untuk mengurangi transien.</td></tr>
+<tr><td>orbit_velocity</td><td>Turunkan bila gerak patah, radial error atau yaw tertinggal.</td></tr>
+<tr><td>orbit_timeout</td><td>Lebih besar dari 2πR/v + margin.</td></tr>
+<tr><td>radial_tolerance</td><td>Error radius yang diterima untuk progres.</td></tr>
+<tr><td>yaw_offset</td><td>Nol berarti menghadap pohon.</td></tr>
+<tr><td>completion_tolerance_degrees</td><td>Terlalu kecil dapat lewat satu putaran; terlalu besar selesai dini.</td></tr></table>
+
+<h3>8.5 position_setpoint_controller (aktif pada launch nyata)</h3>
+<table><tr><th>Parameter</th><th>Fungsi</th></tr>
+<tr><td>publish_rate</td><td>Frekuensi setpoint; saat ini 20 Hz.</td></tr>
+<tr><td>max_horizontal_step</td><td>Kecil halus/lambat; besar responsif/agresif.</td></tr>
+<tr><td>max_vertical_step</td><td>Batas perubahan target Z per siklus.</td></tr>
+<tr><td>target_timeout</td><td>Target basi menyebabkan hold pose.</td></tr>
+<tr><td>output_frame</td><td>Harus cocok dengan local positioning MAVROS.</td></tr></table>
+<div class="warn">Jangan jalankan position dan velocity controller bersama. Bagian <code>velocity_controller</code> di YAML hanya relevan jika arsitektur sengaja dialihkan.</div>
+
+<h3>8.6 mission_safety_monitor</h3>
+<table><tr><th>Parameter</th><th>Fungsi</th></tr>
+<tr><td>pointcloud_topic/range_topic</td><td>Topic sensor yang diawasi.</td></tr>
+<tr><td>require_rangefinder</td><td>LiDAR wajib setelah arm + grace.</td></tr>
+<tr><td>*_timeout</td><td>Batas usia pose/cloud/state/range sebelum stale.</td></tr>
+<tr><td>range_arm_grace</td><td>Tenggang karena LiDAR bisa nol di tanah.</td></tr>
+<tr><td>min/max_range</td><td>Rentang LiDAR valid.</td></tr></table>
+
+<h3>8.7 mission_analyzer</h3>
+<table><tr><th>Parameter</th><th>Fungsi</th></tr>
+<tr><td>output_directory</td><td>Folder laporan.</td></tr><tr><td>map_frame</td><td>Label frame.</td></tr>
+<tr><td>sample_period</td><td>Interval trajectory.</td></tr><tr><td>console_period</td><td>Interval log.</td></tr>
+<tr><td>autosave_period</td><td>Interval simpan CSV/JSON/PNG.</td></tr></table>
+
+<h2>9. mission_params.py dan real.yaml</h2>
+<p><code>mission_params.py</code> menyediakan default/fallback. Parameter ROS dari <code>real.yaml</code> mengalahkan default tersebut. Tuning nyata dilakukan terutama di <code>src/beehive_drone/config/real.yaml</code>. Setelah perubahan, build/source dan periksa nilai efektif:</p>
+<pre>colcon build --symlink-install
+source install/setup.bash
+ros2 param get /mission_state_machine flight_altitude
+ros2 param get /mission_state_machine approach_distance
+ros2 param get /dynamic_orbit_controller orbit_radius
+ros2 param dump /mission_state_machine</pre>
+
+<h2>10. Laporan Mission Analyzer</h2>
+<pre>~/beehive_mission_reports/real/mission_YYYYMMDD_HHMMSS/</pre>
+<table><tr><th>File</th><th>Isi</th></tr>
+<tr><td>drone_trajectory.csv</td><td>Waktu, X/Y/Z, yaw, speed dan state.</td></tr>
+<tr><td>tree_map.csv</td><td>ID, posisi, confidence, validated, inspected, orbit count.</td></tr>
+<tr><td>state_history.csv</td><td>Transisi FSM.</td></tr>
+<tr><td>mission_summary.json</td><td>Statistik dan snapshot akhir.</td></tr>
+<tr><td>map_2d.png/map_3d.png</td><td>Lintasan, home dan pohon.</td></tr>
+<tr><td>flight_profile.png</td><td>Altitude dan speed terhadap waktu.</td></tr></table>
+
+<div class="page"></div><h2>11. Troubleshooting</h2>
+<table><tr><th>Gejala</th><th>Penyebab/tindakan</th></tr>
+<tr><td>EK3 requires VisualOdom</td><td>Publisher VO tidak ada/invalid; cek rate, frame, timestamp, covariance dan EKF.</td></tr>
+<tr><td>Waiting for home</td><td>Estimator belum sehat/origin belum terbentuk. Jangan bypass.</td></tr>
+<tr><td>Pohon hilang setelah altitude berubah</td><td>ROI, height, sudut kamera, range/densitas berubah; rekam cloud dan tuning satu per satu.</td></tr>
+<tr><td>Pohon palsu</td><td>Naikkan seen count/confidence; ketatkan radius/base height bertahap.</td></tr>
+<tr><td>Satu pohon banyak ID</td><td>Perbaiki drift pose; lalu sesuaikan merge distance.</td></tr>
+<tr><td>Approach diam, orbit tidak mulai</td><td>Deadband vs arrival tolerance atau verifikasi gagal; cek parameter efektif dan log jarak.</td></tr>
+<tr><td>Orbit lebih sekali</td><td>Completion terlalu ketat/pose noisy; naikkan secukupnya, turunkan velocity.</td></tr>
+<tr><td>Tidak menghadap pohon</td><td>Gunakan yaw_offset=0; cek frame/yaw; turunkan velocity.</td></tr>
+<tr><td>Gerakan patah</td><td>Cek rate/latency/pose; tuning slew; kurangi beban PCL.</td></tr>
+<tr><td>Tidak kembali tepat</td><td>Drift local pose/origin; stabilkan VO/EKF sebelum controller.</td></tr>
+<tr><td>cloud_stale</td><td>Cek nama/rate topic, temperatur dan beban Jetson.</td></tr>
+<tr><td>range_invalid</td><td>Cek wiring, orientasi, tipe message dan min/max.</td></tr></table>
+
+<h2>12. Tahap uji dan kriteria lulus</h2>
+<table><tr><th>Level</th><th>Pengujian</th><th>Lulus jika</th></tr>
+<tr><td>0</td><td>Tanpa propeller</td><td>Topic, mode, takeover, transform dan setpoint benar.</td></tr>
+<tr><td>1</td><td>Hover</td><td>Pose/altitude stabil tanpa warning EKF.</td></tr>
+<tr><td>2</td><td>Takeoff otomatis 1,5 m</td><td>Hover dan takeover berhasil.</td></tr>
+<tr><td>3</td><td>Deteksi statis</td><td>Satu pohon stabil dalam map.</td></tr>
+<tr><td>4</td><td>Approach</td><td>Berhenti pada jarak target tanpa overshoot.</td></tr>
+<tr><td>5</td><td>Orbit lambat</td><td>Radius/yaw stabil dan satu putaran.</td></tr>
+<tr><td>6</td><td>Return/landing</td><td>Kembali dalam toleransi lalu land.</td></tr>
+<tr><td>7</td><td>Misi penuh</td><td>Minimal tiga ulangan konsisten.</td></tr></table>
+
+<h2>13. Baseline nyata saat ini</h2>
+<table><tr><th>Parameter</th><th>Nilai</th><th>Catatan</th></tr>
+<tr><td>flight_altitude</td><td>1,5 m</td><td>Cek ground effect dan FOV.</td></tr>
+<tr><td>approach_distance</td><td>2,0 m</td><td>Konservatif sebelum radius 1,5 m.</td></tr>
+<tr><td>orbit_radius</td><td>1,5 m</td><td>Area bebas harus mencakup margin error dan ukuran drone.</td></tr>
+<tr><td>orbit_velocity</td><td>0,25 m/s</td><td>Baik untuk tuning awal.</td></tr>
+<tr><td>yaw_offset</td><td>0 rad</td><td>Menghadap pohon.</td></tr>
+<tr><td>require_safety_monitor</td><td>true</td><td>Pertahankan.</td></tr>
+<tr><td>auto_start</td><td>false</td><td>Pertahankan untuk lapangan.</td></tr></table>
+
+<h2>14. Darurat dan go/no-go</h2>
+<ol><li>Algoritma menyimpang, estimator sehat: pindah <b>LOITER</b>.</li>
+<li>Visual Odometry/posisi bermasalah: <b>ALT_HOLD</b>, kendalikan manual.</li>
+<li>Jika aman: <b>LAND</b> atau landing manual sesuai latihan.</li>
+<li>Jangan disarm di udara kecuali prosedur kondisi ekstrem mengharuskan.</li></ol>
+<div class="ok"><b>GO:</b> mekanik sehat; pilot/observer siap; area steril; MAVROS connected; ZED/LiDAR stabil; VO diterima EKF; pose dan transform valid; safety_ok true; takeover diuji; parameter efektif diperiksa.</div>
+<div class="danger"><b>NO-GO:</b> warning EKF/pre-arm; pose drift/lompat; pohon bergerak dalam map; sensor stale; port serial tidak stabil; dua publisher setpoint; thermal throttling; atau prosedur takeover belum jelas.</div>
+<p class="small">Setelah perubahan kode, frame, firmware, sensor, atau parameter, ulangi audit dan pengujian bertahap sebelum penerbangan.</p>
+</body></html>

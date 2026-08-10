@@ -65,7 +65,6 @@ velocity_controller:
     minimum_control_altitude: 0.20
     # Sisakan margin terhadap approach_goal_tolerance (0.15 m).
     goal_threshold: 0.10
-    goal_threshold: 0.10
 
 mission_safety_monitor:
   ros__parameters:
@@ -79,3 +78,11 @@ mission_safety_monitor:
     range_arm_grace: 5.0
     min_range: 0.08
     max_range: 20.0
+
+mission_analyzer:
+  ros__parameters:
+    output_directory: ~/beehive_mission_reports/real
+    map_frame: map
+    sample_period: 0.20
+    console_period: 2.0
+    autosave_period: 10.0

@@ -1,742 +1,319 @@
 #!/usr/bin/env python3
+"""Mission telemetry recorder and headless 2D/3D report generator."""
 
-import math
-import time
 import csv
+import json
+import math
+import os
+import time
 from datetime import datetime
+from pathlib import Path
 
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import rclpy
+from geometry_msgs.msg import PoseArray, PoseStamped
 from rclpy.node import Node
-
-from rclpy.qos import (
-    QoSProfile,
-    ReliabilityPolicy,
-    HistoryPolicy,
-    DurabilityPolicy
-)
-
-from geometry_msgs.msg import (
-    PoseStamped,
-    PoseArray
-)
-
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
-
-from uav_interfaces.msg import (
-    Tree,
-    TreeArray
-)
+from uav_interfaces.msg import TreeArray
 
 
 class MissionAnalyzer(Node):
-
     def __init__(self):
+        super().__init__('mission_analyzer')
 
-        super().__init__(
-            "mission_analyzer"
-        )
+        self.declare_parameter('output_directory', '~/beehive_mission_reports')
+        self.declare_parameter('sample_period', 0.20)
+        self.declare_parameter('console_period', 2.0)
+        self.declare_parameter('autosave_period', 10.0)
+        self.declare_parameter('map_frame', 'odom')
 
-        qos_sensor = QoSProfile(
+        root = Path(os.path.expanduser(str(
+            self.get_parameter('output_directory').value))).resolve()
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.output_dir = root / f'mission_{stamp}'
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.map_frame = str(self.get_parameter('map_frame').value)
+        self.sample_period = max(0.05, float(self.get_parameter('sample_period').value))
+        self.console_period = max(0.5, float(self.get_parameter('console_period').value))
+        self.autosave_period = max(2.0, float(self.get_parameter('autosave_period').value))
+
+        sensor_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10
-        )
-
-        qos_map = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST, depth=10)
+        map_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1
-        )
+            history=HistoryPolicy.KEEP_LAST, depth=1)
 
-        self.start_time = time.time()
+        self.start_wall = time.time()
+        self.latest_pose = None
+        self.latest_pose_stamp = None
+        self.home = None
+        self.trees = {}
+        self.waypoints = []
+        self.samples = []
+        self.state_events = []
+        self.tree_snapshots = []
+        self.current_state = 'WAITING'
+        self.previous_sample = None
+        self.total_distance_3d = 0.0
+        self.total_distance_xy = 0.0
+        self.max_speed = 0.0
+        self.max_altitude = -math.inf
+        self.min_altitude = math.inf
+        self.final_saved = False
 
-        self.current_status = "INIT"
-
-        self.status_history = []
-
-        self.have_pose = False
-
-        self.uav_x = 0.0
-        self.uav_y = 0.0
-        self.uav_z = 0.0
-
-        self.path_x = []
-        self.path_y = []
-        self.path_z = []
-
-        self.path_time = []
-
-        self.total_distance = 0.0
-
-        self.trees = []
-
-        self.total_tree = 0
-
-        self.detected_tree = 0
-
-        self.validated_tree = 0
-
-        self.inspected_tree = 0
-
-        self.coverage = 0.0
-
-        self.previous_pose = None
-        
-        self.completed_waypoints = 0
-
-        self.current_state = "INIT"
-
-        self.current_follower = "WAITING"
-
-        self.follower_history = []
-
-        self.completed_trajectory = 0
-
-        self.current_waypoints = None
-
-        self.total_waypoints = 0
-
-        self.waypoint_history = []
-
-        self.average_speed = 0.0
-
-        plt.ion()
-
-        self.figure = plt.figure(
-            figsize=(12,10)
-        )
-
-        self.axis = self.figure.add_subplot(111)
-
-        self.create_subscription(
-            PoseStamped,
-            "/mavros/local_position/pose",
-            self.pose_callback,
-            qos_sensor
-        )
-
-        self.create_subscription(
-            TreeArray,
-            "/map/trees",
-            self.tree_callback,
-            qos_map
-        )
-
-        self.create_subscription(
-            String,
-            "/mission/status",
-            self.mission_callback,
-            10
-        )
-
-        self.create_subscription(
-            String,
-            "/navigation/follower_status",
-            self.follower_callback,
-            10
-        )
-
-        self.create_subscription(
-            PoseArray,
-            "/mission/inspection_waypoints",
-            self.waypoint_callback,
-            10
-        )
-
-        self.timer = self.create_timer(
-            0.5,
-            self.update
-        )
+        self.create_subscription(PoseStamped, '/mavros/local_position/pose',
+                                 self.pose_callback, sensor_qos)
+        self.create_subscription(TreeArray, '/map/trees', self.tree_callback, map_qos)
+        self.create_subscription(String, '/mission/fsm_state', self.state_callback, 10)
+        self.create_subscription(PoseArray, '/mission/inspection_waypoints',
+                                 self.waypoint_callback, 10)
+        self.create_timer(self.sample_period, self.sample)
+        self.create_timer(self.console_period, self.print_status)
+        self.create_timer(self.autosave_period, self.autosave)
 
         self.get_logger().info(
-            "Mission Analyzer Started"
-        )
+            f'Mission Analyzer aktif; laporan: {self.output_dir}')
+
+    def elapsed(self):
+        return time.time() - self.start_wall
+
+    @staticmethod
+    def yaw_from_quaternion(q):
+        siny = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        return math.atan2(siny, cosy)
 
     def pose_callback(self, msg):
+        self.latest_pose = msg.pose
+        self.latest_pose_stamp = msg.header.stamp
+        if self.home is None:
+            p = msg.pose.position
+            self.home = (float(p.x), float(p.y), float(p.z))
 
-        self.uav_x = msg.pose.position.x
-        self.uav_y = msg.pose.position.y
-        self.uav_z = msg.pose.position.z
-
-        self.have_pose = True
-
-        self.path_x.append(self.uav_x)
-        self.path_y.append(self.uav_y)
-        self.path_z.append(self.uav_z)
-
-        elapsed = time.time() - self.start_time
-
-        self.path_time.append(elapsed)
-
-        if self.previous_pose is not None:
-
-            dx = msg.pose.position.x - self.previous_pose.position.x
-            dy = msg.pose.position.y - self.previous_pose.position.y
-            dz = msg.pose.position.z - self.previous_pose.position.z
-
-            self.total_distance += math.sqrt(
-                dx*dx + dy*dy + dz*dz
-            )
-
-        self.previous_pose = msg.pose
-
-        if elapsed > 0.0:
-
-            self.average_speed = (
-                self.total_distance /
-                elapsed
-            )
-
-    def mission_callback(self, msg):
-
-        status = msg.data
-
-        # Hindari log yang sama berulang-ulang
-        if status == self.current_status:
+    def state_callback(self, msg):
+        if msg.data == self.current_state:
             return
-
-        self.current_status = status
-
-        now = self.get_clock().now().nanoseconds / 1e9
-
-        self.status_history.append(
-            (now, status)
-        )
-
-        self.get_logger().info(
-            f"[MISSION] {status}"
-        )
+        self.current_state = msg.data
+        self.state_events.append({'time_s': self.elapsed(), 'state': msg.data})
+        self.get_logger().info(f'[STATE] {msg.data}')
+        if msg.data in ('DONE', 'ABORT', 'MANUAL_OVERRIDE'):
+            self.save_all(final=True)
 
     def tree_callback(self, msg):
-
-        self.trees = msg.trees
-
-        self.total_tree = len(msg.trees)
-
-        self.inspected_tree = sum(
-            1 for t in msg.trees
-            if t.inspected
-        )
-
-        self.validated_tree = sum(
-            1 for t in msg.trees
-            if t.validated
-        )
-
-        if self.total_tree > 0:
-
-            self.coverage = (
-                self.inspected_tree /
-                self.total_tree
-            ) * 100.0
-
-        else:
-
-            self.coverage = 0.0
-
-    def follower_callback(self, msg):
-
-        status = msg.data
-
-        if status == self.current_follower:
-
-            return
-
-        self.current_follower = status
-
-        timestamp = (
-            time.time() -
-            self.start_time
-        )
-
-        self.follower_history.append(
-            (
-                timestamp,
-                status
-            )
-        )
-
-        if status == "WAYPOINT_REACHED":
-
-            self.completed_waypoints += 1
-
-        if status == "TRAJECTORY_COMPLETED":
-
-            self.completed_trajectory += 1
-
-        self.get_logger().info(
-
-            f"[FOLLOWER] {status}"
-
-        )
-
-    def update(self):
-
-        self.calculate_statistics()
-
-        self.draw_map()
+        now = self.elapsed()
+        updated = {}
+        for tree in msg.trees:
+            item = {
+                'id': int(tree.id), 'x': float(tree.x), 'y': float(tree.y),
+                'z': float(tree.z), 'confidence': float(tree.confidence),
+                'inspected': bool(tree.inspected), 'validated': bool(tree.validated),
+                'orbit_count': int(tree.orbit_count), 'time_s': now,
+            }
+            updated[item['id']] = item
+        self.trees = updated
+        self.tree_snapshots.extend(updated.values())
 
     def waypoint_callback(self, msg):
+        self.waypoints = [(float(p.position.x), float(p.position.y),
+                           float(p.position.z)) for p in msg.poses]
 
-        self.current_waypoints = msg
+    def sample(self):
+        if self.latest_pose is None:
+            return
+        now = self.elapsed()
+        p = self.latest_pose.position
+        yaw = self.yaw_from_quaternion(self.latest_pose.orientation)
+        speed = 0.0
+        if self.previous_sample is not None:
+            dt = now - self.previous_sample['time_s']
+            dx = p.x - self.previous_sample['x']
+            dy = p.y - self.previous_sample['y']
+            dz = p.z - self.previous_sample['z']
+            dxy = math.hypot(dx, dy)
+            d3 = math.sqrt(dx * dx + dy * dy + dz * dz)
+            self.total_distance_xy += dxy
+            self.total_distance_3d += d3
+            if dt > 1e-3:
+                speed = d3 / dt
+                self.max_speed = max(self.max_speed, speed)
+        row = {
+            'time_s': now, 'x': float(p.x), 'y': float(p.y), 'z': float(p.z),
+            'yaw_deg': math.degrees(yaw), 'speed_mps': speed,
+            'state': self.current_state,
+        }
+        self.samples.append(row)
+        self.previous_sample = row
+        self.max_altitude = max(self.max_altitude, float(p.z))
+        self.min_altitude = min(self.min_altitude, float(p.z))
 
-        self.total_waypoints = len(msg.poses)
+    def statistics(self):
+        duration = self.elapsed()
+        inspected = sum(t['inspected'] for t in self.trees.values())
+        validated = sum(t['validated'] for t in self.trees.values())
+        count = len(self.trees)
+        avg_speed = self.total_distance_3d / duration if duration > 0.0 else 0.0
+        current = self.samples[-1] if self.samples else None
+        return {
+            'duration_s': duration,
+            'state': self.current_state,
+            'frame': self.map_frame,
+            'current_drone': current,
+            'home': self.home,
+            'distance_xy_m': self.total_distance_xy,
+            'distance_3d_m': self.total_distance_3d,
+            'average_speed_mps': avg_speed,
+            'maximum_speed_mps': self.max_speed,
+            'minimum_altitude_m': None if self.min_altitude == math.inf else self.min_altitude,
+            'maximum_altitude_m': None if self.max_altitude == -math.inf else self.max_altitude,
+            'trees_detected': count,
+            'trees_validated': validated,
+            'trees_inspected': inspected,
+            'coverage_percent': 100.0 * inspected / count if count else 0.0,
+            'sample_count': len(self.samples),
+        }
 
-        timestamp = (
-            time.time() -
-            self.start_time
-        )
-
-        waypoints = []
-
-        for pose in msg.poses:
-
-            waypoints.append(
-                (
-                    pose.position.x,
-                    pose.position.y,
-                    pose.position.z
-                )
-            )
-
-        self.waypoint_history.append(
-            (
-                timestamp,
-                waypoints
-            )
-        )
-
+    def print_status(self):
+        stat = self.statistics()
+        pose = stat['current_drone']
+        if pose is None:
+            self.get_logger().info(f'[ANALYZER] state={self.current_state}; menunggu pose')
+            return
+        tree_text = ', '.join(
+            f"ID{t['id']}=({t['x']:.2f},{t['y']:.2f},{t['z']:.2f})"
+            for t in sorted(self.trees.values(), key=lambda item: item['id'])) or '-'
         self.get_logger().info(
-
-            f"[WAYPOINT] Received "
-            f"{self.total_waypoints} waypoint(s)"
-
-        )
-
-    def calculate_statistics(self):
-
-        if self.start_time is None:
-
-            duration = 0.0
-
-        else:
-
-            duration = time.time() - self.start_time
-
-        distance = self.total_distance
-
-        if duration > 0.0:
-
-            avg_speed = distance / duration
-
-        else:
-
-            avg_speed = 0.0
-
-        total_tree = len(self.trees)
-
-        inspected_tree = 0
-
-        validated_tree = 0
-
-
-        for tree in self.trees:
-
-            if tree.inspected:
-
-                inspected_tree += 1
-
-            if tree.validated:
-
-                validated_tree += 1
-
-        if total_tree > 0:
-
-            coverage = (
-                inspected_tree /
-                total_tree
-            ) * 100.0
-
-        else:
-
-            coverage = 0.0
-
-        total_waypoint = self.total_waypoints
-
-        finished_waypoint = self.completed_waypoints
-
-        self.get_logger().info("========================================")
-        self.get_logger().info("MISSION SUMMARY")
-        self.get_logger().info("========================================")
-
-        self.get_logger().info(
-            f"Mission Time      : {duration:.1f} s"
-        )
-
-        self.get_logger().info(
-            f"Travel Distance   : {distance:.2f} m"
-        )
-
-        self.get_logger().info(
-            f"Average Speed     : {avg_speed:.2f} m/s"
-        )
-
-        self.get_logger().info(
-            f"Trees Detected    : {total_tree}"
-        )
-
-        self.get_logger().info(
-            f"Trees Inspected   : {inspected_tree}"
-        )
-
-        self.get_logger().info(
-            f"Trees Validated   : {validated_tree}"
-        )
-
-        self.get_logger().info(
-            f"Coverage          : {coverage:.1f} %"
-        )
-
-        self.get_logger().info(
-            f"Waypoints Planned : {total_waypoint}"
-        )
-
-        self.get_logger().info(
-            f"Waypoints Passed  : {finished_waypoint}"
-        )
-
-        self.get_logger().info(
-            f"Trajectory Finish : {self.completed_trajectory}"
-        )
-
-        self.get_logger().info("========================================")
-
-    def draw_map(self):
-
-        self.axis.clear()
-
-        self.axis.set_title(
-            "UAV Mission Analysis",
-            fontsize=16,
-            fontweight="bold"
-        )
-
-        self.axis.set_xlabel("X (m)")
-        self.axis.set_ylabel("Y (m)")
-
-        self.axis.grid(True)
-
-        self.axis.set_aspect(
-            "equal",
-            adjustable="box"
-        )
-
-        if len(self.path_x) > 1:
-
-            self.axis.plot(
-                self.path_x,
-                self.path_y,
-                color="blue",
-                linewidth=2,
-                label="Trajectory"
-            )
-
-        if self.have_pose:
-
-            self.axis.scatter(
-                self.uav_x,
-                self.uav_y,
-                color="red",
-                s=120,
-                marker="o",
-                label="UAV"
-            )
-        self.axis.scatter(
-            0,
-            0,
-            marker="*",
-            s=180,
-            color="gold",
-            label="Home"
-)
-        
-        for tree in self.trees:
-
-            if tree.inspected:
-
-                color = "green"
-
-            elif tree.validated:
-
-                color = "orange"
-
-            else:
-
-                color = "black"
-
-            self.axis.scatter(
-                tree.x,
-                tree.y,
-                color=color,
-                s=60
-            )
-
-            self.axis.text(
-                tree.x,
-                tree.y + 0.3,
-                str(tree.id),
-                fontsize=8
-            )
-
-        if self.current_waypoints is not None:
-
-            orbit_x = []
-            orbit_y = []
-
-            for pose in self.current_waypoints.poses:
-
-                orbit_x.append(
-                    pose.position.x
-                )
-
-                orbit_y.append(
-                    pose.position.y
-                )
-
-            if len(orbit_x) > 0:
-
-                orbit_x.append(
-                    orbit_x[0]
-                )
-
-                orbit_y.append(
-                    orbit_y[0]
-                )
-
-                self.axis.plot(
-                    orbit_x,
-                    orbit_y,
-                    "--",
-                    color="purple",
-                    linewidth=2,
-                    label="Inspection Orbit"
-                )
-
-        mission_time = (
-            time.time() -
-            self.start_time
-        )
-
-        info = (
-            f"State : {self.current_status}\n"
-            f"Follower : {self.current_follower}\n"
-            f"Mission Time : {mission_time:.1f} s\n"
-            f"Distance : {self.total_distance:.1f} m\n"
-            f"Coverage : {self.coverage:.1f}%\n"
-            f"Trees : {self.inspected_tree}/{self.total_tree}"
-        )
-
-        self.axis.text(
-
-            0.02,
-            0.98,
-
-            info,
-
-            transform=self.axis.transAxes,
-
-            fontsize=10,
-
-            verticalalignment="top",
-
-            bbox=dict(
-                facecolor="white",
-                alpha=0.8
-            )
-
-        )
-
-        self.axis.legend()
-
-        self.figure.canvas.draw()
-
-        self.figure.canvas.flush_events()
-
-    def save_csv(self):
-
-        filename = (
-            "mission_result_" +
-            time.strftime("%Y%m%d_%H%M%S") +
-            ".csv"
-        )
-
-        with open(filename, "w", newline="") as csvfile:
-
-            writer = csv.writer(csvfile)
-
-            writer.writerow(["Mission Summary"])
-
-            writer.writerow([
-                "Mission Time (s)",
-                time.time() - self.start_time
-            ])
-
-            writer.writerow([
-                "Travel Distance (m)",
-                self.total_distance
-            ])
-
-            writer.writerow([
-                "Total Tree",
-                self.total_tree
-            ])
-
-            writer.writerow([
-                "Inspected Tree",
-                self.inspected_tree
-            ])
-
-            writer.writerow([
-                "Validated Tree",
-                self.validated_tree
-            ])
-
-            writer.writerow([
-                "Coverage (%)",
-                self.coverage
-            ])
-
-            writer.writerow([])
-
-            writer.writerow(
-                [
-                    "Trajectory"
-                ]
-            )
-
-            writer.writerow(
-                [
-                    "Index",
-                    "X",
-                    "Y"
-                ]
-            )
-
-            for i in range(len(self.path_x)):
-
-                writer.writerow(
-                    [
-                        i,
-                        self.path_x[i],
-                        self.path_y[i]
-                    ]
-                )
-
-            writer.writerow([])
-
-            writer.writerow(
-                [
-                    "Trees"
-                ]
-            )
-
-            writer.writerow(
-                [
-                    "ID",
-                    "X",
-                    "Y",
-                    "Confidence",
-                    "Validated",
-                    "Inspected"
-                ]
-            )
-
-            for tree in self.trees:
-
-                writer.writerow(
-                    [
-                        tree.id,
-                        tree.x,
-                        tree.y,
-                        tree.confidence,
-                        tree.validated,
-                        tree.inspected
-                    ]
-                )
-
-        self.get_logger().info(
-            f"CSV saved : {filename}"
-        )
-
-    def save_png(self):
-
-        filename = (
-            "mission_map_" +
-            time.strftime("%Y%m%d_%H%M%S") +
-            ".png"
-        )
-
-        self.figure.savefig(
-
-            filename,
-
-            dpi=300,
-
-            bbox_inches="tight"
-
-        )
-
-        self.get_logger().info(
-
-            f"Map saved : {filename}"
-
-        )
+            f"[ANALYZER] state={self.current_state} | drone=({pose['x']:.2f},"
+            f"{pose['y']:.2f},{pose['z']:.2f}) m | yaw={pose['yaw_deg']:.1f} deg | "
+            f"v={pose['speed_mps']:.2f} m/s | jarak={self.total_distance_3d:.2f} m | "
+            f"pohon: {tree_text}")
+
+    def autosave(self):
+        self.save_data_files()
+        self.draw_maps()
+
+    @staticmethod
+    def write_csv(path, rows, fields):
+        with path.open('w', newline='', encoding='utf-8') as stream:
+            writer = csv.DictWriter(stream, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def save_data_files(self):
+        self.write_csv(self.output_dir / 'drone_trajectory.csv', self.samples,
+                       ['time_s', 'x', 'y', 'z', 'yaw_deg', 'speed_mps', 'state'])
+        self.write_csv(self.output_dir / 'tree_map.csv',
+                       sorted(self.trees.values(), key=lambda item: item['id']),
+                       ['id', 'x', 'y', 'z', 'confidence', 'inspected',
+                        'validated', 'orbit_count', 'time_s'])
+        self.write_csv(self.output_dir / 'state_history.csv', self.state_events,
+                       ['time_s', 'state'])
+        report = self.statistics()
+        report['trees'] = sorted(self.trees.values(), key=lambda item: item['id'])
+        report['state_history'] = self.state_events
+        with (self.output_dir / 'mission_summary.json').open(
+                'w', encoding='utf-8') as stream:
+            json.dump(report, stream, indent=2)
+
+    def tree_color(self, tree):
+        if tree['inspected']:
+            return 'green'
+        if tree['validated']:
+            return 'orange'
+        return 'black'
+
+    def draw_maps(self):
+        if not self.samples:
+            return
+        xs = [s['x'] for s in self.samples]
+        ys = [s['y'] for s in self.samples]
+        zs = [s['z'] for s in self.samples]
+
+        fig, ax = plt.subplots(figsize=(10, 8))
+        ax.plot(xs, ys, color='royalblue', linewidth=1.5, label='Lintasan drone')
+        ax.scatter(xs[-1], ys[-1], color='red', s=80, label='Drone')
+        if self.home:
+            ax.scatter(self.home[0], self.home[1], marker='*', color='gold',
+                       edgecolor='black', s=180, label='Takeoff/Home')
+        for tree in sorted(self.trees.values(), key=lambda item: item['id']):
+            ax.scatter(tree['x'], tree['y'], color=self.tree_color(tree), s=80)
+            ax.annotate(f"T{tree['id']}\n({tree['x']:.2f}, {tree['y']:.2f})",
+                        (tree['x'], tree['y']), xytext=(5, 5),
+                        textcoords='offset points', fontsize=8)
+        if self.waypoints:
+            wx = [p[0] for p in self.waypoints]
+            wy = [p[1] for p in self.waypoints]
+            ax.plot(wx, wy, '--', color='purple', linewidth=1, label='Waypoint')
+        ax.set(title=f'Peta Misi 2D — {self.current_state}', xlabel='X (m)', ylabel='Y (m)')
+        ax.grid(True, alpha=0.3)
+        ax.axis('equal')
+        ax.legend(loc='best')
+        fig.tight_layout()
+        fig.savefig(self.output_dir / 'map_2d.png', dpi=180)
+        plt.close(fig)
+
+        fig = plt.figure(figsize=(11, 8))
+        ax3 = fig.add_subplot(111, projection='3d')
+        ax3.plot(xs, ys, zs, color='royalblue', linewidth=1.5, label='Lintasan drone')
+        ax3.scatter(xs[-1], ys[-1], zs[-1], color='red', s=60, label='Drone')
+        if self.home:
+            ax3.scatter(*self.home, marker='*', color='gold', s=150, label='Takeoff/Home')
+        for tree in sorted(self.trees.values(), key=lambda item: item['id']):
+            ax3.scatter(tree['x'], tree['y'], tree['z'], color=self.tree_color(tree), s=60)
+            ax3.text(tree['x'], tree['y'], tree['z'], f" T{tree['id']}", fontsize=8)
+        ax3.set(title=f'Peta Misi 3D — {self.current_state}',
+                xlabel='X (m)', ylabel='Y (m)', zlabel='Z (m)')
+        ax3.legend(loc='best')
+        fig.tight_layout()
+        fig.savefig(self.output_dir / 'map_3d.png', dpi=180)
+        plt.close(fig)
+
+        fig, (alt_ax, speed_ax) = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
+        ts = [s['time_s'] for s in self.samples]
+        alt_ax.plot(ts, zs, color='darkgreen')
+        alt_ax.set_ylabel('Ketinggian Z (m)')
+        alt_ax.grid(True, alpha=0.3)
+        speed_ax.plot(ts, [s['speed_mps'] for s in self.samples], color='darkorange')
+        speed_ax.set(xlabel='Waktu (s)', ylabel='Kecepatan (m/s)')
+        speed_ax.grid(True, alpha=0.3)
+        fig.suptitle('Profil Penerbangan')
+        fig.tight_layout()
+        fig.savefig(self.output_dir / 'flight_profile.png', dpi=180)
+        plt.close(fig)
+
+    def save_all(self, final=False):
+        self.save_data_files()
+        self.draw_maps()
+        if final and not self.final_saved:
+            self.final_saved = True
+            stat = self.statistics()
+            self.get_logger().info(
+                f"Laporan akhir tersimpan: {self.output_dir} | "
+                f"durasi={stat['duration_s']:.1f}s, jarak={stat['distance_3d_m']:.2f}m, "
+                f"pohon={stat['trees_detected']}, inspected={stat['trees_inspected']}")
 
     def shutdown(self):
+        self.save_all(final=True)
 
-        self.get_logger().info(
-            "Saving mission result..."
-        )
-
-        self.calculate_statistics()
-
-        self.draw_map()
-
-        self.save_csv()
-
-        self.save_png()
-
-        plt.close(self.figure)
-
-        self.get_logger().info(
-            "Mission Analyzer Shutdown"
-        )
 
 def main(args=None):
-
     rclpy.init(args=args)
-
     node = MissionAnalyzer()
-
     try:
-
         rclpy.spin(node)
-
     except KeyboardInterrupt:
-
         pass
-
     finally:
-
         node.shutdown()
-
         node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
-        rclpy.shutdown()
-    
-if __name__ == "__main__":
-    
+
+if __name__ == '__main__':
     main()
