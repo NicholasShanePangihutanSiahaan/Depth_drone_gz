@@ -112,7 +112,7 @@ class DynamicOrbitController(Node):
             self.last_angle = None
             self.orbit_start_time = self.get_clock().now()
             self.get_logger().info(f"Memulai orbit pada pohon di ({self.tree_x:.2f}, {self.tree_y:.2f})")
-        elif not msg.data:
+        elif not msg.data and self.is_orbiting:
             self.is_orbiting = False
             self.get_logger().info("Orbit dibatalkan oleh State Machine.")
 

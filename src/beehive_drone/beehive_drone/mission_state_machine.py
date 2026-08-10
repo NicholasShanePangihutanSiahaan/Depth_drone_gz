@@ -50,11 +50,14 @@ class MissionStateMachine(Node):
         self.declare_parameter('auto_start', True)
         self.declare_parameter('state_timeout', 120.0)
         self.declare_parameter('pose_timeout', 1.0)
+        self.declare_parameter('abort_mode', 'BRAKE')
         self.flight_altitude = float(self.get_parameter('flight_altitude').value)
         self.require_safety = bool(self.get_parameter('require_safety_monitor').value)
         self.auto_start = bool(self.get_parameter('auto_start').value)
         self.state_timeout = float(self.get_parameter('state_timeout').value)
         self.pose_timeout = float(self.get_parameter('pose_timeout').value)
+        self.abort_mode = str(self.get_parameter('abort_mode').value)
+        self.abort_command_sent = False
 
         # ==========================================
         # Variabel State & Navigasi
@@ -156,6 +159,8 @@ class MissionStateMachine(Node):
     def transition(self, state):
         self.state = state
         self.state_since = self.get_clock().now()
+        if state == 'ABORT':
+            self.abort_command_sent = False
 
     def publish_setpoint_enabled(self, enabled):
         msg = Bool(); msg.data = enabled
@@ -557,11 +562,14 @@ class MissionStateMachine(Node):
 
         elif self.state == 'ABORT':
             self.publish_setpoint_enabled(False)
-            stop = Bool(); stop.data = False
-            self.orbit_start_pub.publish(stop)
-            # BRAKE meminta flight controller menghentikan kendaraan saat estimasi masih tersedia.
-            mode = String(); mode.data = 'BRAKE'
-            self.cmd_mode_pub.publish(mode)
+            if not self.abort_command_sent:
+                stop = Bool(); stop.data = False
+                self.orbit_start_pub.publish(stop)
+                # Simulasi boleh kosong agar kegagalan riset tidak memaksa BRAKE.
+                if self.abort_mode:
+                    mode = String(); mode.data = self.abort_mode
+                    self.cmd_mode_pub.publish(mode)
+                self.abort_command_sent = True
 
         elif self.state == 'MANUAL_OVERRIDE':
             # Tidak mengirim setpoint/mode apa pun; pilot RC memegang kendali penuh.

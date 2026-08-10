@@ -12,10 +12,11 @@ tree_mapper:
 mission_state_machine:
   ros__parameters:
     flight_altitude: 3.0
-    require_safety_monitor: true
+    require_safety_monitor: false
     auto_start: true
     state_timeout: 120.0
     pose_timeout: 5.0
+    abort_mode: ""
 
 dynamic_orbit_controller:
   ros__parameters:
