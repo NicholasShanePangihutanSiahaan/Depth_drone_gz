@@ -1,3 +1,17 @@
+pcl_proc_node:
+  ros__parameters:
+    use_transform_pcl: false
+    min_sensor_range: 0.3
+    max_sensor_range: 15.0
+    voxel_leaf_size: 0.20
+    processing_period_ms: 500
+    camera_offset_x: 0.0
+    camera_offset_y: 0.0
+    camera_offset_z: 0.0
+    camera_mount_roll: 0.0
+    camera_mount_pitch: 0.0
+    camera_mount_yaw: 0.0
+
 tree_mapper:
   ros__parameters:
     frame_id: odom
@@ -7,11 +21,15 @@ tree_mapper:
     max_radius: 0.65
     min_height: 0.8
     max_height: 8.0
+    max_trunk_base_height: 0.65
+    min_cylinder_confidence: 0.20
     position_alpha: 0.25
 
 mission_state_machine:
   ros__parameters:
-    flight_altitude: 3.0
+    flight_altitude: 1.5
+    approach_distance: 2.0
+    tree_distance_tolerance: 0.5
     require_safety_monitor: false
     auto_start: true
     state_timeout: 120.0
@@ -21,7 +39,7 @@ mission_state_machine:
 dynamic_orbit_controller:
   ros__parameters:
     orbit_radius: 1.5
-    orbit_altitude: 1.0
+    orbit_altitude: 1.5
     orbit_velocity: 0.25
     orbit_timeout: 90.0
     radial_tolerance: 0.2

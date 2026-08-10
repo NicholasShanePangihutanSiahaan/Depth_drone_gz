@@ -25,18 +25,8 @@ def generate_launch_description():
                          ('/clusters', '/perception/pcl/clusters'),
                          ('/cylinders', '/perception/pcl/cylinders'),
                          ('/global/cylinders', '/global_cylinders')],
-             # ZED cloud_registered memakai optical coordinates: X kanan, Y bawah, Z depan.
-             parameters=[{'use_transform_pcl': True,
-                          'min_sensor_range': 0.4,
-                          'max_sensor_range': 12.0,
-                          'voxel_leaf_size': 0.15,
-                          # Ukur dari origin base_link ke optical center ZED2i.
-                          'camera_offset_x': 0.0,
-                          'camera_offset_y': 0.0,
-                          'camera_offset_z': 0.0,
-                          'camera_mount_roll': 0.0,
-                          'camera_mount_pitch': 0.0,
-                          'camera_mount_yaw': 0.0}]),
+             # Parameter transform ZED dan filter PCL berada di real.yaml.
+             parameters=[config]),
         Node(package='beehive_drone', executable='tree_mapper', parameters=[config], output='screen'),
         Node(package='beehive_drone', executable='vortex_avoidance_controller', output='screen'),
         Node(package='beehive_drone', executable='dynamic_orbit_controller', parameters=[config], output='screen'),

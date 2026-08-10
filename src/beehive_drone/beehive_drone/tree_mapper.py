@@ -35,6 +35,8 @@ class TreeMapper(Node):
         self.declare_parameter("max_radius", 0.65)
         self.declare_parameter("min_height", 0.8)
         self.declare_parameter("max_height", 8.0)
+        self.declare_parameter("max_trunk_base_height", 0.65)
+        self.declare_parameter("min_cylinder_confidence", 0.20)
         self.declare_parameter("position_alpha", 0.25)
         self.frame_id = self.get_parameter("frame_id").value
 
@@ -45,6 +47,10 @@ class TreeMapper(Node):
         self.max_radius = float(self.get_parameter("max_radius").value)
         self.min_height = float(self.get_parameter("min_height").value)
         self.max_height = float(self.get_parameter("max_height").value)
+        self.max_trunk_base_height = float(
+            self.get_parameter("max_trunk_base_height").value)
+        self.min_cylinder_confidence = float(
+            self.get_parameter("min_cylinder_confidence").value)
         self.position_alpha = float(self.get_parameter("position_alpha").value)
 
         # confidence model
@@ -137,6 +143,18 @@ class TreeMapper(Node):
             if not (self.min_radius <= cylinder.radius <= self.max_radius):
                 continue
             if not (self.min_height <= cylinder.height <= self.max_height):
+                continue
+            if cylinder.confidence < self.min_cylinder_confidence:
+                continue
+
+            # Batang pohon harus dimulai dekat permukaan tanah. Cylinder pada
+            # pelepah/tajuk dapat terlihat vertikal dan lolos radius/height,
+            # tetapi bagian bawahnya melayang jauh di atas z=0.
+            trunk_base_z = cylinder.pose.position.z - 0.5 * cylinder.height
+            if trunk_base_z > self.max_trunk_base_height:
+                self.get_logger().debug(
+                    f"Cylinder tajuk ditolak: base_z={trunk_base_z:.2f}, "
+                    f"height={cylinder.height:.2f}")
                 continue
 
             point = Point()

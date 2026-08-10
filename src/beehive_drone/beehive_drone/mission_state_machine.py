@@ -46,12 +46,17 @@ class MissionStateMachine(Node):
         self.approach_safe_dist = MissionConfig.APPROACH_SAFE_DIST
         self.flight_altitude = MissionConfig.FLIGHT_ALTITUDE
         self.declare_parameter('flight_altitude', self.flight_altitude)
+        self.declare_parameter('approach_distance', self.approach_safe_dist)
+        self.declare_parameter('tree_distance_tolerance', 0.5)
         self.declare_parameter('require_safety_monitor', True)
         self.declare_parameter('auto_start', True)
         self.declare_parameter('state_timeout', 120.0)
         self.declare_parameter('pose_timeout', 1.0)
         self.declare_parameter('abort_mode', 'BRAKE')
         self.flight_altitude = float(self.get_parameter('flight_altitude').value)
+        self.approach_safe_dist = float(self.get_parameter('approach_distance').value)
+        self.tree_distance_tolerance = float(
+            self.get_parameter('tree_distance_tolerance').value)
         self.require_safety = bool(self.get_parameter('require_safety_monitor').value)
         self.auto_start = bool(self.get_parameter('auto_start').value)
         self.state_timeout = float(self.get_parameter('state_timeout').value)
@@ -364,9 +369,14 @@ class MissionStateMachine(Node):
                     # Cek 2: HITUNG JARAK RIILL AKTUAL DARI DRONE KE POHON TERSEBUT
                     actual_dist_to_tree = self.distance(cx, cy, target_matched_tree.x, target_matched_tree.y)
                     
-                    # Syarat Mutlak: Jarak riil drone ke pohon HARUS benar-benar di sekitar 2 meter.
-                    # Jika jaraknya jauh (misal 5 meter atau nyasar ke pohon lain), berarti itu hantu!
-                    if 1.5 <= actual_dist_to_tree <= 2.5:
+                    # Gunakan jarak approach yang dikonfigurasi, bukan rentang
+                    # hardcode 1.5..2.5 m. Dengan demikian perubahan radius
+                    # orbit tidak membuat pohon valid ikut terhapus.
+                    min_verify = max(
+                        0.1, self.approach_safe_dist - self.tree_distance_tolerance)
+                    max_verify = (
+                        self.approach_safe_dist + self.tree_distance_tolerance)
+                    if min_verify <= actual_dist_to_tree <= max_verify:
                         self.target_tree = target_matched_tree  
                         self.transition("START_ORBIT")
                         self.get_logger().info(f"Verifikasi sukses! Pohon ID:{target_matched_tree.id} valid di jarak {actual_dist_to_tree:.2f}m. Memulai orbit.")

@@ -1,6 +1,7 @@
 #include <mutex>
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -52,6 +53,7 @@ namespace point_cloud_test
       this->declare_parameter("camera_mount_roll", 0.0);
       this->declare_parameter("camera_mount_pitch", 0.0);
       this->declare_parameter("camera_mount_yaw", 0.0);
+      this->declare_parameter("processing_period_ms", 500);
 
       rclcpp::SubscriptionOptions sub_opts;
       rclcpp::CallbackGroup::SharedPtr sync_cb_group = create_callback_group(
@@ -80,7 +82,8 @@ namespace point_cloud_test
           "/global/cylinders", rclcpp::SensorDataQoS());
 
       timer_ = create_wall_timer(
-          std::chrono::milliseconds(500),
+          std::chrono::milliseconds(
+              this->get_parameter("processing_period_ms").as_int()),
           [this]()
           { timer_callback(); });
     }
@@ -91,6 +94,16 @@ namespace point_cloud_test
         const nav_msgs::msg::Odometry::ConstSharedPtr &odom_msg)
     {
       std::lock_guard<std::mutex> lock(swap_mutex_);
+      // Detection must represent the current vehicle pose.  Keeping every
+      // camera frame made this buffer grow while PCL was busy and caused one
+      // cycle to merge clouds captured at different positions/altitudes.
+      // Retain only the newest synchronized pair; stale frames have no value
+      // for online obstacle/tree detection.
+      if (!write_buffer_->empty())
+      {
+        ++dropped_frame_count_;
+        write_buffer_->clear();
+      }
       write_buffer_->push_back({cloud_msg, odom_msg});
     }
 
@@ -480,9 +493,10 @@ namespace point_cloud_test
 
     std::shared_ptr<std::vector<CloudOdomPair>> write_buffer_{
         std::make_shared<std::vector<CloudOdomPair>>()};
-    std::shared_ptr<std::vector<CloudOdomPair>> process_buffer_{
+      std::shared_ptr<std::vector<CloudOdomPair>> process_buffer_{
         std::make_shared<std::vector<CloudOdomPair>>()};
     std::mutex swap_mutex_;
+    std::uint64_t dropped_frame_count_{0};
 
     Eigen::Matrix3f R_optical_to_robot_{
         (Eigen::Matrix3f() << 0, 0, 1,

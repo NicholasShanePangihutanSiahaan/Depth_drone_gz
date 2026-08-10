@@ -13,10 +13,7 @@ def generate_launch_description():
                            ('/clusters', '/perception/pcl/clusters'),
                            ('/cylinders', '/perception/pcl/cylinders'),
                            ('/global/cylinders', '/global_cylinders')],
-               parameters=[{'use_transform_pcl': False,
-                            'min_sensor_range': 0.3,
-                            'max_sensor_range': 15.0,
-                            'voxel_leaf_size': 0.30}])
+               parameters=[config])
     sim_pose_remap = [('/mavros/local_position/pose', '/simulation/local_position/pose')]
     return LaunchDescription([
         Node(package='beehive_drone', executable='sim_external_odometry', output='screen'),

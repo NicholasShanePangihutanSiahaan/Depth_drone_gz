@@ -35,11 +35,11 @@ class MissionConfig:
     # ==========================================
     # 3. Parameter Penghindaran (vortex_avoidance_controller.py)
     # ==========================================
-    SAFETY_RADIUS = 1.2          # meter (Diperkecil dari 1.5 agar luwes di celah sempit)
-    REPULSIVE_GAIN = 1.5
-    VORTEX_GAIN = 2.0
-    ATTRACTION_GAIN = 1.0
-    MAX_SHIFT = 2.0              # meter
+    SAFETY_RADIUS = 0.35          # meter (Diperkecil dari 1.5 agar luwes di celah sempit)
+    REPULSIVE_GAIN = 0.25
+    VORTEX_GAIN = 1.0
+    ATTRACTION_GAIN = 0.5
+    MAX_SHIFT = 1.5              # meter
 
     # ==========================================
     # 4. Parameter Kontrol (velocity_controller.py)
