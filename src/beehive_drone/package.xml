@@ -7,6 +7,9 @@
   <maintainer email="nicholasshane08@gmail.com">shane</maintainer>
   <license>TODO: License declaration</license>
 
+  <exec_depend>point-cloud-test</exec_depend>
+  <exec_depend>pcl_cstm_msg</exec_depend>
+
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

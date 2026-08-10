@@ -7,6 +7,7 @@ import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import Point
+from pcl_cstm_msg.msg import TrackedCylinderArray
 
 from uav_interfaces.msg import Tree
 from uav_interfaces.msg import TreeArray
@@ -58,6 +59,19 @@ class TreeMapper(Node):
             10
         )
 
+        # Hasil segmentasi PCL sudah berada pada frame odometri/global, sehingga
+        # tidak memerlukan proyeksi pixel dan depth seperti jalur YOLO.
+        self.pcl_sub = self.create_subscription(
+            TrackedCylinderArray,
+            "/global_cylinders",
+            self.pcl_cylinders_callback,
+            QoSProfile(
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                history=HistoryPolicy.KEEP_LAST,
+                depth=1
+            )
+        )
+
         # hasil inspeksi
         self.create_subscription(
             Tree,
@@ -97,6 +111,19 @@ class TreeMapper(Node):
         )
 
         self.get_logger().info("Tree Mapper Started")
+
+    def pcl_cylinders_callback(self, msg):
+        """Masukkan cylinder PCL yang sedang terlihat ke database pohon."""
+        for tracked in msg.cylinders:
+            cylinder = tracked.cylinder
+            if not cylinder.is_valid or tracked.missed_count != 0:
+                continue
+
+            point = Point()
+            point.x = cylinder.pose.position.x
+            point.y = cylinder.pose.position.y
+            point.z = cylinder.pose.position.z
+            self.tree_callback(point)
 
 
     ##################################################

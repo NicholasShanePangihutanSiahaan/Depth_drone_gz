@@ -5,18 +5,20 @@ def generate_launch_description():
     pkg_name = 'beehive_drone'
 
     # 1. Perception & Mapping Nodes
-    yolo_gazebo_detector_node = Node(
-        package=pkg_name,
-        executable='yolo_gazebo_detector',
-        name='yolo_gazebo_detector',
-        output='screen'
-    )
-    
-    localizer_node = Node(
-        package=pkg_name,
-        executable='tree_localizer',
-        name='tree_localizer',
-        output='screen'
+    pcl_detector_node = Node(
+        package='point-cloud-test',
+        executable='pcl_proc_node',
+        name='pcl_proc_node',
+        output='screen',
+        remappings=[
+            ('/input_cloud', '/zed2i/depth/points'),
+            ('/odom', '/mavros/odometry/out'),
+            ('/output_cloud', '/perception/pcl/non_ground'),
+            ('/clusters', '/perception/pcl/clusters'),
+            ('/cylinders', '/perception/pcl/cylinders'),
+            ('/global/cylinders', '/global_cylinders'),
+        ],
+        parameters=[{'use_transform_pcl': True}]
     )
 
     mapper_node = Node(
@@ -73,8 +75,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        yolo_gazebo_detector_node,
-        localizer_node,
+        pcl_detector_node,
         mapper_node,
         velocity_node,
         vortex_node,
