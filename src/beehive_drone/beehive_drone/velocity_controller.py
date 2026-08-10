@@ -39,6 +39,9 @@ class VelocityController(Node):
         self.max_velocity_yaw = MissionConfig.MAX_VELOCITY_YAW # rad/s (Sekitar 30 derajat per detik)
 
         self.goal_threshold = MissionConfig.GOAL_THRESHOLD   # meter (Jarak dianggap sampai)
+        self.declare_parameter('minimum_control_altitude', 0.20)
+        self.minimum_control_altitude = float(
+            self.get_parameter('minimum_control_altitude').value)
 
         # ==================================================
         # State
@@ -97,7 +100,7 @@ class VelocityController(Node):
     def control_loop(self):
         if not self.enabled or self.current_pose is None or self.target_pose is None:
             return
-        if self.current_pose.pose.position.z < 1.5:
+        if self.current_pose.pose.position.z < self.minimum_control_altitude:
             return
 
         # ==================================================

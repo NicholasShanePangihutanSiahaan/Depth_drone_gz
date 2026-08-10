@@ -34,12 +34,16 @@ class DynamicOrbitController(Node):
         self.declare_parameter('orbit_velocity', MissionConfig.ORBIT_VELOCITY)
         self.declare_parameter('orbit_timeout', 120.0)
         self.declare_parameter('radial_tolerance', 0.7)
+        self.declare_parameter('yaw_offset', 0.0)
+        self.declare_parameter('completion_tolerance_degrees', 3.0)
         self.orbit_radius = float(self.get_parameter('orbit_radius').value)
         self.orbit_altitude = float(self.get_parameter('orbit_altitude').value)
         self.orbit_velocity = float(self.get_parameter('orbit_velocity').value)
         self.orbit_timeout = float(self.get_parameter('orbit_timeout').value)
         self.radial_tolerance = float(self.get_parameter('radial_tolerance').value)
-        self.yaw_offset = MissionConfig.YAW_OFFSET # Offset 45 derajat (0.785 radian)
+        self.yaw_offset = float(self.get_parameter('yaw_offset').value)
+        self.completion_angle = 2.0 * math.pi - math.radians(
+            float(self.get_parameter('completion_tolerance_degrees').value))
 
         # ==========================================
         # Variabel State
@@ -53,6 +57,7 @@ class DynamicOrbitController(Node):
         self.last_angle = None
         self.accumulated_angle = 0.0
         self.orbit_start_time = None
+        self.tracking_started = False
 
         # ==========================================
         # Subscriber
@@ -111,6 +116,7 @@ class DynamicOrbitController(Node):
             self.accumulated_angle = 0.0
             self.last_angle = None
             self.orbit_start_time = self.get_clock().now()
+            self.tracking_started = False
             self.get_logger().info(f"Memulai orbit pada pohon di ({self.tree_x:.2f}, {self.tree_y:.2f})")
         elif not msg.data and self.is_orbiting:
             self.is_orbiting = False
@@ -147,15 +153,20 @@ class DynamicOrbitController(Node):
             elif delta < -math.pi: 
                 delta += 2 * math.pi
             
-            # Hanya catat progres putaran jika drone sudah berada di radius yang mendekati target
-            # Orbit CCW: osilasi maju-mundur tidak boleh dihitung sebagai satu putaran.
-            if abs(current_r - self.orbit_radius) < self.radial_tolerance and delta > 0.0:
+            # Mulai hitung setelah radius orbit pertama kali tercapai. Setelah itu
+            # jangan berhenti menghitung hanya karena noise radial sesaat; logika
+            # lama menyebabkan drone melakukan dua atau lebih putaran fisik.
+            if abs(current_r - self.orbit_radius) <= self.radial_tolerance:
+                self.tracking_started = True
+            # Orbit CCW: gerak mundur/osilasi tidak menambah progres. Abaikan pula
+            # loncatan sudut tidak masuk akal akibat target/pose yang berubah.
+            if self.tracking_started and 0.0 < delta < math.radians(20.0):
                 self.accumulated_angle += delta
 
         self.last_angle = current_angle
 
         # 3. Pengecekan status selesai
-        if self.accumulated_angle >= 2 * math.pi:
+        if self.accumulated_angle >= self.completion_angle:
             self.is_orbiting = False
             self.publish_status("ORBIT_COMPLETED")
             self.get_logger().info("Orbit 360 derajat selesai.")
@@ -173,17 +184,16 @@ class DynamicOrbitController(Node):
 
         # Koreksi Spiral: Jika drone terlempar menjauh, tarik kembali perlahan (P-Controller kecil)
         target_r = current_r + (self.orbit_radius - current_r) * 0.15
-        target_r = max(1.5, target_r) # Batas minimum aman agar tidak menabrak inti pohon
+        target_r = max(self.orbit_radius, target_r)
 
         target_x = self.tree_x + target_r * math.cos(target_angle)
         target_y = self.tree_y + target_r * math.sin(target_angle)
 
-        # 5. Kalkulasi Orientasi Kamera 45 Derajat (Yaw Offset)
-        # Sudut murni jika kamera melihat tepat ke titik pusat pohon:
-        yaw_to_tree = math.atan2(self.tree_y - target_y, self.tree_x - target_x)
-        
-        # Karena kita bergerak CCW, untuk melihat sedikit ke depan lintasan sambil mengawasi pohon,
-        # kita menggeser kamera sebesar -45 derajat dari titik pusat.
+        # Arah dihitung dari posisi drone aktual, bukan dari carrot target. Dengan
+        # yaw_offset=0 kamera selalu menghadap pusat pohon selama orbit.
+        yaw_to_tree = math.atan2(
+            self.tree_y - self.current_pose.pose.position.y,
+            self.tree_x - self.current_pose.pose.position.x)
         target_yaw = yaw_to_tree - self.yaw_offset
 
         qx, qy, qz, qw = euler_to_quaternion(0, 0, target_yaw)

@@ -20,11 +20,17 @@ mission_state_machine:
 
 dynamic_orbit_controller:
   ros__parameters:
-    orbit_radius: 3.0
-    orbit_altitude: 3.0
-    orbit_velocity: 0.8
+    orbit_radius: 1.5
+    orbit_altitude: 1.0
+    orbit_velocity: 0.25
     orbit_timeout: 90.0
-    radial_tolerance: 1.0
+    radial_tolerance: 0.2
+    yaw_offset: 0.0
+    completion_tolerance_degrees: 3.0
+
+velocity_controller:
+  ros__parameters:
+    minimum_control_altitude: 0.20
 
 mission_safety_monitor:
   ros__parameters:

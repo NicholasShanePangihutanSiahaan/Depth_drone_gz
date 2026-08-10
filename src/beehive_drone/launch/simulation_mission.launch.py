@@ -22,7 +22,7 @@ def generate_launch_description():
         Node(package='beehive_drone', executable='sim_external_odometry', output='screen'),
         pcl,
         Node(package='beehive_drone', executable='tree_mapper', parameters=[config], output='screen'),
-        Node(package='beehive_drone', executable='velocity_controller', remappings=sim_pose_remap, output='screen'),
+        Node(package='beehive_drone', executable='velocity_controller', parameters=[config], remappings=sim_pose_remap, output='screen'),
         Node(package='beehive_drone', executable='vortex_avoidance_controller', remappings=sim_pose_remap, output='screen'),
         Node(package='beehive_drone', executable='dynamic_orbit_controller', parameters=[config], remappings=sim_pose_remap, output='screen'),
         Node(package='beehive_drone', executable='flight_manager', remappings=sim_pose_remap, output='screen'),
