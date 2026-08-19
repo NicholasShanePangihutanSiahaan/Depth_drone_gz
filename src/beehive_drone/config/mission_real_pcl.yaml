@@ -1,0 +1,98 @@
+/**:
+  ros__parameters:
+    use_sim_time: false
+    world_frame: odom
+
+vision_to_mavros:
+  ros__parameters:
+    input_pose_topic: /zed/zed_node/pose
+    output_pose_topic: /mavros/vision_pose/pose
+    replace_timestamp: false
+
+pcl_proc_node:
+  ros__parameters:
+    output_frame: odom
+    process_period_ms: 500
+    max_buffered_pairs: 2
+    voxel_leaf_size: 0.20
+    max_merged_points: 600000
+    sor_mean_k: 30
+    sor_stddev: 1.0
+    camera_mount_x: 0.0
+    camera_mount_y: 0.0
+    camera_mount_z: 0.0
+    camera_mount_roll: 0.0
+    camera_mount_pitch: 0.0
+    camera_mount_yaw: 0.0
+
+flight_manager:
+  ros__parameters:
+    hover_alt_tolerance: 0.25
+    hover_speed_tolerance: 0.20
+    hover_stable_sec: 1.5
+    pose_timeout_sec: 1.5
+
+pcl_tree_mapper:
+  ros__parameters:
+    pcl_source_frame: odom
+    pcl_topic: /perception/pcl/tracked_cylinders
+    min_seen_count: 3
+    max_missed_count: 20
+    min_confidence: 0.25
+    min_radius: 0.08
+    max_radius: 1.20
+    min_height: 0.8
+    max_height: 20.0
+    tree_stale_sec: 60.0
+    pcl_stream_timeout_sec: 6.0
+    min_ready_trees: 1
+    enable_fallback_points: false
+    allow_identity_frame_relabel: false
+
+
+simple_single_tree_mission:
+  ros__parameters:
+    flight_mode: GUIDED
+    flight_altitude: 2.0
+    hold_after_takeoff: true
+    arm_settle_sec: 1.5
+    command_retry_sec: 1.0
+    takeoff_ack_timeout_sec: 4.0
+    takeoff_retry_delay_sec: 2.0
+    takeoff_max_attempts: 3
+    takeoff_progress_check_sec: 20.0
+    takeoff_timeout_sec: 45.0
+    min_takeoff_progress: 0.20
+    pose_timeout_sec: 1.5
+
+    enable_rc_takeover: true
+    rc_takeover_confirm_sec: 0.30
+
+    tree_search_timeout_sec: 35.0
+    tree_search_radius: 18.0
+    tree_min_confidence: 0.35
+    approach_distance: 2.0
+    position_tolerance: 0.35
+
+    pre_orbit_hover_sec: 3.0
+    post_orbit_hover_sec: 3.0
+    home_hover_sec: 3.0
+    orbit_radius: 2.0
+    orbit_speed: 0.30
+    orbit_direction: 1.0
+
+    land_retry_sec: 5.0
+    land_complete_altitude: 0.25
+
+mission_analyzer:
+  ros__parameters:
+    output_dir: ~/beehive_mission_results
+    sample_period_sec: 0.2
+    summary_period_sec: 5.0
+    autosave_period_sec: 10.0
+    enable_live_plot: false
+    save_2d_png: true
+    save_3d_png: true
+    save_png_during_mission: true
+    plot_dpi: 180
+    max_plot_samples: 20000

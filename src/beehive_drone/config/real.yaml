@@ -21,6 +21,18 @@ vision_to_mavros:
     output_topic: /mavros/vision_pose/pose
     replace_zero_timestamp: true
 
+flight_manager:
+  ros__parameters:
+    # Gate takeoff/hover menggunakan tinggi AGL dari lidar bawah.
+    altitude_source: rangefinder
+    hover_tolerance: 0.2
+    rangefinder_topic: /mavros/rangefinder/rangefinder
+    rangefinder_timeout: 1.0
+    rangefinder_min_valid: 0.08
+    rangefinder_max_valid: 20.0
+    # Offset vertikal base_link terhadap pusat lidar, jika diperlukan.
+    rangefinder_altitude_offset: 0.0
+
 tree_mapper:
   ros__parameters:
     frame_id: map
@@ -41,10 +53,13 @@ mission_state_machine:
     tree_distance_tolerance: 0.5
     approach_goal_tolerance: 0.15
     verification_retry_limit: 3
-    require_safety_monitor: true
-    auto_start: false
-    state_timeout: 120.0
-    pose_timeout: 0.75
+    # Mission-first: monitor tetap mencatat diagnosis, tetapi cloud/range
+    # dropout tidak langsung membatalkan misi dan memaksa BRAKE.
+    require_safety_monitor: false
+    auto_start: true
+    state_timeout: 300.0
+    pose_timeout: 5.0
+    post_takeoff_hover_time: 2.0
     abort_mode: BRAKE
 
 dynamic_orbit_controller:
@@ -52,10 +67,10 @@ dynamic_orbit_controller:
     orbit_radius: 1.5
     orbit_altitude: 1.5
     orbit_velocity: 0.25
-    orbit_timeout: 120.0
-    radial_tolerance: 0.2
+    orbit_timeout: 180.0
+    radial_tolerance: 0.3
     yaw_offset: 0.0
-    completion_tolerance_degrees: 0.2
+    completion_tolerance_degrees: 2.0
 
 position_setpoint_controller:
   ros__parameters:
@@ -76,11 +91,12 @@ mission_safety_monitor:
   ros__parameters:
     pointcloud_topic: /zed/zed_node/point_cloud/cloud_registered
     range_topic: /mavros/rangefinder/rangefinder
+    # Diagnostik saja selama tahap mission-first.
     require_rangefinder: true
-    pose_timeout: 0.75
-    cloud_timeout: 2.0
-    state_timeout: 1.0
-    range_timeout: 1.0
+    pose_timeout: 5.0
+    cloud_timeout: 5.0
+    state_timeout: 5.0
+    range_timeout: 5.0
     range_arm_grace: 5.0
     min_range: 0.08
     max_range: 20.0

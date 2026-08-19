@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 
-import math
-import time
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String, Bool, Float32, Float64
+from std_msgs.msg import String, Bool, Float32
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
-from sensor_msgs.msg import Range
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 class FlightManager(Node):
@@ -16,32 +13,9 @@ class FlightManager(Node):
         super().__init__("flight_manager")
 
         self.current_state = State()
-        self.local_alt = 0.0
-        self.relative_alt = 0.0
-        self.relative_alt_received = False
-        self.rangefinder_alt = 0.0
-        self.rangefinder_received_at = None
+        self.current_alt = 0.0
         self.target_takeoff_alt = 0.0
-
-        self.declare_parameter("altitude_source", "local_position")
-        self.declare_parameter("hover_tolerance", 0.2)
-        self.declare_parameter("rangefinder_topic", "/mavros/rangefinder/rangefinder")
-        self.declare_parameter("rangefinder_timeout", 1.0)
-        self.declare_parameter("rangefinder_min_valid", 0.08)
-        self.declare_parameter("rangefinder_max_valid", 20.0)
-        self.declare_parameter("rangefinder_altitude_offset", 0.0)
-        self.altitude_source = str(self.get_parameter("altitude_source").value)
-        self.hover_tolerance = float(self.get_parameter("hover_tolerance").value)
-        self.rangefinder_topic = str(self.get_parameter("rangefinder_topic").value)
-        self.rangefinder_timeout = max(0.1, float(self.get_parameter("rangefinder_timeout").value))
-        self.rangefinder_min_valid = float(self.get_parameter("rangefinder_min_valid").value)
-        self.rangefinder_max_valid = float(self.get_parameter("rangefinder_max_valid").value)
-        self.rangefinder_altitude_offset = float(
-            self.get_parameter("rangefinder_altitude_offset").value)
-        if self.altitude_source not in ("local_position", "relative_alt", "rangefinder"):
-            raise ValueError(
-                "altitude_source harus 'local_position', 'relative_alt', atau 'rangefinder'"
-            )
+        self.hover_tolerance = 0.2
 
         # ==========================================
         # 1. MAVROS SUBSCRIBERS (Membaca dari Pixhawk)
@@ -56,13 +30,6 @@ class FlightManager(Node):
         )
         self.pose_sub = self.create_subscription(
             PoseStamped, "/mavros/local_position/pose", self.pose_callback, qos_sensor
-        )
-        self.relative_alt_sub = self.create_subscription(
-            Float64, "/mavros/global_position/rel_alt", self.relative_alt_callback,
-            qos_sensor
-        )
-        self.rangefinder_sub = self.create_subscription(
-            Range, self.rangefinder_topic, self.rangefinder_callback, qos_sensor
         )
 
         # ==========================================
@@ -100,47 +67,14 @@ class FlightManager(Node):
         # Timer berjalan pada 10Hz (0.1s) murni untuk mempublikasikan status sensor
         self.timer = self.create_timer(0.1, self.publish_telemetry)
 
-        self.get_logger().info(
-            "Flight Manager aktif: sumber altitude=%s, toleransi hover=%.2fm"
-            % (self.altitude_source, self.hover_tolerance)
-        )
+        self.get_logger().info("Flight Manager (HAL) Started - Menunggu Perintah Misi")
 
     # --- Callbacks Pembacaan Sensor ---
     def state_callback(self, msg):
         self.current_state = msg
 
     def pose_callback(self, msg):
-        self.local_alt = msg.pose.position.z
-
-    def relative_alt_callback(self, msg):
-        # Nilai ini diterbitkan oleh flight controller dan bereferensi ke home.
-        self.relative_alt = msg.data
-        self.relative_alt_received = True
-
-    def rangefinder_callback(self, msg):
-        value = float(msg.range)
-        lower = max(self.rangefinder_min_valid,
-                    float(msg.min_range) if msg.min_range > 0.0 else 0.0)
-        upper = self.rangefinder_max_valid
-        if msg.max_range > 0.0:
-            upper = min(upper, float(msg.max_range))
-        if math.isfinite(value) and lower <= value <= upper:
-            self.rangefinder_alt = value + self.rangefinder_altitude_offset
-            self.rangefinder_received_at = time.monotonic()
-
-    def valid_rangefinder_altitude(self):
-        if self.rangefinder_received_at is None:
-            return None
-        if time.monotonic() - self.rangefinder_received_at > self.rangefinder_timeout:
-            return None
-        return self.rangefinder_alt
-
-    def altitude_for_takeoff(self):
-        if self.altitude_source == "rangefinder":
-            return self.valid_rangefinder_altitude()
-        if self.altitude_source == "relative_alt":
-            return self.relative_alt if self.relative_alt_received else None
-        return self.local_alt
+        self.current_alt = msg.pose.position.z
 
     # --- Callbacks Perintah FSM ---
     def cmd_mode_cb(self, msg):
@@ -191,19 +125,15 @@ class FlightManager(Node):
         msg_mode.data = self.current_state.mode
         self.pub_mode.publish(msg_mode)
 
-        current_alt = self.altitude_for_takeoff()
         msg_alt = Float32()
-        msg_alt.data = float(current_alt) if current_alt is not None else float("nan")
+        msg_alt.data = float(self.current_alt)
         self.pub_alt.publish(msg_alt)
         
-        # Sama seperti versi uji 0b8bedd: keputusan hover hanya berdasarkan
-        # selisih altitude. Velocity vision ZED sengaja tidak digunakan.
+        # Logika khusus untuk melaporkan status HOVER yang stabil
         is_hovering = False
-        if (self.current_state.armed and self.target_takeoff_alt > 0.0
-                and current_alt is not None):
-            is_hovering = (
-                abs(current_alt - self.target_takeoff_alt) < self.hover_tolerance
-            )
+        if self.current_state.armed and self.target_takeoff_alt > 0:
+            if abs(self.current_alt - self.target_takeoff_alt) < self.hover_tolerance:
+                is_hovering = True
         
         msg_hover = Bool()
         msg_hover.data = is_hovering
