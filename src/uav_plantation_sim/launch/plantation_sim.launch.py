@@ -60,31 +60,49 @@
 #     ])
 
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    SetEnvironmentVariable,
+)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
     pkg_share = FindPackageShare("uav_plantation_sim")
-    world_file = PathJoinSubstitution([pkg_share, "worlds", "plantation.sdf"])
+    world_name = LaunchConfiguration("world")
+    gz_args = LaunchConfiguration("gz_args")
+    world_file = PathJoinSubstitution([pkg_share, "worlds", world_name])
     model_file = PathJoinSubstitution([pkg_share, "models", "plantation_quadrotor", "model.sdf"])
     bridge_config = PathJoinSubstitution([pkg_share, "config", "bridge_config.yaml"])
     gz_launch = PathJoinSubstitution([FindPackageShare("ros_gz_sim"), "launch", "gz_sim.launch.py"])
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            "world",
+            default_value="plantation_hilly.sdf",
+            description=(
+                "Gazebo world file. Use plantation.sdf for the flat baseline."
+            ),
+        ),
+        DeclareLaunchArgument(
+            "gz_args",
+            default_value="-r -v 4",
+            description="Gazebo arguments; use '-s -r -v 3' for headless tests.",
+        ),
         # Hanya memerlukan variabel GZ modern untuk mencari aset mesh/model
         SetEnvironmentVariable(
             name="GZ_SIM_RESOURCE_PATH",
-            value="/home/shane/ProjekAtaka/gazebo_sim/src/uav_plantation_sim/models",
+            value=PathJoinSubstitution([pkg_share, "models"]),
         ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(gz_launch),
             launch_arguments={
-                "gz_args": ["-r -v 4 ", world_file],
+                "gz_args": [gz_args, " ", world_file],
             }.items(),
         ),
 

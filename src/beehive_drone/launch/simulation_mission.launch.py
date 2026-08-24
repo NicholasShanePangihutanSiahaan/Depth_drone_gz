@@ -21,6 +21,8 @@ def generate_launch_description():
         parameters=[config], remappings=sim_pose_remap, output='screen')
     return LaunchDescription([
         Node(package='beehive_drone', executable='sim_external_odometry', output='screen'),
+        Node(package='beehive_drone', executable='sim_rangefinder_bridge',
+             parameters=[config], output='screen'),
         pcl,
         Node(package='beehive_drone', executable='tree_mapper', parameters=[config], output='screen'),
         # Gunakan jalur controller yang sama dengan drone nyata agar respons

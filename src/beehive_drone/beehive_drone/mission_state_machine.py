@@ -403,6 +403,16 @@ class MissionStateMachine(Node):
                         self.approach_safe_dist + self.tree_distance_tolerance)
                     if min_verify <= actual_dist_to_tree <= max_verify:
                         self.target_tree = target_matched_tree  
+                        update_msg = Tree()
+                        update_msg.id = target_matched_tree.id
+                        update_msg.x = target_matched_tree.x
+                        update_msg.y = target_matched_tree.y
+                        update_msg.z = target_matched_tree.z
+                        update_msg.confidence = target_matched_tree.confidence
+                        update_msg.inspected = target_matched_tree.inspected
+                        update_msg.validated = True
+                        update_msg.orbit_count = target_matched_tree.orbit_count
+                        self.tree_update_pub.publish(update_msg)
                         self.transition("START_ORBIT")
                         self.get_logger().info(f"Verifikasi sukses! Pohon ID:{target_matched_tree.id} valid di jarak {actual_dist_to_tree:.2f}m. Memulai orbit.")
                     else:
@@ -467,6 +477,9 @@ class MissionStateMachine(Node):
                     
                     # INI KUNCI UTAMANYA:
                     update_msg.inspected = True 
+                    update_msg.validated = True
+                    update_msg.orbit_count = min(
+                        255, int(self.target_tree.orbit_count) + 1)
                     
                     self.tree_update_pub.publish(update_msg)
                     self.get_logger().info(f"Pohon ID:{self.target_tree.id} ditandai SELESAI (Inspected).")
@@ -632,8 +645,12 @@ def main(args=None):
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except RuntimeError:
+        if rclpy.ok():
+            raise
     node.destroy_node()
-    rclpy.shutdown()
+    if rclpy.ok():
+        rclpy.shutdown()
 
 if __name__ == "__main__":
     main()

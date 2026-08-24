@@ -6,7 +6,8 @@ Simulasi menggunakan ROS 2 Humble, Gazebo Sim 8.14.0 / Gazebo Harmonic, model qu
 
 ## Fitur
 
-- World Gazebo berisi area perkebunan kelapa sawit dengan beberapa baris pohon.
+- World Gazebo default memiliki tanjakan 10%, puncak, dan turunan untuk uji
+  terrain following. World datar tetap tersedia sebagai baseline.
 - Model drone quadcopter X3-style dengan mesh body dan propeller lokal.
 - Sensor IMU.
 - Kamera stereo ZED 2i-style:
@@ -35,7 +36,8 @@ gazebo_sim/
 │   ├── oil_palm_large/
 │   └── obstacle models lainnya
 └── worlds/
-    └── plantation.sdf
+    ├── plantation.sdf
+    └── plantation_hilly.sdf
 ```
 
 ## Prasyarat
@@ -146,10 +148,67 @@ ros2 launch uav_plantation_sim plantation_sim.launch.py
 
 Launch file ini akan:
 
-- membuka Gazebo dengan `worlds/plantation.sdf`,
+- membuka Gazebo dengan `worlds/plantation_hilly.sdf`,
 - mengatur `GZ_SIM_RESOURCE_PATH` agar model lokal dapat ditemukan,
 - menjalankan `ros_gz_bridge`,
-- spawn drone di posisi awal `(0, 0, 1)`.
+- spawn drone di landasan awal `(0, 0, 0.1)`.
+
+Untuk baseline datar atau mode headless:
+
+```bash
+ros2 launch uav_plantation_sim plantation_sim.launch.py world:=plantation.sdf
+ros2 launch uav_plantation_sim plantation_sim.launch.py gz_args:='-s -r -v 3'
+```
+
+## Uji misi SITL di terrain berbukit
+
+Build seluruh paket yang terlibat:
+
+```bash
+cd ~/ProjekAtaka/gazebo_sim
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install --packages-select \
+  uav_interfaces pcl_cstm_msg point-cloud-test beehive_drone uav_plantation_sim
+source install/setup.bash
+```
+
+Jalankan empat terminal berikut secara berurutan.
+
+Terminal 1 — Gazebo berbukit:
+
+```bash
+ros2 launch uav_plantation_sim plantation_sim.launch.py
+```
+
+Terminal 2 — ArduPilot SITL:
+
+```bash
+sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON -w \
+  --add-param-file=$PWD/src/beehive_drone/config/sitl_sim.parm \
+  --console --out=udp:127.0.0.1:14551
+```
+
+Terminal 3 — MAVROS:
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run mavros mavros_node --ros-args \
+  -p fcu_url:=udp://127.0.0.1:14551@
+```
+
+Terminal 4 — persepsi dan misi:
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch beehive_drone simulation_mission.launch.py
+```
+
+`sim_rangefinder_bridge` mengubah `/range` dari Gazebo menjadi
+`/simulation/rangefinder`. Controller memakai topic tersebut untuk menjaga AGL
+1.5 m, sementara local pose tetap menjadi koordinat navigasi. Laporan uji ada
+di `~/beehive_mission_reports/sim/`.
 
 ## Menjalankan World Tanpa ROS Launch
 
