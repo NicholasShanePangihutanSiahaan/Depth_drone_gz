@@ -55,6 +55,11 @@ class MissionStateMachine(Node):
         self.declare_parameter('state_timeout', 120.0)
         self.declare_parameter('pose_timeout', 1.0)
         self.declare_parameter('post_takeoff_hover_time', 2.0)
+        self.declare_parameter('require_vision_before_start', False)
+        self.declare_parameter(
+            'vision_pose_topic', '/mavros/vision_pose/pose')
+        self.declare_parameter('vision_pose_timeout', 1.0)
+        self.declare_parameter('vision_warmup_time', 5.0)
         self.flight_altitude = float(self.get_parameter('flight_altitude').value)
         self.approach_safe_dist = float(
             self.get_parameter('approach_distance').value)
@@ -70,6 +75,14 @@ class MissionStateMachine(Node):
         self.pose_timeout = float(self.get_parameter('pose_timeout').value)
         self.post_takeoff_hover_time = float(
             self.get_parameter('post_takeoff_hover_time').value)
+        self.require_vision_before_start = bool(
+            self.get_parameter('require_vision_before_start').value)
+        self.vision_pose_topic = str(
+            self.get_parameter('vision_pose_topic').value)
+        self.vision_pose_timeout = max(
+            0.1, float(self.get_parameter('vision_pose_timeout').value))
+        self.vision_warmup_time = max(
+            0.0, float(self.get_parameter('vision_warmup_time').value))
 
         # ==========================================
         # Variabel State & Navigasi
@@ -93,6 +106,9 @@ class MissionStateMachine(Node):
         self.abort_command_sent = False
         self.trees = []
         self.target_tree = None
+        self.first_vision_time = None
+        self.last_vision_time = None
+        self.last_vision_wait_log = None
 
         # Variabel Telemetri Penerbangan (Dari Flight Manager)
         self.is_armed = False
@@ -115,6 +131,8 @@ class MissionStateMachine(Node):
         self.pose_sub = self.create_subscription(PoseStamped, "/mavros/local_position/pose", self.pose_cb, qos_sensor)
         self.orbit_status_sub = self.create_subscription(String, "/control/orbit_status", self.orbit_status_cb, 10)
         self.tree_sub = self.create_subscription(TreeArray, "/map/trees", self.tree_cb, qos_map)
+        self.create_subscription(
+            PoseStamped, self.vision_pose_topic, self.vision_pose_cb, qos_sensor)
 
         # Telemetri dari Flight Manager
         self.telemetry_arm_sub = self.create_subscription(Bool, "/flight/telemetry/is_armed", self.arm_cb, 10)
@@ -162,6 +180,43 @@ class MissionStateMachine(Node):
             )
     def orbit_status_cb(self, msg): self.orbit_status = msg.data
     def tree_cb(self, msg): self.trees = msg.trees
+
+    def vision_pose_cb(self, _msg):
+        now = self.get_clock().now()
+        if self.last_vision_time is None or (
+                now - self.last_vision_time).nanoseconds * 1e-9 > \
+                self.vision_pose_timeout:
+            self.first_vision_time = now
+        self.last_vision_time = now
+
+    def vision_ready(self):
+        if not self.require_vision_before_start:
+            return True
+        if self.first_vision_time is None or self.last_vision_time is None:
+            return False
+        now = self.get_clock().now()
+        age = (now - self.last_vision_time).nanoseconds * 1e-9
+        warmup = (now - self.first_vision_time).nanoseconds * 1e-9
+        return age <= self.vision_pose_timeout and warmup >= self.vision_warmup_time
+
+    def log_vision_wait(self):
+        now = self.get_clock().now()
+        if self.last_vision_wait_log is not None and (
+                now - self.last_vision_wait_log).nanoseconds * 1e-9 < 2.0:
+            return
+        self.last_vision_wait_log = now
+        if self.last_vision_time is None:
+            detail = f'belum ada data {self.vision_pose_topic}'
+        else:
+            age = (now - self.last_vision_time).nanoseconds * 1e-9
+            warmup = (
+                (now - self.first_vision_time).nanoseconds * 1e-9
+                if self.first_vision_time is not None else 0.0)
+            detail = (
+                f'age={age:.2f}s, warm-up={warmup:.1f}/'
+                f'{self.vision_warmup_time:.1f}s')
+        self.get_logger().warning(
+            f'WAIT_START: menunggu vision bridge stabil ({detail}).')
     
     # --- Callbacks Telemetri ---
     def arm_cb(self, msg): self.is_armed = msg.data
@@ -273,7 +328,9 @@ class MissionStateMachine(Node):
 
         # --- FASE PRE-FLIGHT ---
         if self.state == 'WAIT_START':
-            if self.start_requested and (self.safety_ok or not self.require_safety):
+            if self.start_requested and not self.vision_ready():
+                self.log_vision_wait()
+            elif self.start_requested and (self.safety_ok or not self.require_safety):
                 # Capture terakhir tepat sebelum arm sebagai titik takeoff lokal.
                 self.home_pose = (cx, cy, self.current_yaw())
                 self.transition('INIT')

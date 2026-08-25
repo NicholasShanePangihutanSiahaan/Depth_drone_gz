@@ -207,8 +207,11 @@ ros2 launch beehive_drone simulation_mission.launch.py
 
 `sim_rangefinder_bridge` mengubah `/range` dari Gazebo menjadi
 `/simulation/rangefinder`. Controller memakai topic tersebut untuk menjaga AGL
-1.5 m, sementara local pose tetap menjadi koordinat navigasi. Laporan uji ada
-di `~/beehive_mission_reports/sim/`.
+1.5 m, sementara local pose tetap menjadi koordinat navigasi. Titik approach
+dan radius orbit sama-sama 1.5 m, sama seperti `real.yaml`. Laporan uji ada di
+`~/beehive_mission_reports/sim/`; ringkasannya mencakup error AGL, jarak
+approach, statistik radius orbit, error pulang ke home, durasi setiap state,
+dan ketersediaan topic sensor.
 
 ## Menjalankan World Tanpa ROS Launch
 

@@ -28,7 +28,8 @@ tree_mapper:
 mission_state_machine:
   ros__parameters:
     flight_altitude: 1.5
-    approach_distance: 2.0
+    # Sama dengan konfigurasi real: berhenti 1.5 m dari pusat batang.
+    approach_distance: 1.5
     tree_distance_tolerance: 0.5
     approach_goal_tolerance: 0.15
     verification_retry_limit: 3
@@ -37,6 +38,10 @@ mission_state_machine:
     state_timeout: 300.0
     pose_timeout: 5.0
     post_takeoff_hover_time: 2.0
+    require_vision_before_start: false
+    vision_pose_topic: /mavros/vision_pose/pose
+    vision_pose_timeout: 1.0
+    vision_warmup_time: 0.0
     abort_mode: ""
 
 dynamic_orbit_controller:
@@ -107,3 +112,5 @@ mission_analyzer:
     autosave_period: 10.0
     rangefinder_topic: /simulation/rangefinder
     expected_takeoff_altitude: 1.5
+    expected_approach_distance: 1.5
+    expected_orbit_radius: 1.5

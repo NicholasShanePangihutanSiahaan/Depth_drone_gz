@@ -33,6 +33,8 @@ class MissionAnalyzer(Node):
         self.declare_parameter('autosave_period', 10.0)
         self.declare_parameter('map_frame', 'odom')
         self.declare_parameter('expected_takeoff_altitude', 1.5)
+        self.declare_parameter('expected_approach_distance', 1.5)
+        self.declare_parameter('expected_orbit_radius', 1.5)
         self.declare_parameter('topic_stale_threshold', 1.5)
         self.declare_parameter('altitude_jump_threshold', 0.50)
         self.declare_parameter('altitude_disagreement_threshold', 0.75)
@@ -49,6 +51,10 @@ class MissionAnalyzer(Node):
         self.console_period = max(0.5, float(self.get_parameter('console_period').value))
         self.autosave_period = max(2.0, float(self.get_parameter('autosave_period').value))
         self.expected_takeoff_altitude = float(self.get_parameter('expected_takeoff_altitude').value)
+        self.expected_approach_distance = float(
+            self.get_parameter('expected_approach_distance').value)
+        self.expected_orbit_radius = float(
+            self.get_parameter('expected_orbit_radius').value)
         self.topic_stale_threshold = max(0.1, float(self.get_parameter('topic_stale_threshold').value))
         self.altitude_jump_threshold = max(0.05, float(self.get_parameter('altitude_jump_threshold').value))
         self.altitude_disagreement_threshold = max(0.05, float(
@@ -329,10 +335,21 @@ class MissionAnalyzer(Node):
         if not math.isfinite(speed):
             speed = 0.0
         self.max_speed = max(self.max_speed, speed)
+        nearest_tree_id = -1
+        nearest_tree_distance = math.nan
+        if self.trees:
+            nearest = min(
+                self.trees.values(),
+                key=lambda tree: math.hypot(p.x - tree['x'], p.y - tree['y']))
+            nearest_tree_id = nearest['id']
+            nearest_tree_distance = math.hypot(
+                p.x - nearest['x'], p.y - nearest['y'])
         row = {
             'time_s': now, 'x': float(p.x), 'y': float(p.y), 'z': float(p.z),
             'yaw_deg': math.degrees(yaw), 'speed_mps': speed,
             'state': self.current_state,
+            'nearest_tree_id': nearest_tree_id,
+            'nearest_tree_distance_xy_m': nearest_tree_distance,
         }
         self.samples.append(row)
         diag = {
@@ -463,6 +480,100 @@ class MissionAnalyzer(Node):
                 max(absolute_errors) if absolute_errors else None),
         }
 
+    def state_duration_statistics(self):
+        durations = {}
+        if not self.state_events:
+            return durations
+        end_time = self.elapsed()
+        for index, event in enumerate(self.state_events):
+            next_time = (
+                self.state_events[index + 1]['time_s']
+                if index + 1 < len(self.state_events) else end_time)
+            durations[event['state']] = durations.get(event['state'], 0.0) + max(
+                0.0, next_time - event['time_s'])
+        return durations
+
+    @staticmethod
+    def finite_tree_distances(samples):
+        return [
+            row['nearest_tree_distance_xy_m'] for row in samples
+            if math.isfinite(row.get('nearest_tree_distance_xy_m', math.nan))
+        ]
+
+    def flight_geometry_statistics(self):
+        approach_samples = [
+            row for row in self.samples
+            if row['state'] in ('APPROACH_TREE', 'VERIFY_TREE', 'START_ORBIT')
+        ]
+        verification_samples = [
+            row for row in self.samples if row['state'] == 'VERIFY_TREE'
+        ]
+        orbit_samples = [
+            row for row in self.samples if row['state'] == 'WAIT_ORBIT'
+        ]
+        approach_distances = self.finite_tree_distances(approach_samples)
+        verification_distances = self.finite_tree_distances(verification_samples)
+        orbit_radii = self.finite_tree_distances(orbit_samples)
+        orbit_errors = [
+            value - self.expected_orbit_radius for value in orbit_radii]
+        orbit_abs_errors = [abs(value) for value in orbit_errors]
+
+        def mean(values):
+            return sum(values) / len(values) if values else None
+
+        orbit_mean = mean(orbit_radii)
+        orbit_std = None
+        if orbit_radii:
+            orbit_std = math.sqrt(sum(
+                (value - orbit_mean) ** 2 for value in orbit_radii
+            ) / len(orbit_radii))
+        final_pose = self.samples[-1] if self.samples else None
+        home_xy_error = None
+        home_z_error = None
+        if final_pose is not None and self.home is not None:
+            home_xy_error = math.hypot(
+                final_pose['x'] - self.home[0], final_pose['y'] - self.home[1])
+            home_z_error = final_pose['z'] - self.home[2]
+        return {
+            'expected_approach_distance_m': self.expected_approach_distance,
+            'approach_sample_count': len(approach_distances),
+            'closest_approach_distance_m': (
+                min(approach_distances) if approach_distances else None),
+            'verification_distance_m': (
+                verification_distances[-1] if verification_distances else None),
+            'verification_distance_error_m': (
+                verification_distances[-1] - self.expected_approach_distance
+                if verification_distances else None),
+            'expected_orbit_radius_m': self.expected_orbit_radius,
+            'orbit_sample_count': len(orbit_radii),
+            'mean_orbit_radius_m': orbit_mean,
+            'standard_deviation_orbit_radius_m': orbit_std,
+            'minimum_orbit_radius_m': min(orbit_radii) if orbit_radii else None,
+            'maximum_orbit_radius_m': max(orbit_radii) if orbit_radii else None,
+            'mean_absolute_orbit_radius_error_m': mean(orbit_abs_errors),
+            'p95_absolute_orbit_radius_error_m': self.percentile(
+                orbit_abs_errors, 95.0),
+            'maximum_absolute_orbit_radius_error_m': (
+                max(orbit_abs_errors) if orbit_abs_errors else None),
+            'final_home_xy_error_m': home_xy_error,
+            'final_home_z_error_m': home_z_error,
+        }
+
+    def sensor_availability_statistics(self):
+        total = len(self.diagnostic_samples)
+        topic_names = (
+            'local_pose', 'mavros_state', 'rangefinder', 'local_velocity',
+            'vision_pose', 'zed_pose', 'terrain_control')
+        result = {'sample_count': total}
+        for topic in topic_names:
+            healthy = sum(
+                bool(row.get(f'{topic}_received'))
+                and not bool(row.get(f'{topic}_stale'))
+                for row in self.diagnostic_samples)
+            result[f'{topic}_healthy_percent'] = (
+                100.0 * healthy / total if total else 0.0)
+        return result
+
     def statistics(self):
         duration = self.elapsed()
         inspected = sum(t['inspected'] for t in self.trees.values())
@@ -487,7 +598,15 @@ class MissionAnalyzer(Node):
             'trees_inspected': inspected,
             'coverage_percent': 100.0 * inspected / count if count else 0.0,
             'sample_count': len(self.samples),
+            'mission_configuration': {
+                'takeoff_and_agl_target_m': self.expected_takeoff_altitude,
+                'approach_distance_m': self.expected_approach_distance,
+                'orbit_radius_m': self.expected_orbit_radius,
+            },
             'terrain_following': self.terrain_statistics(),
+            'flight_geometry': self.flight_geometry_statistics(),
+            'state_durations_s': self.state_duration_statistics(),
+            'sensor_availability': self.sensor_availability_statistics(),
         }
 
     def print_status(self):
@@ -518,7 +637,8 @@ class MissionAnalyzer(Node):
 
     def save_data_files(self):
         self.write_csv(self.output_dir / 'drone_trajectory.csv', self.samples,
-                       ['time_s', 'x', 'y', 'z', 'yaw_deg', 'speed_mps', 'state'])
+                       ['time_s', 'x', 'y', 'z', 'yaw_deg', 'speed_mps', 'state',
+                        'nearest_tree_id', 'nearest_tree_distance_xy_m'])
         self.write_csv(self.output_dir / 'tree_map.csv',
                        sorted(self.trees.values(), key=lambda item: item['id']),
                        ['id', 'x', 'y', 'z', 'confidence', 'inspected',
