@@ -4,6 +4,19 @@ Repository ini berisi simulasi UAV untuk pengujian algoritma persepsi dan naviga
 
 Simulasi menggunakan ROS 2 Humble, Gazebo Sim 8.14.0 / Gazebo Harmonic, model quadcopter X3-style, kamera ZED 2i-style, dan world perkebunan sawit.
 
+Source misi dari `/home/shane/polinasi` telah disalin ke folder `src` workspace
+ini. Jalur persepsi sengaja dibedakan berdasarkan lingkungan:
+
+- Gazebo memakai `pcl_proc_node` untuk segmentasi point cloud sintetis.
+- Drone nyata memakai `bb_proc_node.launch.py` untuk mengubah 3D bounding box
+  object detection ZED berlabel `pohon` menjadi `/global_cylinders`.
+- `real_mission.launch.py` tidak menyalakan detektor; MAVROS, ZED2i,
+  `vision_to_mavros`, BB node, dan real mission dijalankan sebagai lima proses
+  terpisah.
+
+Urutan build, validasi topic/TF, dan perintah penerbangan nyata ada di
+[`src/beehive_drone/REAL_FLIGHT.md`](src/beehive_drone/REAL_FLIGHT.md).
+
 ## Fitur
 
 - World Gazebo berisi area perkebunan kelapa sawit dengan beberapa baris pohon.
