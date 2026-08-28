@@ -162,6 +162,11 @@ ros2 launch uav_plantation_sim plantation_sim.launch.py gz_args:='-s -r -v 3'
 
 ## Uji misi SITL di terrain berbukit
 
+Untuk menguji jalur dunia nyata (`vision_to_mavros`, `bb_pcl_proc_node`, dan
+`real_mission.launch.py`) tanpa `pcl_proc_node`, ikuti
+[`../beehive_drone/REAL_STACK_SIM.md`](../beehive_drone/REAL_STACK_SIM.md).
+Bagian di bawah ini adalah jalur simulasi PCL lama/baseline.
+
 Build seluruh paket yang terlibat:
 
 ```bash
@@ -193,9 +198,13 @@ Terminal 3 — MAVROS:
 ```bash
 source /opt/ros/humble/setup.bash
 source install/setup.bash
-ros2 run mavros mavros_node --ros-args \
-  -p fcu_url:=udp://127.0.0.1:14551@
+ros2 launch mavros apm.launch fcu_url:=udp://127.0.0.1:14551@
 ```
+
+Untuk jalur ExternalNav, pasang `ros-humble-mavros-extras`; plugin
+`/mavros/vision_pose` tidak tersedia hanya dari paket inti MAVROS. Jalur stack
+real dan pemeriksaan fail-closed dijelaskan di
+[`../beehive_drone/REAL_STACK_SIM.md`](../beehive_drone/REAL_STACK_SIM.md).
 
 Terminal 4 — persepsi dan misi:
 
@@ -518,6 +527,6 @@ sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON --console --out=udp:127
 
 #### ROS
 ```bash
-ros2 run mavros mavros_node --ros-args -p fcu_url:=udp://127.0.0.1:14551@
+ros2 launch mavros apm.launch fcu_url:=udp://127.0.0.1:14551@
 ```
 Masing-masing dijalankan di terminal yang berbeda. Skrip python dapat dijalankan setelah keduanya berjalan

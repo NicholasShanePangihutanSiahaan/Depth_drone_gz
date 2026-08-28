@@ -16,6 +16,8 @@ ini. Jalur persepsi sengaja dibedakan berdasarkan lingkungan:
 
 Urutan build, validasi topic/TF, dan perintah penerbangan nyata ada di
 [`src/beehive_drone/REAL_FLIGHT.md`](src/beehive_drone/REAL_FLIGHT.md).
+Pengujian program real dengan adapter ZED/rangefinder Gazebo ada di
+[`src/beehive_drone/REAL_STACK_SIM.md`](src/beehive_drone/REAL_STACK_SIM.md).
 
 ## Fitur
 
@@ -479,6 +481,8 @@ sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON -w \
 
 #### ROS
 ```bash
-ros2 run mavros mavros_node --ros-args -p fcu_url:=udp://127.0.0.1:14551@
+ros2 launch mavros apm.launch fcu_url:=udp://127.0.0.1:14551@
 ```
+Untuk ExternalNav ZED, paket `ros-humble-mavros-extras` wajib terpasang karena
+menyediakan plugin `/mavros/vision_pose`.
 Masing-masing dijalankan di terminal yang berbeda. Skrip python dapat dijalankan setelah keduanya berjalan

@@ -16,12 +16,19 @@ def generate_launch_description():
     config = os.path.join(
         get_package_share_directory('beehive_drone'), 'config', 'real.yaml')
     auto_start = LaunchConfiguration('auto_start')
+    analyzer_output_directory = LaunchConfiguration(
+        'analyzer_output_directory')
     return LaunchDescription([
         DeclareLaunchArgument(
             'auto_start', default_value='false',
             description=(
-                'true: otomatis GUIDED/arm/takeoff setelah local pose tersedia. '
-                'Aktifkan hanya setelah MAVROS, ZED, dan vision bridge sehat.')),
+                'true: otomatis GUIDED/arm/takeoff setelah local pose '
+                'tersedia. Aktifkan hanya setelah MAVROS, ZED, dan vision '
+                'bridge sehat.')),
+        DeclareLaunchArgument(
+            'analyzer_output_directory',
+            default_value='~/beehive_mission_reports/real',
+            description='Mission analyzer output directory.'),
         # /global_cylinders berasal dari bb_pcl_proc_node yang dijalankan
         # terpisah setelah ZED object detection sehat.
         Node(package='beehive_drone', executable='tree_mapper',
@@ -39,7 +46,9 @@ def generate_launch_description():
         Node(package='beehive_drone', executable='mission_safety_monitor',
              parameters=[config], output='screen'),
         Node(package='beehive_drone', executable='mission_analyzer',
-             parameters=[config], output='screen'),
+             parameters=[config, {
+                 'output_directory': analyzer_output_directory}],
+             output='screen'),
         Node(package='beehive_drone', executable='mission_state_machine',
              parameters=[config, {'auto_start': auto_start}], output='screen'),
     ])

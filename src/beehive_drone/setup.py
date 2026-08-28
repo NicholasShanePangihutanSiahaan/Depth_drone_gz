@@ -11,7 +11,7 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name, ['REAL_FLIGHT.md']),
+        ('share/' + package_name, ['REAL_FLIGHT.md', 'REAL_STACK_SIM.md']),
         # DAFTARKAN FOLDER LAUNCH DI SINI:
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*')),
@@ -37,6 +37,8 @@ setup(
             'sim_external_odometry = beehive_drone.sim_external_odometry:main',
             'sim_rangefinder_bridge = beehive_drone.sim_rangefinder_bridge:main',
             'vision_to_mavros = beehive_drone.vision_to_mavros:main',
+            'sim_zed_adapter = beehive_drone.sim_zed_adapter:main',
+            'real_stack_sim_validator = beehive_drone.real_stack_sim_validator:main',
         ],
     },
 )
