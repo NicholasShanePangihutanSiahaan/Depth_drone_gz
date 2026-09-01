@@ -539,13 +539,16 @@ class MissionStateMachine(Node):
                     else:
                         self.verification_retries += 1
                         if self.verification_retries <= self.verification_retry_limit:
-                            self.target_tree = target_matched_tree
+                            self.target_tree = deepcopy(target_matched_tree)
+                            self.frozen_target_tree = deepcopy(
+                                target_matched_tree)
                             self.hover_timer = 0
-                            self.transition("APPROACH_TREE")
+                            self.transition("ALIGN_TO_TREE")
                             self.get_logger().warning(
                                 f"Pohon ID:{target_matched_tree.id} di {actual_dist_to_tree:.2f}m, "
                                 f"di luar rentang {min_verify:.2f}..{max_verify:.2f}m; "
-                                f"koreksi approach {self.verification_retries}/"
+                                f"freeze ulang + align untuk koreksi approach "
+                                f"{self.verification_retries}/"
                                 f"{self.verification_retry_limit}.")
                         else:
                             self.get_logger().warning(
