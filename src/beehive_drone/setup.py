@@ -37,6 +37,7 @@ setup(
             'sim_external_odometry = beehive_drone.sim_external_odometry:main',
             'sim_rangefinder_bridge = beehive_drone.sim_rangefinder_bridge:main',
             'vision_to_mavros = beehive_drone.vision_to_mavros:main',
+            'zed_frame_alignment = beehive_drone.frame_alignment:main',
             'sim_zed_adapter = beehive_drone.sim_zed_adapter:main',
             'real_stack_sim_validator = beehive_drone.real_stack_sim_validator:main',
         ],

@@ -51,7 +51,7 @@
         <topic>/plantation_uav/range</topic>
         <always_on>true</always_on>
         <update_rate>50</update_rate>
-        <lidar><scan><horizontal><samples>1</samples></horizontal><vertical><samples>1</samples></vertical></scan><range><min>0.08</min><max>20</max></range></lidar>
+        <lidar><scan><horizontal><samples>5</samples><min_angle>-0.02</min_angle><max_angle>0.02</max_angle></horizontal><vertical><samples>5</samples><min_angle>-0.02</min_angle><max_angle>0.02</max_angle></vertical></scan><range><min>0.08</min><max>20</max></range></lidar>
       </sensor>
     </link>
     <joint name="range_joint" type="fixed"><parent>base_link</parent><child>range_link</child></joint>

@@ -95,8 +95,20 @@ def generate_launch_description():
             'pcl_proc_node at the same time.')),
         zed_adapter,
         range_adapter,
-        IncludeLaunchDescription(PythonLaunchDescriptionSource(vision_launch)),
-        IncludeLaunchDescription(PythonLaunchDescriptionSource(bb_launch)),
+        # AHRS_SIM has a synthetic ENU/NED yaw difference (often +/-90 deg),
+        # not a physical ZED mounting offset. Preserve Gazebo map axes here;
+        # real flight keeps automatic calibration.
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(vision_launch),
+            launch_arguments={
+                'use_fixed_yaw_offset': 'true',
+                'fixed_yaw_offset_degrees': '0.0',
+            }.items()),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(bb_launch),
+            launch_arguments={
+                'pose_topic': '/zed/aligned_pose',
+            }.items()),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(mission_launch),
             launch_arguments={

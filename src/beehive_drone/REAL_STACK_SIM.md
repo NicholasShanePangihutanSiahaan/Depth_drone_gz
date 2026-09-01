@@ -5,7 +5,7 @@ penerbangan nyata setelah mengganti perangkat keras ZED2i dan rangefinder dengan
 adapter Gazebo:
 
 ```text
-Gazebo ground truth -> /zed/zed_node/pose -> vision_to_mavros
+Gazebo ground truth -> raw ZED pose -> zed_frame_alignment -> vision_to_mavros
 Gazebo tree truth   -> ZED ObjectsStamped -> bb_pcl_proc_node
 Gazebo LaserScan    -> /mavros/rangefinder/rangefinder
                                       |
@@ -92,6 +92,24 @@ source /home/shane/ProjekAtaka/gazebo_sim/install/setup.bash
 ros2 launch beehive_drone real_stack_sim.launch.py auto_start:=false
 ```
 
+Alignment mengambil 50 pasangan pose ketika kendaraan diam dan disarmed,
+menghitung `yaw_FC - yaw_ZED`, lalu mengunci rotasi dan translasi untuk satu
+sesi. Pastikan ini bernilai `true` sebelum start:
+
+```bash
+ros2 topic echo --once /alignment/ready
+ros2 topic echo --once /alignment/yaw_offset_deg
+```
+
+Pose yang dikirim ke MAVROS dan pose yang dipakai mapper sama-sama berasal dari
+`/zed/aligned_pose`; jangan campur landmark raw-ZED dengan local pose FC.
+
+Khusus launch simulasi, yaw offset dikunci `0 deg`. ZED sintetis berasal dari
+ground truth Gazebo dan sudah memakai sumbu world yang benar; offset `+/-90 deg`
+dari AHRS_SIM adalah konversi ENU/NED SITL, bukan kesalahan pemasangan kamera.
+Auto-calibration tetap digunakan oleh `vision_to_mavros.launch.py` pada drone
+nyata.
+
 Tunggu validator menyatakan siap:
 
 ```bash
@@ -174,7 +192,11 @@ sumber posisi horizontal dan yaw EKF3. Profil menggunakan barometer untuk POSZ,
 sesuai arsitektur kendaraan nyata. Profil ini terpisah agar kegagalan tuning EKF
 tidak tertukar dengan kegagalan BB/misi.
 
-Ganti command SITL Terminal 2 dengan:
+Perhatian: profil ExternalNav murni dapat membentuk bootstrap loop—EKF menunggu
+vision, sedangkan auto-alignment menunggu local pose FC. Karena itu validasi
+alignment pertama kali harus memakai profil baseline `sitl_sim.parm`. Profil
+berikut baru dipakai setelah jalur alignment terbukti dan FC menyediakan local
+pose/yaw awal yang valid. Ganti command SITL Terminal 2 dengan:
 
 ```bash
 sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON -w \

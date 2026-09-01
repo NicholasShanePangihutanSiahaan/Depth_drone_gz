@@ -38,6 +38,9 @@ mission_state_machine:
     state_timeout: 300.0
     pose_timeout: 5.0
     post_takeoff_hover_time: 2.0
+    align_yaw_tolerance_degrees: 7.5
+    align_yaw_hold_time: 1.0
+    require_frame_alignment: false
     require_vision_before_start: false
     vision_pose_topic: /mavros/vision_pose/pose
     vision_pose_timeout: 1.0
@@ -67,7 +70,8 @@ flight_manager:
 position_setpoint_controller:
   ros__parameters:
     publish_rate: 20.0
-    max_horizontal_step: 0.10
+    # Baseline simulasi sedikit lebih cepat; real memakai 0.015 (0.30 m/s).
+    max_horizontal_step: 0.025
     max_vertical_step: 0.05
     target_timeout: 0.75
     output_frame: map

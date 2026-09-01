@@ -15,6 +15,7 @@ from sensor_msgs.msg import Range
 from std_msgs.msg import Bool, String
 from uav_interfaces.msg import TreeArray
 from zed_msgs.msg import ObjectsStamped
+from beehive_drone.frame_alignment import transform_xy, yaw_from_quaternion, wrap_angle
 
 
 def position_error(first, second):
@@ -51,6 +52,9 @@ class RealStackSimulationValidator(Node):
             'maximum_orientation_error_degrees': 2.0,
             'maximum_local_pose_error': 0.50,
             'maximum_local_orientation_error_degrees': 10.0,
+            # SITL AHRS_SIM and MAVROS use a fixed ENU/NED heading convention;
+            # validate the aligned vision quaternion directly instead.
+            'validate_local_orientation': False,
             'maximum_tree_xy_error': 0.35,
         }
         for name, value in defaults.items():
@@ -67,6 +71,8 @@ class RealStackSimulationValidator(Node):
             self.get_parameter('maximum_local_pose_error').value)
         self.max_local_orientation_error = float(self.get_parameter(
             'maximum_local_orientation_error_degrees').value)
+        self.validate_local_orientation = bool(
+            self.get_parameter('validate_local_orientation').value)
         self.max_tree_error = float(
             self.get_parameter('maximum_tree_xy_error').value)
 
@@ -85,6 +91,9 @@ class RealStackSimulationValidator(Node):
         self.create_subscription(
             PoseStamped, '/zed/zed_node/pose',
             lambda msg: self.store('zed_pose', msg), qos_profile_sensor_data)
+        self.create_subscription(
+            PoseStamped, '/zed/aligned_pose',
+            lambda msg: self.store('aligned_pose', msg), qos_profile_sensor_data)
         self.create_subscription(
             PoseStamped, '/mavros/vision_pose/pose',
             lambda msg: self.store('vision_pose', msg),
@@ -141,10 +150,22 @@ class RealStackSimulationValidator(Node):
 
     def nearest_tree_error(self):
         trees = self.latest.get('trees')
-        if trees is None or not trees.trees:
+        ground = self.latest.get('ground_truth')
+        aligned = self.latest.get('aligned_pose')
+        if trees is None or not trees.trees or ground is None or aligned is None:
             return float('inf')
+        ground_yaw = yaw_from_quaternion(ground.pose.pose.orientation)
+        aligned_yaw = yaw_from_quaternion(aligned.pose.orientation)
+        yaw_offset = wrap_angle(aligned_yaw - ground_yaw)
+        rotated_ground_x, rotated_ground_y = transform_xy(
+            ground.pose.pose.position.x, ground.pose.pose.position.y,
+            yaw_offset, 0.0, 0.0)
+        tx = aligned.pose.position.x - rotated_ground_x
+        ty = aligned.pose.position.y - rotated_ground_y
+        expected_x, expected_y = transform_xy(
+            self.expected_tree[0], self.expected_tree[1], yaw_offset, tx, ty)
         return min(math.hypot(
-            tree.x - self.expected_tree[0], tree.y - self.expected_tree[1])
+            tree.x - expected_x, tree.y - expected_y)
                    for tree in trees.trees)
 
     def mavros_vision_plugin_present(self):
@@ -159,7 +180,7 @@ class RealStackSimulationValidator(Node):
 
     def evaluate(self):
         streaming_topics = (
-            'ground_truth', 'zed_pose', 'vision_pose', 'local_pose', 'objects',
+            'ground_truth', 'zed_pose', 'aligned_pose', 'vision_pose', 'local_pose', 'objects',
             'cylinders', 'range', 'mavros_state', 'safety')
         failures = [
             f'{name}_stale' for name in streaming_topics
@@ -172,6 +193,7 @@ class RealStackSimulationValidator(Node):
 
         ground = self.latest.get('ground_truth')
         zed = self.latest.get('zed_pose')
+        aligned = self.latest.get('aligned_pose')
         vision = self.latest.get('vision_pose')
         local_pose = self.latest.get('local_pose')
         ground_zed_position_error = float('inf')
@@ -185,15 +207,15 @@ class RealStackSimulationValidator(Node):
                 ground.pose.pose, zed.pose)
             ground_zed_orientation_error = orientation_error_degrees(
                 ground.pose.pose.orientation, zed.pose.orientation)
-        if zed is not None and vision is not None:
-            vision_position_error = position_error(zed.pose, vision.pose)
+        if aligned is not None and vision is not None:
+            vision_position_error = position_error(aligned.pose, vision.pose)
             vision_orientation_error = orientation_error_degrees(
-                zed.pose.orientation, vision.pose.orientation)
-        if ground is not None and local_pose is not None:
+                aligned.pose.orientation, vision.pose.orientation)
+        if aligned is not None and local_pose is not None:
             local_position_error = position_error(
-                ground.pose.pose, local_pose.pose)
+                aligned.pose, local_pose.pose)
             local_orientation_error = orientation_error_degrees(
-                ground.pose.pose.orientation, local_pose.pose.orientation)
+                aligned.pose.orientation, local_pose.pose.orientation)
 
         if ground_zed_position_error > self.max_pose_error:
             failures.append('zed_pose_error')
@@ -205,7 +227,8 @@ class RealStackSimulationValidator(Node):
             failures.append('vision_orientation_error')
         if local_position_error > self.max_local_pose_error:
             failures.append('mavros_local_pose_error')
-        if local_orientation_error > self.max_local_orientation_error:
+        if self.validate_local_orientation and \
+                local_orientation_error > self.max_local_orientation_error:
             failures.append('mavros_local_orientation_error')
 
         tree_error = self.nearest_tree_error()
