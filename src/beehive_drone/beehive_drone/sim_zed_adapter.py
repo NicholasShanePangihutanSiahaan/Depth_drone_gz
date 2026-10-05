@@ -88,6 +88,24 @@ def world_to_camera(point_world, base_position, base_orientation,
         camera_delta)
 
 
+def parse_tree_positions(specification, fallback):
+    """Parse ``x,y[,z];...`` while preserving the legacy single-tree input."""
+    if not specification.strip():
+        return [fallback]
+    trees = []
+    for entry in specification.split(';'):
+        values = [float(value.strip()) for value in entry.split(',')]
+        if len(values) == 2:
+            values.append(fallback[2])
+        if len(values) != 3:
+            raise ValueError(
+                'tree_positions entries must use x,y or x,y,z')
+        trees.append(tuple(values))
+    if not trees:
+        raise ValueError('tree_positions must contain at least one tree')
+    return trees
+
+
 class SimulationZedAdapter(Node):
     """Generate deterministic ZED-like pose and tree detections from Gazebo."""
 
@@ -110,6 +128,7 @@ class SimulationZedAdapter(Node):
             'tree_x': 7.0,
             'tree_y': 0.0,
             'tree_ground_z': 0.0,
+            'tree_positions': '',
             'tree_height': 6.24,
             'tree_width': 2.40,
             'tree_depth': 2.40,
@@ -139,11 +158,13 @@ class SimulationZedAdapter(Node):
         self.camera_orientation = quaternion_from_rpy(*(
             float(self.get_parameter(f'camera_{name}').value)
             for name in ('roll', 'pitch', 'yaw')))
-        self.tree_ground = (
+        legacy_tree = (
             float(self.get_parameter('tree_x').value),
             float(self.get_parameter('tree_y').value),
             float(self.get_parameter('tree_ground_z').value),
         )
+        self.tree_grounds = parse_tree_positions(
+            str(self.get_parameter('tree_positions').value), legacy_tree)
         self.tree_height = float(self.get_parameter('tree_height').value)
         self.tree_width = float(self.get_parameter('tree_width').value)
         self.tree_depth = float(self.get_parameter('tree_depth').value)
@@ -190,8 +211,8 @@ class SimulationZedAdapter(Node):
         self.create_timer(2.0, self.report)
         self.get_logger().info(
             f'Simulated ZED: {self.input_topic} -> {pose_topic}, '
-            f'{objects_topic}; camera={self.camera_frame}, tree='
-            f'({self.tree_ground[0]:.2f},{self.tree_ground[1]:.2f})')
+            f'{objects_topic}; camera={self.camera_frame}, '
+            f'trees={self.tree_grounds}')
 
     def publish_camera_transform(self):
         """Publish the mounting transform consumed by the real BB node."""
@@ -225,13 +246,13 @@ class SimulationZedAdapter(Node):
         self.last_detection_ns = now_ns
         self.publish_objects(pose)
 
-    def tree_corners_world(self):
+    def tree_corners_world(self, tree_ground):
         """Return corners ordered like the edges used by the BB processor."""
         half_width = 0.5 * self.tree_width
         half_depth = 0.5 * self.tree_depth
-        lower = self.tree_ground[2]
+        lower = tree_ground[2]
         upper = lower + self.tree_height
-        center_x, center_y = self.tree_ground[:2]
+        center_x, center_y = tree_ground[:2]
         return [
             (center_x - half_width, center_y - half_depth, upper),
             (center_x - half_width, center_y + half_depth, upper),
@@ -268,19 +289,21 @@ class SimulationZedAdapter(Node):
         base_orientation = (
             pose.pose.orientation.x, pose.pose.orientation.y,
             pose.pose.orientation.z, pose.pose.orientation.w)
-        center_world = (
-            self.tree_ground[0], self.tree_ground[1],
-            self.tree_ground[2] + 0.5 * self.tree_height)
-        center_camera = world_to_camera(
-            center_world, base_position, base_orientation,
-            self.camera_translation, self.camera_orientation)
         dropped = self.dropout_every_n > 0 and \
             self.detection_cycle % self.dropout_every_n == 0
 
-        if self.tree_visible(center_camera) and not dropped:
+        for tree_index, tree_ground in enumerate(self.tree_grounds):
+            center_world = (
+                tree_ground[0], tree_ground[1],
+                tree_ground[2] + 0.5 * self.tree_height)
+            center_camera = world_to_camera(
+                center_world, base_position, base_orientation,
+                self.camera_translation, self.camera_orientation)
+            if not self.tree_visible(center_camera) or dropped:
+                continue
             detection = Object()
             detection.label = self.object_label
-            detection.label_id = 1
+            detection.label_id = tree_index + 1
             detection.confidence = self.object_confidence
             detection.tracking_available = True
             detection.tracking_state = 1
@@ -295,7 +318,8 @@ class SimulationZedAdapter(Node):
                 float(self.noise_stddev * self.noise_stddev)]
             detection.dimensions_3d = [
                 self.tree_width, self.tree_height, self.tree_depth]
-            for index, corner_world in enumerate(self.tree_corners_world()):
+            for index, corner_world in enumerate(
+                    self.tree_corners_world(tree_ground)):
                 corner_camera = world_to_camera(
                     corner_world, base_position, base_orientation,
                     self.camera_translation, self.camera_orientation)
