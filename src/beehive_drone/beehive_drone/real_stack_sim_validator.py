@@ -47,6 +47,7 @@ class RealStackSimulationValidator(Node):
         defaults = {
             'expected_tree_x': 7.0,
             'expected_tree_y': 0.0,
+            'expected_tree_count': 1,
             'freshness_timeout': 2.0,
             'maximum_pose_error': 0.20,
             'maximum_orientation_error_degrees': 2.0,
@@ -62,6 +63,8 @@ class RealStackSimulationValidator(Node):
         self.expected_tree = (
             float(self.get_parameter('expected_tree_x').value),
             float(self.get_parameter('expected_tree_y').value))
+        self.expected_tree_count = max(
+            1, int(self.get_parameter('expected_tree_count').value))
         self.timeout = float(self.get_parameter('freshness_timeout').value)
         self.max_pose_error = float(
             self.get_parameter('maximum_pose_error').value)
@@ -234,6 +237,12 @@ class RealStackSimulationValidator(Node):
         tree_error = self.nearest_tree_error()
         if tree_error > self.max_tree_error:
             failures.append('tree_global_error')
+        trees = self.latest.get('trees')
+        mapped_tree_count = 0 if trees is None else len(trees.trees)
+        if mapped_tree_count < self.expected_tree_count:
+            failures.append(
+                f'mapped_trees_{mapped_tree_count}_of_'
+                f'{self.expected_tree_count}')
         if not self.connected:
             failures.append('mavros_disconnected')
         if not self.safety_ok:
@@ -272,7 +281,8 @@ class RealStackSimulationValidator(Node):
                 0 if objects is None else len(objects.objects)),
             'tracked_cylinders': (
                 0 if cylinders is None else len(cylinders.cylinders)),
-            'mapped_trees': 0 if trees is None else len(trees.trees),
+            'mapped_trees': mapped_tree_count,
+            'expected_tree_count': self.expected_tree_count,
             'range_valid': range_valid,
             'ground_to_zed_position_error_m': ground_zed_position_error,
             'ground_to_zed_orientation_error_deg': (
