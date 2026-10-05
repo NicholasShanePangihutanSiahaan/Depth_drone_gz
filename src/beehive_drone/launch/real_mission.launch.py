@@ -16,6 +16,7 @@ def generate_launch_description():
     config = os.path.join(
         get_package_share_directory('beehive_drone'), 'config', 'real.yaml')
     auto_start = LaunchConfiguration('auto_start')
+    mission_mode = LaunchConfiguration('mission_mode')
     analyzer_output_directory = LaunchConfiguration(
         'analyzer_output_directory')
     return LaunchDescription([
@@ -25,6 +26,10 @@ def generate_launch_description():
                 'true: otomatis GUIDED/arm/takeoff setelah local pose '
                 'tersedia. Aktifkan hanya setelah MAVROS, ZED, dan vision '
                 'bridge sehat.')),
+        DeclareLaunchArgument(
+            'mission_mode', default_value='single_tree',
+            choices=['single_tree', 'multi_tree'],
+            description='Select the unchanged single-tree or multi-tree FSM.'),
         DeclareLaunchArgument(
             'analyzer_output_directory',
             default_value='~/beehive_mission_reports/real',
@@ -50,5 +55,8 @@ def generate_launch_description():
                  'output_directory': analyzer_output_directory}],
              output='screen'),
         Node(package='beehive_drone', executable='mission_state_machine',
-             parameters=[config, {'auto_start': auto_start}], output='screen'),
+             parameters=[config, {
+                 'auto_start': auto_start,
+                 'mission_mode': mission_mode,
+             }], output='screen'),
     ])
