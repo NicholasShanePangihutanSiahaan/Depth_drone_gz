@@ -75,6 +75,9 @@ def generate_launch_description():
     pkg_share = FindPackageShare("uav_plantation_sim")
     world_name = LaunchConfiguration("world")
     gz_args = LaunchConfiguration("gz_args")
+    spawn_x = LaunchConfiguration("spawn_x")
+    spawn_y = LaunchConfiguration("spawn_y")
+    spawn_z = LaunchConfiguration("spawn_z")
     world_file = PathJoinSubstitution([pkg_share, "worlds", world_name])
     model_file = PathJoinSubstitution([pkg_share, "models", "plantation_quadrotor", "model.sdf"])
     bridge_config = PathJoinSubstitution([pkg_share, "config", "bridge_config.yaml"])
@@ -93,6 +96,9 @@ def generate_launch_description():
             default_value="-r -v 4",
             description="Gazebo arguments; use '-s -r -v 3' for headless tests.",
         ),
+        DeclareLaunchArgument("spawn_x", default_value="0.0"),
+        DeclareLaunchArgument("spawn_y", default_value="0.0"),
+        DeclareLaunchArgument("spawn_z", default_value="0.1"),
         # Hanya memerlukan variabel GZ modern untuk mencari aset mesh/model
         SetEnvironmentVariable(
             name="GZ_SIM_RESOURCE_PATH",
@@ -125,9 +131,9 @@ def generate_launch_description():
             arguments=[
                 "-name", "plantation_uav",
                 "-file", model_file,
-                "-x", "0.0",
-                "-y", "0.0",
-                "-z", "0.1",
+                "-x", spawn_x,
+                "-y", spawn_y,
+                "-z", spawn_z,
                 "-Y", "0.0",
             ],
         ),
