@@ -30,11 +30,18 @@ def generate_launch_description():
 
     arguments = [
         DeclareLaunchArgument('auto_start', default_value='false'),
+        DeclareLaunchArgument(
+            'mission_mode', default_value='single_tree',
+            choices=['single_tree', 'multi_tree']),
         DeclareLaunchArgument('tree_x', default_value='7.0'),
         DeclareLaunchArgument('tree_y', default_value='0.0'),
         DeclareLaunchArgument(
             'tree_ground_z', default_value='0.0',
             description='Use 0.35 for plantation_hilly.sdf.'),
+        DeclareLaunchArgument(
+            'tree_positions', default_value='',
+            description='Optional x,y[,z];x,y[,z] list for multiple trees.'),
+        DeclareLaunchArgument('expected_tree_count', default_value='1'),
         DeclareLaunchArgument('camera_x', default_value='0.14'),
         DeclareLaunchArgument('camera_y', default_value='0.06'),
         DeclareLaunchArgument('camera_z', default_value='0.02'),
@@ -57,6 +64,7 @@ def generate_launch_description():
             'tree_x': typed('tree_x', float),
             'tree_y': typed('tree_y', float),
             'tree_ground_z': typed('tree_ground_z', float),
+            'tree_positions': LaunchConfiguration('tree_positions'),
             'camera_x': typed('camera_x', float),
             'camera_y': typed('camera_y', float),
             'camera_z': typed('camera_z', float),
@@ -86,6 +94,7 @@ def generate_launch_description():
         parameters=[{
             'expected_tree_x': typed('tree_x', float),
             'expected_tree_y': typed('tree_y', float),
+            'expected_tree_count': typed('expected_tree_count', int),
         }],
     )
 
@@ -113,6 +122,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(mission_launch),
             launch_arguments={
                 'auto_start': LaunchConfiguration('auto_start'),
+                'mission_mode': LaunchConfiguration('mission_mode'),
                 'analyzer_output_directory':
                 LaunchConfiguration('report_output_directory'),
             }.items()),
