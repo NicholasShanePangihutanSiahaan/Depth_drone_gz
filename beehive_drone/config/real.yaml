@@ -23,20 +23,6 @@ vision_to_mavros:
     output_topic: /mavros/vision_pose/pose
     replace_zero_timestamp: true
 
-flower_buzzer:
-  ros__parameters:
-    objects_topic: /zed/zed_node/obj_det/objects
-    buzzer_service: /spray
-    flower_labels:
-      - male-flowers
-      - pre-receptive-female
-      - receptive-female
-      - post-receptive-female
-    minimum_confidence: 25.0
-    beep_duration: 0.5
-    detection_clear_time: 1.0
-    retrigger_cooldown: 2.0
-
 flight_manager:
   ros__parameters:
     # Gate takeoff/hover menggunakan tinggi AGL dari lidar bawah.
@@ -67,9 +53,9 @@ tree_mapper:
 
 mission_state_machine:
   ros__parameters:
-    flight_altitude: 2.1
+    flight_altitude: 1.9
     # Jarak horizontal titik approach terhadap pusat batang.
-    approach_distance: 3.0
+    approach_distance: 2.6
     tree_distance_tolerance: 0.5
     approach_goal_tolerance: 0.15
     verification_retry_limit: 3
@@ -95,25 +81,28 @@ mission_state_machine:
 
 dynamic_orbit_controller:
   ros__parameters:
-    orbit_radius: 3.0
-    orbit_altitude: 2.3
-    orbit_velocity: 0.25
+    orbit_radius: 2.6
+    orbit_altitude: 1.9
+    orbit_velocity: 0.55
     orbit_timeout: 180.0
     radial_tolerance: 0.3
+    toleransi_radius_balik_dari_pause: 0.1 # Ketika pause baru resume
     yaw_offset: 0.0
     completion_tolerance_degrees: 2.0
-
+detect_flower:
+  ros__parameters:
+    label_bunga: bunga
 position_setpoint_controller:
   ros__parameters:
     publish_rate: 20.0
     # 0.015 m * 20 Hz = commanded-target slew maksimum 0.30 m/s.
-    max_horizontal_step: 0.015
+    max_horizontal_step: 0.03
     max_vertical_step: 0.05
     target_timeout: 0.75
     output_frame: map
     # EKF tetap memakai local-Z yang halus; rangefinder hanya menggeser target
     # vertikal agar clearance terhadap permukaan tetap 1.5 m.
-    terrain_following_enabled: true
+    terrain_following_enabled: false
     rangefinder_topic: /mavros/rangefinder/rangefinder
     desired_agl: 2.3
     rangefinder_timeout: 0.50
