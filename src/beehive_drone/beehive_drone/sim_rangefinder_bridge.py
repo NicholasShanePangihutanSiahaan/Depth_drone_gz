@@ -33,9 +33,7 @@ class SimulationRangefinderBridge(Node):
             if math.isfinite(value)
             and float(scan.range_min) <= value <= float(scan.range_max)
         ]
-        # Median is robust to a grazing/missing ray on seams and slopes.
-        valid.sort()
-        measurement = valid[len(valid) // 2] if valid else float('inf')
+        measurement = min(valid) if valid else float('inf')
         msg = Range()
         msg.header = scan.header
         msg.header.frame_id = self.frame_id
