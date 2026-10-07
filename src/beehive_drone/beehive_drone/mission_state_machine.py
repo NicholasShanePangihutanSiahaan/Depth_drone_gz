@@ -419,15 +419,15 @@ class MissionStateMachine(Node):
 
         elif self.state == "WAIT_ARM":
             if self.is_armed:
-            	if not hasattr(self, 'arm_delay_start'):
-            		self.arm_delay_start = self.get_clock().now()
-            	elapsed_ns = (self.get_clock().now() - self.arm_delay_start).nanoseconds
-            	if elapsed_ns >= 250_000_000:
-                	takeoff_msg = Float32(); takeoff_msg.data = self.flight_altitude
-                	self.cmd_takeoff_pub.publish(takeoff_msg)
-                	self.transition("WAIT_TAKEOFF")
-                	self.retry_counter = 0
-                	self.get_logger().info(f"Motor Bersenjata (Armed). Takeoff ke ketinggian {self.flight_altitude}m...")
+                if not hasattr(self, 'arm_delay_start'):
+                    self.arm_delay_start = self.get_clock().now()
+                elapsed_ns = (self.get_clock().now() - self.arm_delay_start).nanoseconds
+                if elapsed_ns >= 250_000_000:
+                    takeoff_msg = Float32(); takeoff_msg.data = self.flight_altitude
+                    self.cmd_takeoff_pub.publish(takeoff_msg)
+                    self.transition("WAIT_TAKEOFF")
+                    self.retry_counter = 0
+                    self.get_logger().info(f"Motor Bersenjata (Armed). Takeoff ke ketinggian {self.flight_altitude}m...")
             else:
                 self.retry_counter += 1
                 if self.retry_counter > 20:  # Ulangi perintah setiap 2 detik
