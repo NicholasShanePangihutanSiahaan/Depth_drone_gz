@@ -9,7 +9,9 @@ flight: camera -> base_link -> map.
 """
 
 import math
+import os
 import random
+import xml.etree.ElementTree as ET
 
 import rclpy
 from geometry_msgs.msg import PoseStamped, TransformStamped
@@ -106,6 +108,43 @@ def parse_tree_positions(specification, fallback):
     return trees
 
 
+def discover_tree_positions_from_sdf(world_sdf_file, name_prefix='tree_'):
+    """Return named tree ground poses discovered from an SDF world.
+
+    The plantation worlds instantiate palms with ``<include>`` elements whose
+    names start with ``tree_``.  Reading those poses keeps the synthetic ZED
+    adapter synchronized with the selected world without duplicating hundreds
+    of coordinates in a launch file.
+    """
+    path = os.path.expanduser(world_sdf_file)
+    if not path:
+        raise ValueError('world_sdf_file is required when tree_source=sdf')
+    if not os.path.isfile(path):
+        raise ValueError(f'world SDF does not exist: {path}')
+
+    root = ET.parse(path).getroot()
+    discovered = []
+    for element in list(root.iter('include')) + list(root.iter('model')):
+        if element.tag == 'include':
+            name = (element.findtext('name') or '').strip()
+        else:
+            name = (element.get('name') or '').strip()
+        if not name.startswith(name_prefix):
+            continue
+        pose_text = (element.findtext('pose') or '').strip()
+        values = pose_text.split()
+        if len(values) < 3:
+            raise ValueError(
+                f'tree entity {name!r} has no valid x y z pose in {path}')
+        discovered.append((name, tuple(float(value) for value in values[:3])))
+
+    discovered.sort(key=lambda item: item[0])
+    if not discovered:
+        raise ValueError(
+            f'no entities starting with {name_prefix!r} found in {path}')
+    return discovered
+
+
 class SimulationZedAdapter(Node):
     """Generate deterministic ZED-like pose and tree detections from Gazebo."""
 
@@ -129,6 +168,9 @@ class SimulationZedAdapter(Node):
             'tree_y': 0.0,
             'tree_ground_z': 0.0,
             'tree_positions': '',
+            'tree_source': 'manual',
+            'world_sdf_file': '',
+            'tree_name_prefix': 'tree_',
             'tree_height': 6.24,
             'tree_width': 2.40,
             'tree_depth': 2.40,
@@ -163,8 +205,26 @@ class SimulationZedAdapter(Node):
             float(self.get_parameter('tree_y').value),
             float(self.get_parameter('tree_ground_z').value),
         )
-        self.tree_grounds = parse_tree_positions(
-            str(self.get_parameter('tree_positions').value), legacy_tree)
+        self.tree_source = str(
+            self.get_parameter('tree_source').value).strip().lower()
+        if self.tree_source == 'sdf':
+            world_sdf_file = str(
+                self.get_parameter('world_sdf_file').value)
+            name_prefix = str(
+                self.get_parameter('tree_name_prefix').value)
+            named_trees = discover_tree_positions_from_sdf(
+                world_sdf_file, name_prefix)
+            self.tree_names = [item[0] for item in named_trees]
+            self.tree_grounds = [item[1] for item in named_trees]
+        elif self.tree_source == 'manual':
+            self.tree_grounds = parse_tree_positions(
+                str(self.get_parameter('tree_positions').value), legacy_tree)
+            self.tree_names = [
+                f'manual_tree_{index + 1}'
+                for index in range(len(self.tree_grounds))]
+        else:
+            raise ValueError(
+                "tree_source must be either 'manual' or 'sdf'")
         self.tree_height = float(self.get_parameter('tree_height').value)
         self.tree_width = float(self.get_parameter('tree_width').value)
         self.tree_depth = float(self.get_parameter('tree_depth').value)
@@ -212,7 +272,7 @@ class SimulationZedAdapter(Node):
         self.get_logger().info(
             f'Simulated ZED: {self.input_topic} -> {pose_topic}, '
             f'{objects_topic}; camera={self.camera_frame}, '
-            f'trees={self.tree_grounds}')
+            f'tree_source={self.tree_source}, trees={len(self.tree_grounds)}')
 
     def publish_camera_transform(self):
         """Publish the mounting transform consumed by the real BB node."""

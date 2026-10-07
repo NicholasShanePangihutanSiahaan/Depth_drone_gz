@@ -49,10 +49,13 @@ tree_mapper:
     max_trunk_base_height: 3.0
     min_cylinder_confidence: 0.25
     position_alpha: 0.20
-    label_pohon: pohon
 
 mission_state_machine:
   ros__parameters:
+    # Default mempertahankan perilaku Jetson teruji: satu pohon lalu pulang.
+    mission_mode: single_tree
+    # Hanya digunakan pada multi_tree; 0 berarti tanpa batas jumlah.
+    max_trees: 0
     flight_altitude: 1.9
     # Jarak horizontal titik approach terhadap pusat batang.
     approach_distance: 2.6
@@ -66,7 +69,7 @@ mission_state_machine:
     auto_start: false
     state_timeout: 300.0
     pose_timeout: 5.0
-    post_takeoff_hover_time: 2.0
+    post_takeoff_hover_time: 5.0
     align_yaw_tolerance_degrees: 7.5
     align_yaw_hold_time: 1.5
     require_frame_alignment: false
@@ -76,9 +79,6 @@ mission_state_machine:
     vision_pose_topic: /mavros/vision_pose/pose
     vision_pose_timeout: 1.0
     vision_warmup_time: 5.0
-    orbit_radius: 3.0
-    # 0: inspeksi semua pohon sampai eksplorasi lahan selesai.
-    max_trees: 0
     abort_mode: BRAKE
 
 dynamic_orbit_controller:
@@ -88,12 +88,9 @@ dynamic_orbit_controller:
     orbit_velocity: 0.55
     orbit_timeout: 180.0
     radial_tolerance: 0.3
-    toleransi_radius_balik_dari_pause: 0.1 # Ketika pause baru resume
     yaw_offset: 0.0
     completion_tolerance_degrees: 2.0
-detect_flower:
-  ros__parameters:
-    label_bunga: bunga
+
 position_setpoint_controller:
   ros__parameters:
     publish_rate: 20.0
@@ -106,7 +103,7 @@ position_setpoint_controller:
     # vertikal agar clearance terhadap permukaan tetap 1.5 m.
     terrain_following_enabled: false
     rangefinder_topic: /mavros/rangefinder/rangefinder
-    desired_agl: 2.3
+    desired_agl: 1.7
     rangefinder_timeout: 0.50
     rangefinder_min_valid: 0.08
     rangefinder_max_valid: 8.0

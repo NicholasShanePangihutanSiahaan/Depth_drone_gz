@@ -5,7 +5,7 @@ penerbangan nyata setelah mengganti perangkat keras ZED2i dan rangefinder dengan
 adapter Gazebo:
 
 ```text
-Gazebo ground truth -> raw ZED pose -> zed_frame_alignment -> vision_to_mavros
+Gazebo ground truth -> raw ZED pose ---------------------> vision_to_mavros
 Gazebo tree truth   -> ZED ObjectsStamped -> bb_pcl_proc_node
 Gazebo LaserScan    -> /mavros/rangefinder/rangefinder
                                       |
@@ -48,6 +48,11 @@ source install/setup.bash
 ## Baseline flat-world
 
 Gunakan empat terminal. Jangan jalankan stack simulasi lama bersamaan.
+
+Untuk world dengan banyak pohon, adapter dapat menemukan seluruh entity
+``tree_*`` langsung dari SDF. Jalankan stack dengan
+``tree_source:=sdf tree_world:=plantation_737c519.sdf``; ``tree_positions``
+tidak diperlukan. Deteksi tetap dibatasi oleh jarak dan field of view kamera.
 
 Terminal 1 — Gazebo:
 
@@ -92,23 +97,19 @@ source /home/shane/ProjekAtaka/gazebo_sim/install/setup.bash
 ros2 launch beehive_drone real_stack_sim.launch.py auto_start:=false
 ```
 
-Alignment mengambil 50 pasangan pose ketika kendaraan diam dan disarmed,
-menghitung `yaw_FC - yaw_ZED`, lalu mengunci rotasi dan translasi untuk satu
-sesi. Pastikan ini bernilai `true` sebelum start:
+Stack Gazebo mengikuti baseline Jetson yang telah diuji: pose ZED mentah
+diteruskan langsung ke MAVROS dan dipakai BB processor. Tidak ada
+`frame_alignment` pada jalur simulasi ini. Pastikan pose mentah mengalir:
 
 ```bash
-ros2 topic echo --once /alignment/ready
-ros2 topic echo --once /alignment/yaw_offset_deg
+ros2 topic echo --once /zed/zed_node/pose
+ros2 topic echo --once /mavros/vision_pose/pose
 ```
 
 Pose yang dikirim ke MAVROS dan pose yang dipakai mapper sama-sama berasal dari
-`/zed/aligned_pose`; jangan campur landmark raw-ZED dengan local pose FC.
-
-Khusus launch simulasi, yaw offset dikunci `0 deg`. ZED sintetis berasal dari
-ground truth Gazebo dan sudah memakai sumbu world yang benar; offset `+/-90 deg`
-dari AHRS_SIM adalah konversi ENU/NED SITL, bukan kesalahan pemasangan kamera.
-Auto-calibration tetap digunakan oleh `vision_to_mavros.launch.py` pada drone
-nyata.
+`/zed/zed_node/pose`; jangan mencampur landmark raw-ZED dengan aligned pose.
+ZED sintetis berasal dari ground truth Gazebo dan sudah memakai sumbu world
+yang sama.
 
 Tunggu validator menyatakan siap:
 

@@ -4,11 +4,16 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    LogInfo,
+)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
 
 
 def typed(name, value_type):
@@ -21,8 +26,21 @@ def generate_launch_description():
 
     arguments = [
         DeclareLaunchArgument('auto_start', default_value='false'),
-        DeclareLaunchArgument('mission_type', default_value='basic_orbit'),
+        DeclareLaunchArgument('mission_mode', default_value='single_tree'),
         DeclareLaunchArgument('max_trees', default_value='2'),
+        DeclareLaunchArgument(
+            'tree_source', default_value='manual',
+            description=(
+                "manual: tree_positions; sdf: discover tree_* from world "
+                "SDF")),
+        DeclareLaunchArgument(
+            'tree_world', default_value='plantation_737c519.sdf'),
+        DeclareLaunchArgument(
+            'tree_world_file',
+            default_value=PathJoinSubstitution([
+                FindPackageShare('uav_plantation_sim'), 'worlds',
+                LaunchConfiguration('tree_world')]),
+            description='SDF used for automatic tree discovery'),
         DeclareLaunchArgument(
             'tree_positions',
             default_value='7.0,0.0;14.0,0.0;21.0,0.0'),
@@ -50,6 +68,8 @@ def generate_launch_description():
             'tree_y': typed('tree_y', float),
             'tree_ground_z': typed('tree_ground_z', float),
             'tree_positions': LaunchConfiguration('tree_positions'),
+            'tree_source': LaunchConfiguration('tree_source'),
+            'world_sdf_file': LaunchConfiguration('tree_world_file'),
             'camera_x': typed('camera_x', float),
             'camera_y': typed('camera_y', float),
             'camera_z': typed('camera_z', float),
@@ -66,6 +86,9 @@ def generate_launch_description():
             'input_topic': '/range',
             'output_topic': '/mavros/rangefinder/rangefinder',
             'frame_id': 'range_link',
+            # Kompensasi origin model / sensor Gazebo agar pembacaan AGL
+            # ekuivalen dengan rangefinder pada baseline Jetson.
+            'measurement_offset': 0.30,
         }])
 
     validator = Node(
@@ -79,7 +102,8 @@ def generate_launch_description():
     return LaunchDescription(arguments + [
         LogInfo(msg=(
             'Gazebo stack memakai algoritma polinasi dan adapter sensor '
-            'sintetis. Jangan jalankan pb_sprayer atau perception stack lain.')),
+            'sintetis. Jangan jalankan pb_sprayer atau perception stack '
+            'lain.')),
         Node(
             package='beehive_drone', executable='sim_sprayer',
             name='sim_sprayer', output='screen'),
@@ -89,21 +113,20 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(os.path.join(
                 beehive_share, 'launch', 'vision_to_mavros.launch.py')),
             launch_arguments={
-                'use_fixed_yaw_offset': 'true',
-                'fixed_yaw_offset_degrees': '0.0',
+                'use_alignment': 'false',
+                'raw_input_topic': '/zed/zed_node/pose',
             }.items()),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(
                 pcl_share, 'launch', 'bb_proc_node.launch.py')),
-            launch_arguments={'pose_topic': '/zed/aligned_pose'}.items()),
+            launch_arguments={'pose_topic': '/zed/zed_node/pose'}.items()),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(
                 beehive_share, 'launch', 'real_mission.launch.py')),
             launch_arguments={
                 'auto_start': LaunchConfiguration('auto_start'),
-                'mission_type': LaunchConfiguration('mission_type'),
+                'mission_mode': LaunchConfiguration('mission_mode'),
                 'max_trees': LaunchConfiguration('max_trees'),
-                'enable_flower_detection': 'false',
                 'record_data': 'false',
                 'analyzer_output_directory':
                     LaunchConfiguration('report_output_directory'),
