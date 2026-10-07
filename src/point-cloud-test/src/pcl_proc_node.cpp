@@ -44,9 +44,9 @@ namespace point_cloud_test
     PclProcNode()
         : Node("pcl_proc_node")
     {
-      // ZED cloud_registered already uses ROS camera axes (X forward, Y left,
-      // Z up). Optical conversion is opt-in and is only allowed when the
-      // incoming frame explicitly identifies itself as an optical frame.
+      // ZED ROS publishes cloud_registered in a ROS camera frame (X forward,
+      // Y left, Z up).  Optical conversion is therefore opt-in and is only
+      // honored for an input frame explicitly named as an optical frame.
       this->declare_parameter("use_transform_pcl", false);
       this->declare_parameter("min_sensor_range", 0.3);
       this->declare_parameter("max_sensor_range", 15.0);

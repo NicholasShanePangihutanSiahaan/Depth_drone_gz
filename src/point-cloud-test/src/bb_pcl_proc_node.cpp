@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -30,6 +31,17 @@
 
 namespace point_cloud_test
 {
+
+std::string trim_copy(const std::string & value)
+{
+  auto first = std::find_if_not(
+    value.begin(), value.end(),
+    [](unsigned char character) {return std::isspace(character);});
+  auto last = std::find_if_not(
+    value.rbegin(), value.rend(),
+    [](unsigned char character) {return std::isspace(character);}).base();
+  return first < last ? std::string(first, last) : std::string{};
+}
 
 struct ObjectsPosePair
 {
@@ -268,7 +280,9 @@ private:
 
   bool object_is_usable(const zed_msgs::msg::Object & object) const
   {
-    if (object.label != object_label_target_ ||
+    // Some ZED wrapper releases preserve the whitespace after ``0: pohon``
+    // in a COCO label YAML. Normalize it before the exact class match.
+    if (trim_copy(object.label) != trim_copy(object_label_target_) ||
       object.confidence < min_object_confidence_)
     {
       return false;

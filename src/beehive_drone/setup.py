@@ -7,11 +7,12 @@ package_name = 'beehive_drone'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=[package_name],
+    packages=[package_name, f'{package_name}.missions'],
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name, ['REAL_FLIGHT.md', 'REAL_STACK_SIM.md']),
+        (os.path.join('share', package_name, 'models'), glob('models/*.onnx')),
         # DAFTARKAN FOLDER LAUNCH DI SINI:
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*')),
@@ -38,6 +39,8 @@ setup(
             'sim_rangefinder_bridge = beehive_drone.sim_rangefinder_bridge:main',
             'vision_to_mavros = beehive_drone.vision_to_mavros:main',
             'zed_frame_alignment = beehive_drone.frame_alignment:main',
+            'detect_flower = beehive_drone.detect_flower_pose:main',
+            'sim_sprayer = beehive_drone.sim_sprayer:main',
             'sim_zed_adapter = beehive_drone.sim_zed_adapter:main',
             'real_stack_sim_validator = beehive_drone.real_stack_sim_validator:main',
         ],
