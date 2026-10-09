@@ -76,6 +76,7 @@ class MissionStateMachine(Node):
         self.declare_parameter('pose_timeout', 1.0)
         self.declare_parameter('mission_mode', 'single_tree')
         self.declare_parameter('max_trees', 0)
+        self.declare_parameter('require_tree_ahead', True)
         self.declare_parameter('post_takeoff_hover_time', 2.0)
         self.declare_parameter('require_vision_before_start', False)
         self.declare_parameter(
@@ -105,6 +106,8 @@ class MissionStateMachine(Node):
             raise ValueError(
                 "mission_mode harus 'single_tree' atau 'multi_tree'")
         self.max_trees = max(0, int(self.get_parameter('max_trees').value))
+        self.require_tree_ahead = bool(
+            self.get_parameter('require_tree_ahead').value)
         self.post_takeoff_hover_time = float(
             self.get_parameter('post_takeoff_hover_time').value)
         self.require_vision_before_start = bool(
@@ -308,7 +311,8 @@ class MissionStateMachine(Node):
         for tree in self.trees:
             if not tree.inspected and int(tree.id) not in self.completed_tree_ids:
                 dist = self.distance(cx, cy, tree.x, tree.y)
-                is_ahead = (tree.x - cx) * self.explore_dir_x >= -1.0
+                is_ahead = (not self.require_tree_ahead) or \
+                    (tree.x - cx) * self.explore_dir_x >= -1.0
                 if is_ahead and dist < min_dist and dist < 15.0: 
                     min_dist = dist
                     best_tree = tree
