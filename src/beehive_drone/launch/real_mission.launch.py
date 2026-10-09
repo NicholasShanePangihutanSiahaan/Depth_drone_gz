@@ -20,6 +20,7 @@ def generate_launch_description():
     auto_start = LaunchConfiguration('auto_start')
     mission_mode = LaunchConfiguration('mission_mode')
     max_trees = LaunchConfiguration('max_trees')
+    require_tree_ahead = LaunchConfiguration('require_tree_ahead')
     record_data = LaunchConfiguration('record_data')
     analyzer_output_directory = LaunchConfiguration(
         'analyzer_output_directory')
@@ -36,6 +37,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'max_trees', default_value='0',
             description='Batas multi-tree; 0 berarti tanpa batas.'),
+        DeclareLaunchArgument(
+            'require_tree_ahead', default_value='true',
+            description='Batasi pemilihan target pada arah eksplorasi.'),
         DeclareLaunchArgument(
             'record_data', default_value='true',
             description='Jalankan recorder lapangan Jetson.'),
@@ -68,6 +72,8 @@ def generate_launch_description():
                  'auto_start': ParameterValue(auto_start, value_type=bool),
                  'mission_mode': mission_mode,
                  'max_trees': ParameterValue(max_trees, value_type=int),
+                 'require_tree_ahead': ParameterValue(
+                     require_tree_ahead, value_type=bool),
              }], output='screen'),
         ExecuteProcess(
             cmd=['/bin/bash', '/home/palmbee1/DTETI-WS/data/record_scripts.sh', '/home/palmbee1/DTETI-WS/data/'],
