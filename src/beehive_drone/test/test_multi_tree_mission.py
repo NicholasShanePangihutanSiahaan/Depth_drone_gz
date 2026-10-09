@@ -31,9 +31,28 @@ def test_completed_tree_cannot_be_selected_again():
         ],
         completed_tree_ids={1},
         explore_dir_x=1.0,
+        require_tree_ahead=True,
     )
     fsm.distance = MissionStateMachine.distance.__get__(fsm)
 
     selected = MissionStateMachine.find_uninspected_tree(fsm)
 
     assert selected.id == 2
+
+
+def test_virtual_test_can_select_tree_behind_exploration_direction():
+    fsm = SimpleNamespace(
+        current_pose=SimpleNamespace(
+            pose=SimpleNamespace(
+                position=SimpleNamespace(x=8.0, y=0.0))),
+        trees=[SimpleNamespace(
+            id=9001, x=2.0, y=0.0, inspected=False)],
+        completed_tree_ids=set(),
+        explore_dir_x=1.0,
+        require_tree_ahead=False,
+    )
+    fsm.distance = MissionStateMachine.distance.__get__(fsm)
+
+    selected = MissionStateMachine.find_uninspected_tree(fsm)
+
+    assert selected.id == 9001
