@@ -97,7 +97,7 @@ def generate_launch_description():
             description="Gazebo arguments; use '-s -r -v 3' for headless tests.",
         ),
         DeclareLaunchArgument("spawn_x", default_value="0.0"),
-        DeclareLaunchArgument("spawn_y", default_value="0.0"),
+        DeclareLaunchArgument("spawn_y", default_value="-3.0"),
         DeclareLaunchArgument("spawn_z", default_value="0.1"),
         # Hanya memerlukan variabel GZ modern untuk mencari aset mesh/model
         SetEnvironmentVariable(
