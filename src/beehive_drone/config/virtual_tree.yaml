@@ -5,11 +5,15 @@ virtual_tree_mission:
   launch_arguments:
     auto_start: true
     tree_source: sdf
-    tree_world: plantation_737c519.sdf
+    tree_world: plantation_hilly.sdf
     source_tree_limit: 1
     mission_type: virtual_tree_test
     mission_mode: multi_tree
     max_trees: 2
+    # Pilihan: toward_home, home_relative, atau map.
+    virtual_tree_position_mode: home_relative
+    virtual_tree_position_x: 2.0
+    virtual_tree_position_y: 6.0
     virtual_tree_offset: 6.0
     require_tree_ahead: true
     expected_tree_count: 1

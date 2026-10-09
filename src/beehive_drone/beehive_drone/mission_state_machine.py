@@ -81,6 +81,9 @@ class MissionStateMachine(Node):
         self.declare_parameter('require_tree_ahead', True)
         self.declare_parameter('virtual_tree_offset_toward_home', 6.0)
         self.declare_parameter('virtual_tree_id', 9001)
+        self.declare_parameter('virtual_tree_position_mode', 'toward_home')
+        self.declare_parameter('virtual_tree_position_x', 0.0)
+        self.declare_parameter('virtual_tree_position_y', 0.0)
         self.declare_parameter('post_takeoff_hover_time', 2.0)
         self.declare_parameter('require_vision_before_start', False)
         self.declare_parameter(
@@ -119,7 +122,13 @@ class MissionStateMachine(Node):
                     offset_toward_home=float(self.get_parameter(
                         'virtual_tree_offset_toward_home').value),
                     virtual_tree_id=int(self.get_parameter(
-                        'virtual_tree_id').value))
+                        'virtual_tree_id').value),
+                    position_mode=str(self.get_parameter(
+                        'virtual_tree_position_mode').value),
+                    position_x=float(self.get_parameter(
+                        'virtual_tree_position_x').value),
+                    position_y=float(self.get_parameter(
+                        'virtual_tree_position_y').value))
         elif self.mission_type != 'basic_orbit':
             raise ValueError(
                 "mission_type harus 'basic_orbit' atau 'virtual_tree_test'")
@@ -332,9 +341,17 @@ class MissionStateMachine(Node):
         for tree in self.trees:
             if not tree.inspected and int(tree.id) not in self.completed_tree_ids:
                 dist = self.distance(cx, cy, tree.x, tree.y)
-                is_ahead = (not self.require_tree_ahead) or \
+                is_virtual = self.mission_profile is not None and \
+                    self.mission_profile.is_virtual(tree)
+                # Virtual tree merupakan target eksplisit dari profile misi,
+                # bukan kandidat hasil eksplorasi. Jangan menolaknya hanya
+                # karena target berada di belakang arah sapuan baris.
+                is_ahead = is_virtual or (not self.require_tree_ahead) or \
                     (tree.x - cx) * self.explore_dir_x >= -1.0
-                if is_ahead and dist < min_dist and dist < 15.0: 
+                # Batas 15 m hanya untuk kandidat hasil deteksi. Posisi target
+                # virtual sudah didefinisikan eksplisit oleh mission profile.
+                within_selection_range = is_virtual or dist < 15.0
+                if is_ahead and within_selection_range and dist < min_dist:
                     min_dist = dist
                     best_tree = tree
         return best_tree

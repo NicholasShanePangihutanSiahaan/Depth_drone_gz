@@ -40,3 +40,23 @@ def test_profile_decorates_map_without_duplicate_virtual_id():
     twice = profile.decorate_tree_map(once)
 
     assert [tree.id for tree in twice].count(9001) == 1
+
+
+def test_profile_supports_coordinates_relative_to_home():
+    profile = VirtualTreeTestMission(
+        position_mode='home_relative', position_x=6.0, position_y=-2.0)
+
+    target = profile.tree_completed(real_tree(), (1.0, 3.0, 0.0))
+
+    assert target.x == 7.0
+    assert target.y == 1.0
+
+
+def test_profile_supports_absolute_map_coordinates():
+    profile = VirtualTreeTestMission(
+        position_mode='map', position_x=12.5, position_y=-4.0)
+
+    target = profile.tree_completed(real_tree(), (1.0, 3.0, 0.0))
+
+    assert target.x == 12.5
+    assert target.y == -4.0

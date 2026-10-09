@@ -41,6 +41,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'virtual_tree_offset_toward_home', default_value='6.0'),
         DeclareLaunchArgument(
+            'virtual_tree_position_mode', default_value='toward_home'),
+        DeclareLaunchArgument('virtual_tree_position_x', default_value='0.0'),
+        DeclareLaunchArgument('virtual_tree_position_y', default_value='0.0'),
+        DeclareLaunchArgument(
             'max_trees', default_value='0',
             description='Batas multi-tree; 0 berarti tanpa batas.'),
         DeclareLaunchArgument(
@@ -81,6 +85,14 @@ def generate_launch_description():
                  'max_trees': ParameterValue(max_trees, value_type=int),
                  'virtual_tree_offset_toward_home': ParameterValue(
                      LaunchConfiguration('virtual_tree_offset_toward_home'),
+                     value_type=float),
+                 'virtual_tree_position_mode': LaunchConfiguration(
+                     'virtual_tree_position_mode'),
+                 'virtual_tree_position_x': ParameterValue(
+                     LaunchConfiguration('virtual_tree_position_x'),
+                     value_type=float),
+                 'virtual_tree_position_y': ParameterValue(
+                     LaunchConfiguration('virtual_tree_position_y'),
                      value_type=float),
                  'require_tree_ahead': ParameterValue(
                      require_tree_ahead, value_type=bool),

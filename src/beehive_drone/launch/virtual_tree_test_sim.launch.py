@@ -21,6 +21,8 @@ def _launch_defaults(package_share):
     required = {
         'auto_start', 'tree_source', 'tree_world', 'source_tree_limit',
         'mission_type', 'mission_mode', 'max_trees', 'virtual_tree_offset',
+        'virtual_tree_position_mode', 'virtual_tree_position_x',
+        'virtual_tree_position_y',
         'require_tree_ahead', 'expected_tree_count',
         'report_output_directory',
     }
@@ -67,6 +69,12 @@ def generate_launch_description():
                 'max_trees': defaults['max_trees'],
                 'virtual_tree_offset':
                     LaunchConfiguration('virtual_tree_offset'),
+                'virtual_tree_position_mode':
+                    defaults['virtual_tree_position_mode'],
+                'virtual_tree_position_x':
+                    defaults['virtual_tree_position_x'],
+                'virtual_tree_position_y':
+                    defaults['virtual_tree_position_y'],
                 'require_tree_ahead': defaults['require_tree_ahead'],
                 'expected_tree_count': defaults['expected_tree_count'],
                 'report_output_directory':

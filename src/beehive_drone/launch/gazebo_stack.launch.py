@@ -31,6 +31,10 @@ def generate_launch_description():
         DeclareLaunchArgument('max_trees', default_value='2'),
         DeclareLaunchArgument(
             'virtual_tree_offset', default_value='6.0'),
+        DeclareLaunchArgument(
+            'virtual_tree_position_mode', default_value='toward_home'),
+        DeclareLaunchArgument('virtual_tree_position_x', default_value='0.0'),
+        DeclareLaunchArgument('virtual_tree_position_y', default_value='0.0'),
         DeclareLaunchArgument('require_tree_ahead', default_value='true'),
         DeclareLaunchArgument(
             'tree_source', default_value='manual',
@@ -136,6 +140,12 @@ def generate_launch_description():
                 'max_trees': LaunchConfiguration('max_trees'),
                 'virtual_tree_offset_toward_home':
                     LaunchConfiguration('virtual_tree_offset'),
+                'virtual_tree_position_mode':
+                    LaunchConfiguration('virtual_tree_position_mode'),
+                'virtual_tree_position_x':
+                    LaunchConfiguration('virtual_tree_position_x'),
+                'virtual_tree_position_y':
+                    LaunchConfiguration('virtual_tree_position_y'),
                 'require_tree_ahead':
                     LaunchConfiguration('require_tree_ahead'),
                 'record_data': 'false',
