@@ -6,6 +6,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from beehive_drone.mission_params import MissionConfig
+from beehive_drone.missions import MISSION_PROFILES
 from geometry_msgs.msg import PoseStamped, Point
 from std_msgs.msg import Bool, String, Float32
 from uav_interfaces.msg import TreeArray, Tree
@@ -75,8 +76,11 @@ class MissionStateMachine(Node):
         self.declare_parameter('state_timeout', 120.0)
         self.declare_parameter('pose_timeout', 1.0)
         self.declare_parameter('mission_mode', 'single_tree')
+        self.declare_parameter('mission_type', 'basic_orbit')
         self.declare_parameter('max_trees', 0)
         self.declare_parameter('require_tree_ahead', True)
+        self.declare_parameter('virtual_tree_offset_toward_home', 6.0)
+        self.declare_parameter('virtual_tree_id', 9001)
         self.declare_parameter('post_takeoff_hover_time', 2.0)
         self.declare_parameter('require_vision_before_start', False)
         self.declare_parameter(
@@ -106,6 +110,19 @@ class MissionStateMachine(Node):
             raise ValueError(
                 "mission_mode harus 'single_tree' atau 'multi_tree'")
         self.max_trees = max(0, int(self.get_parameter('max_trees').value))
+        self.mission_type = str(
+            self.get_parameter('mission_type').value).strip().lower()
+        self.mission_profile = None
+        if self.mission_type == 'virtual_tree_test':
+            self.mission_profile = MISSION_PROFILES[
+                'virtual_tree_test'](
+                    offset_toward_home=float(self.get_parameter(
+                        'virtual_tree_offset_toward_home').value),
+                    virtual_tree_id=int(self.get_parameter(
+                        'virtual_tree_id').value))
+        elif self.mission_type != 'basic_orbit':
+            raise ValueError(
+                "mission_type harus 'basic_orbit' atau 'virtual_tree_test'")
         self.require_tree_ahead = bool(
             self.get_parameter('require_tree_ahead').value)
         self.post_takeoff_hover_time = float(
@@ -229,7 +246,11 @@ class MissionStateMachine(Node):
                 quaternion_to_yaw(msg.pose.orientation)
             )
     def orbit_status_cb(self, msg): self.orbit_status = msg.data
-    def tree_cb(self, msg): self.trees = msg.trees
+    def tree_cb(self, msg):
+        trees = list(msg.trees)
+        if self.mission_profile is not None:
+            trees = self.mission_profile.decorate_tree_map(trees)
+        self.trees = trees
     def alignment_cb(self, msg): self.frame_alignment_ready = bool(msg.data)
 
     def vision_pose_cb(self, _msg):
@@ -618,6 +639,16 @@ class MissionStateMachine(Node):
                 # 2. UPDATE MAPPER: Tandai pohon ini SUDAH DIINSPEKSI
                 if self.target_tree is not None:
                     completed_tree_id = int(self.target_tree.id)
+                    if self.mission_profile is not None:
+                        virtual = self.mission_profile.tree_completed(
+                            self.target_tree, self.home_pose)
+                        if virtual is not None:
+                            self.trees = self.mission_profile.decorate_tree_map(
+                                self.trees)
+                            self.get_logger().warning(
+                                'VIRTUAL TREE TEST aktif: pusat='
+                                f'({virtual.x:.2f}, {virtual.y:.2f}), '
+                                'target kedua bukan hasil AI.')
                     update_msg = Tree()
                     update_msg.id = self.target_tree.id
                     update_msg.x = self.target_tree.x
@@ -631,7 +662,9 @@ class MissionStateMachine(Node):
                     update_msg.orbit_count = min(
                         255, int(self.target_tree.orbit_count) + 1)
                     
-                    self.tree_update_pub.publish(update_msg)
+                    if self.mission_profile is None or not \
+                            self.mission_profile.is_virtual(self.target_tree):
+                        self.tree_update_pub.publish(update_msg)
                     self.completed_tree_ids.add(completed_tree_id)
                     self.last_tree_x = float(self.target_tree.x)
                     self.last_tree_y = float(self.target_tree.y)

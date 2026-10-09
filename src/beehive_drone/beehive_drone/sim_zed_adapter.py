@@ -20,7 +20,6 @@ from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.qos import qos_profile_sensor_data
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
-from uav_interfaces.msg import TreeArray
 from zed_msgs.msg import Object, ObjectsStamped
 
 
@@ -146,15 +145,10 @@ def discover_tree_positions_from_sdf(world_sdf_file, name_prefix='tree_'):
     return discovered
 
 
-def homeward_point(tree_xy, home_xy, offset):
-    """Place a virtual point ``offset`` metres from a tree toward home."""
-    dx = home_xy[0] - tree_xy[0]
-    dy = home_xy[1] - tree_xy[1]
-    distance = math.hypot(dx, dy)
-    if distance < 1.0e-6:
-        raise ValueError('tree and home positions are coincident')
-    scale = float(offset) / distance
-    return tree_xy[0] + scale * dx, tree_xy[1] + scale * dy
+def limit_source_trees(named_trees, limit):
+    """Apply a deterministic source-tree limit; zero keeps every tree."""
+    limit = max(0, int(limit))
+    return list(named_trees if limit == 0 else named_trees[:limit])
 
 
 class SimulationZedAdapter(Node):
@@ -183,6 +177,7 @@ class SimulationZedAdapter(Node):
             'tree_source': 'manual',
             'world_sdf_file': '',
             'tree_name_prefix': 'tree_',
+            'source_tree_limit': 0,
             'tree_height': 6.24,
             'tree_width': 2.40,
             'tree_depth': 2.40,
@@ -196,8 +191,6 @@ class SimulationZedAdapter(Node):
             'position_noise_stddev': 0.0,
             'dropout_every_n': 0,
             'random_seed': 23,
-            'enable_homeward_virtual_tree': False,
-            'virtual_tree_offset': 6.0,
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
@@ -228,9 +221,21 @@ class SimulationZedAdapter(Node):
                 self.get_parameter('tree_name_prefix').value)
             named_trees = discover_tree_positions_from_sdf(
                 world_sdf_file, name_prefix)
-            self.tree_names = [item[0] for item in named_trees]
-            self.tree_grounds = [item[1] for item in named_trees]
+            self.source_tree_limit = max(
+                0, int(self.get_parameter('source_tree_limit').value))
+            if self.source_tree_limit > 0:
+                # Pemilihan menunggu pose home pertama agar bukan sekadar
+                # mengambil nama SDF pertama yang bisa sangat jauh/tak terlihat.
+                self.pending_named_trees = named_trees
+                self.tree_names = []
+                self.tree_grounds = []
+            else:
+                self.pending_named_trees = None
+                self.tree_names = [item[0] for item in named_trees]
+                self.tree_grounds = [item[1] for item in named_trees]
         elif self.tree_source == 'manual':
+            self.source_tree_limit = 0
+            self.pending_named_trees = None
             self.tree_grounds = parse_tree_positions(
                 str(self.get_parameter('tree_positions').value), legacy_tree)
             self.tree_names = [
@@ -262,12 +267,7 @@ class SimulationZedAdapter(Node):
             0, int(self.get_parameter('dropout_every_n').value))
         self.random = random.Random(
             int(self.get_parameter('random_seed').value))
-        self.enable_homeward_virtual_tree = bool(
-            self.get_parameter('enable_homeward_virtual_tree').value)
-        self.virtual_tree_offset = max(
-            0.1, float(self.get_parameter('virtual_tree_offset').value))
         self.home_xy = None
-        self.virtual_tree_active = False
 
         reliable_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -280,8 +280,6 @@ class SimulationZedAdapter(Node):
         self.create_subscription(
             Odometry, self.input_topic, self.odometry_callback,
             qos_profile_sensor_data)
-        self.create_subscription(
-            TreeArray, '/map/trees', self.tree_map_callback, reliable_qos)
 
         self.static_broadcaster = StaticTransformBroadcaster(self)
         self.publish_camera_transform()
@@ -317,6 +315,8 @@ class SimulationZedAdapter(Node):
             self.home_xy = (
                 float(odometry.pose.pose.position.x),
                 float(odometry.pose.pose.position.y))
+        if self.pending_named_trees is not None:
+            self.select_source_trees_from_home(odometry.pose.pose)
         stamp = self.get_clock().now().to_msg()
         pose = PoseStamped()
         pose.header.stamp = stamp
@@ -332,34 +332,37 @@ class SimulationZedAdapter(Node):
         self.last_detection_ns = now_ns
         self.publish_objects(pose)
 
-    def tree_map_callback(self, message):
-        """Reveal the virtual tree only after the real tree orbit completes."""
-        if not self.enable_homeward_virtual_tree or \
-                self.virtual_tree_active or self.home_xy is None:
+    def select_source_trees_from_home(self, base_pose):
+        """Select nearest initially visible SDF trees for a constrained test."""
+        base_position = (
+            float(base_pose.position.x), float(base_pose.position.y),
+            float(base_pose.position.z))
+        base_orientation = (
+            float(base_pose.orientation.x), float(base_pose.orientation.y),
+            float(base_pose.orientation.z), float(base_pose.orientation.w))
+        visible = []
+        for name, ground in self.pending_named_trees:
+            center_world = (
+                ground[0], ground[1], ground[2] + 0.5 * self.tree_height)
+            center_camera = world_to_camera(
+                center_world, base_position, base_orientation,
+                self.camera_translation, self.camera_orientation)
+            if self.tree_visible(center_camera):
+                distance = math.sqrt(sum(value * value
+                                         for value in center_camera))
+                visible.append((distance, name, ground))
+        if not visible:
+            # Tunggu pose berikutnya; jangan memilih target yang tidak mungkin
+            # dihasilkan oleh model visibilitas adapter.
             return
-        inspected = next(
-            (tree for tree in message.trees if tree.inspected), None)
-        if inspected is None:
-            return
-        try:
-            virtual_x, virtual_y = homeward_point(
-                (float(inspected.x), float(inspected.y)), self.home_xy,
-                self.virtual_tree_offset)
-        except ValueError as exc:
-            self.get_logger().error(f'Virtual tree gagal dibuat: {exc}')
-            return
-        virtual_ground_z = float(inspected.z) - 0.5 * self.tree_height
-        self.tree_names.append('virtual_tree_homeward')
-        self.tree_grounds.append(
-            (virtual_x, virtual_y, virtual_ground_z))
-        self.virtual_tree_active = True
-        distance_home = math.hypot(
-            virtual_x - self.home_xy[0], virtual_y - self.home_xy[1])
-        self.get_logger().warning(
-            'VIRTUAL TREE TEST aktif: pusat=(%.2f, %.2f), %.2f m dari '
-            'pohon nyata menuju home; jarak pusat ke home=%.2f m.' % (
-                virtual_x, virtual_y, self.virtual_tree_offset,
-                distance_home))
+        visible.sort(key=lambda item: (item[0], item[1]))
+        selected = visible[:self.source_tree_limit]
+        self.tree_names = [item[1] for item in selected]
+        self.tree_grounds = [item[2] for item in selected]
+        self.pending_named_trees = None
+        self.get_logger().info(
+            'SDF source dibatasi ke pohon terlihat terdekat: ' +
+            ', '.join(self.tree_names))
 
     def tree_corners_world(self, tree_ground):
         """Return corners ordered like the edges used by the BB processor."""
@@ -414,12 +417,7 @@ class SimulationZedAdapter(Node):
             center_camera = world_to_camera(
                 center_world, base_position, base_orientation,
                 self.camera_translation, self.camera_orientation)
-            is_virtual = self.tree_names[tree_index] == \
-                'virtual_tree_homeward'
-            # Target hardcode sengaja selalu tersedia setelah diaktifkan. Ini
-            # menguji FSM/transisi, bukan kemampuan AI atau FOV kamera.
-            if (not is_virtual and not self.tree_visible(center_camera)) or \
-                    dropped:
+            if not self.tree_visible(center_camera) or dropped:
                 continue
             detection = Object()
             detection.label = self.object_label

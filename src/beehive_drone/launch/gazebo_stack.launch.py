@@ -27,9 +27,8 @@ def generate_launch_description():
     arguments = [
         DeclareLaunchArgument('auto_start', default_value='false'),
         DeclareLaunchArgument('mission_mode', default_value='single_tree'),
+        DeclareLaunchArgument('mission_type', default_value='basic_orbit'),
         DeclareLaunchArgument('max_trees', default_value='2'),
-        DeclareLaunchArgument(
-            'enable_homeward_virtual_tree', default_value='false'),
         DeclareLaunchArgument(
             'virtual_tree_offset', default_value='6.0'),
         DeclareLaunchArgument('require_tree_ahead', default_value='true'),
@@ -40,6 +39,7 @@ def generate_launch_description():
                 "SDF")),
         DeclareLaunchArgument(
             'tree_world', default_value='plantation_737c519.sdf'),
+        DeclareLaunchArgument('source_tree_limit', default_value='0'),
         DeclareLaunchArgument(
             'tree_world_file',
             default_value=PathJoinSubstitution([
@@ -75,6 +75,7 @@ def generate_launch_description():
             'tree_positions': LaunchConfiguration('tree_positions'),
             'tree_source': LaunchConfiguration('tree_source'),
             'world_sdf_file': LaunchConfiguration('tree_world_file'),
+            'source_tree_limit': typed('source_tree_limit', int),
             'camera_x': typed('camera_x', float),
             'camera_y': typed('camera_y', float),
             'camera_z': typed('camera_z', float),
@@ -83,9 +84,6 @@ def generate_launch_description():
             'camera_yaw': typed('camera_yaw', float),
             'position_noise_stddev': typed('position_noise_stddev', float),
             'dropout_every_n': typed('dropout_every_n', int),
-            'enable_homeward_virtual_tree': typed(
-                'enable_homeward_virtual_tree', bool),
-            'virtual_tree_offset': typed('virtual_tree_offset', float),
         }])
 
     range_adapter = Node(
@@ -134,7 +132,10 @@ def generate_launch_description():
             launch_arguments={
                 'auto_start': LaunchConfiguration('auto_start'),
                 'mission_mode': LaunchConfiguration('mission_mode'),
+                'mission_type': LaunchConfiguration('mission_type'),
                 'max_trees': LaunchConfiguration('max_trees'),
+                'virtual_tree_offset_toward_home':
+                    LaunchConfiguration('virtual_tree_offset'),
                 'require_tree_ahead':
                     LaunchConfiguration('require_tree_ahead'),
                 'record_data': 'false',

@@ -19,6 +19,7 @@ def generate_launch_description():
         get_package_share_directory('beehive_drone'), 'config', 'real.yaml')
     auto_start = LaunchConfiguration('auto_start')
     mission_mode = LaunchConfiguration('mission_mode')
+    mission_type = LaunchConfiguration('mission_type')
     max_trees = LaunchConfiguration('max_trees')
     require_tree_ahead = LaunchConfiguration('require_tree_ahead')
     record_data = LaunchConfiguration('record_data')
@@ -34,6 +35,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'mission_mode', default_value='single_tree',
             description='Pilih single_tree atau multi_tree.'),
+        DeclareLaunchArgument(
+            'mission_type', default_value='basic_orbit',
+            description='Pilih basic_orbit atau virtual_tree_test.'),
+        DeclareLaunchArgument(
+            'virtual_tree_offset_toward_home', default_value='6.0'),
         DeclareLaunchArgument(
             'max_trees', default_value='0',
             description='Batas multi-tree; 0 berarti tanpa batas.'),
@@ -71,7 +77,11 @@ def generate_launch_description():
              parameters=[config, {
                  'auto_start': ParameterValue(auto_start, value_type=bool),
                  'mission_mode': mission_mode,
+                 'mission_type': mission_type,
                  'max_trees': ParameterValue(max_trees, value_type=int),
+                 'virtual_tree_offset_toward_home': ParameterValue(
+                     LaunchConfiguration('virtual_tree_offset_toward_home'),
+                     value_type=float),
                  'require_tree_ahead': ParameterValue(
                      require_tree_ahead, value_type=bool),
              }], output='screen'),

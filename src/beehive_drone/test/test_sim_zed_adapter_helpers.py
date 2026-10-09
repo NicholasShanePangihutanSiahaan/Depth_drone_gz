@@ -2,9 +2,10 @@ import pytest
 
 from beehive_drone.sim_zed_adapter import (
     discover_tree_positions_from_sdf,
-    homeward_point,
+    limit_source_trees,
     parse_tree_positions,
 )
+from beehive_drone.missions.virtual_tree_test import homeward_point
 
 
 def test_empty_tree_list_preserves_legacy_single_tree():
@@ -16,6 +17,14 @@ def test_virtual_tree_is_six_metres_from_real_toward_home():
 
     assert x == 2.0
     assert y == 0.0
+
+
+def test_source_tree_limit_keeps_first_sdf_tree_deterministically():
+    trees = [('tree_01', (7.0, 0.0, 0.0)),
+             ('tree_02', (14.0, 0.0, 0.0))]
+
+    assert limit_source_trees(trees, 1) == trees[:1]
+    assert limit_source_trees(trees, 0) == trees
 
 
 def test_multi_tree_positions_inherit_or_override_ground_height():

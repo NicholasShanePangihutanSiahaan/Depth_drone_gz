@@ -232,3 +232,19 @@ Pixhawk.
    diuji sebagai run terpisah.
 7. Uji ZED2i tanpa propeller tetap wajib karena simulasi tidak memodelkan kualitas
    neural detection, exposure, motion blur, maupun kegagalan USB/kamera.
+# Misi uji satu pohon SDF + satu pohon virtual
+
+Jalankan world lebih dahulu, lalu gunakan profil misi terpisah berikut. Profil
+ini memilih satu entity `tree_*` pertama dari SDF secara deterministik; tidak
+memerlukan `tree_positions`. Setelah orbit pertama selesai, target virtual
+dibuat 6 m dari pusat pohon nyata menuju posisi home awal.
+
+```bash
+ros2 launch beehive_drone virtual_tree_test_sim.launch.py \
+  tree_world:=plantation_737c519.sdf \
+  virtual_tree_offset:=6.0 \
+  auto_start:=false
+```
+
+Profil ini hanya untuk validasi algoritma/transisi. Target kedua bukan hasil
+AI dan sengaja baru diterbitkan setelah pohon SDF pertama berstatus inspected.
