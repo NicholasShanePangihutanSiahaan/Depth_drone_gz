@@ -2,12 +2,20 @@ import pytest
 
 from beehive_drone.sim_zed_adapter import (
     discover_tree_positions_from_sdf,
+    homeward_point,
     parse_tree_positions,
 )
 
 
 def test_empty_tree_list_preserves_legacy_single_tree():
     assert parse_tree_positions('', (7.0, 0.0, 0.35)) == [(7.0, 0.0, 0.35)]
+
+
+def test_virtual_tree_is_six_metres_from_real_toward_home():
+    x, y = homeward_point((8.0, 0.0), (0.0, 0.0), 6.0)
+
+    assert x == 2.0
+    assert y == 0.0
 
 
 def test_multi_tree_positions_inherit_or_override_ground_height():
