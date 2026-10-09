@@ -29,6 +29,11 @@ def generate_launch_description():
         DeclareLaunchArgument('mission_mode', default_value='single_tree'),
         DeclareLaunchArgument('max_trees', default_value='2'),
         DeclareLaunchArgument(
+            'enable_homeward_virtual_tree', default_value='false'),
+        DeclareLaunchArgument(
+            'virtual_tree_offset', default_value='6.0'),
+        DeclareLaunchArgument('require_tree_ahead', default_value='true'),
+        DeclareLaunchArgument(
             'tree_source', default_value='manual',
             description=(
                 "manual: tree_positions; sdf: discover tree_* from world "
@@ -78,6 +83,9 @@ def generate_launch_description():
             'camera_yaw': typed('camera_yaw', float),
             'position_noise_stddev': typed('position_noise_stddev', float),
             'dropout_every_n': typed('dropout_every_n', int),
+            'enable_homeward_virtual_tree': typed(
+                'enable_homeward_virtual_tree', bool),
+            'virtual_tree_offset': typed('virtual_tree_offset', float),
         }])
 
     range_adapter = Node(
@@ -127,6 +135,8 @@ def generate_launch_description():
                 'auto_start': LaunchConfiguration('auto_start'),
                 'mission_mode': LaunchConfiguration('mission_mode'),
                 'max_trees': LaunchConfiguration('max_trees'),
+                'require_tree_ahead':
+                    LaunchConfiguration('require_tree_ahead'),
                 'record_data': 'false',
                 'analyzer_output_directory':
                     LaunchConfiguration('report_output_directory'),
