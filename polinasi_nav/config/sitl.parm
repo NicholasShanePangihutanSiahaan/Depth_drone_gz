@@ -1,0 +1,60 @@
+# ArduCopter 4.6.3, SIMULATION ONLY. No GPS navigation sources.
+AHRS_EKF_TYPE 3
+EK2_ENABLE 0
+EK3_ENABLE 1
+# The JSON model supplies one autopilot IMU stream. Avoid synthetic redundant
+# IMUs diverging during slow headless simulation; normal arming checks remain.
+INS_ENABLE_MASK 1
+INS_USE2 0
+INS_USE3 0
+EK3_IMU_MASK 1
+# copter.parm supplies calibration for a second synthetic IMU. It is absent
+# with the one-backend model; clear only its unused simulator calibration.
+INS_ACC2OFFS_X 0
+INS_ACC2OFFS_Y 0
+INS_ACC2OFFS_Z 0
+INS_ACC2SCAL_X 1
+INS_ACC2SCAL_Y 1
+INS_ACC2SCAL_Z 1
+# gazebo-iris.parm enables IRLOCK precision landing and an analog sonar.
+# This model has neither: use normal LAND and the ROS simulated rangefinder.
+PLND_ENABLED 0
+PLND_TYPE 0
+RNGFND1_TYPE 0
+GPS1_TYPE 0
+GPS2_TYPE 0
+SIM_GPS_DISABLE 1
+SIM_GPS2_DISABLE 1
+EK3_SRC1_POSXY 6
+EK3_SRC1_POSZ 6
+EK3_SRC1_VELXY 6
+EK3_SRC1_VELZ 6
+EK3_SRC1_YAW 6
+EK3_SRC2_POSXY 0
+EK3_SRC2_POSZ 0
+EK3_SRC2_VELXY 0
+EK3_SRC2_VELZ 0
+EK3_SRC2_YAW 0
+EK3_SRC3_POSXY 0
+EK3_SRC3_POSZ 0
+EK3_SRC3_VELXY 0
+EK3_SRC3_VELZ 0
+EK3_SRC3_YAW 0
+VISO_TYPE 3
+VISO_POS_X 0
+VISO_POS_Y 0
+VISO_POS_Z 0
+VISO_DELAY_MS 0
+VISO_QUAL_MIN 0
+WPNAV_SPEED 60
+WPNAV_SPEED_UP 40
+WPNAV_SPEED_DN 30
+WPNAV_ACCEL 50
+WPNAV_ACCEL_Z 50
+FS_EKF_ACTION 1
+# MAVROS does not request all data streams automatically. The position plugin
+# needs LOCAL_POSITION_NED, and its body velocity needs attitude telemetry.
+SR0_POSITION 20
+SR0_EXTRA1 20
+SR0_EXT_STAT 2
+# No blanket ARMING_CHECK=0. Set a fixed EKF origin using tools/set_origin.py.

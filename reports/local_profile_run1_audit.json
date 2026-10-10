@@ -1,0 +1,289 @@
+{
+  "scope": "sampled navigation decision audit, not LiDAR localisation validation",
+  "source": "reports/ros_ground_truth_palm_farm_20261010_164903_32545_mapping/map_3d/navigation_debug.jsonl",
+  "samples": 105,
+  "final_status": {
+    "simulation_time": 51.001000000000005,
+    "mode": "ground_truth",
+    "flight": "MISSION",
+    "route_blockage": {},
+    "speed_diagnostics": {},
+    "predictive_alignment": {
+      "raw_error_m": 0.000565786547003747,
+      "matched_error_m": null,
+      "timestamp_difference_seconds": 0.03999999999999915,
+      "time_matching_available": false
+    },
+    "callback_wall_max_ms": {
+      "lidar_receive": 6.550318999870797,
+      "odometry_receive": 11.50444700033404,
+      "control_tick": 176.76735900022322,
+      "navigation_snapshot_receive": 51.488311999492,
+      "trajectory_and_safety": 153.9197009988129
+    },
+    "planner_worker_wall_max_ms": 0.0,
+    "planner_stages_last_wall_ms": {},
+    "planner_job_id": null,
+    "trajectory_timing": {
+      "policy": "stop_to_stop",
+      "durations": [],
+      "knot_speeds": [],
+      "geometry_cache_hits": 0,
+      "geometry_checks": 0,
+      "prefetch_submitted": 0,
+      "prefetch_used": 0,
+      "prefetch_rejected": 0,
+      "prefetch_reason": "",
+      "handoff": "certified_stop_to_stop; moving_handoff_not_enabled"
+    },
+    "processing_pipeline": {
+      "scope": "mapping_ROS_receive_to_first_final_ROS_setpoint_using_map_for_safety",
+      "clock": "same_host_monotonic_wall_time",
+      "samples": 30,
+      "rolling_window": 30,
+      "p50_wall_ms": 1375.266712,
+      "p95_wall_ms": 1638.105722,
+      "max_wall_ms": 2179.990305,
+      "last": {
+        "map_version": 237,
+        "scan_stamp": 50.4,
+        "total_wall_ms": 1132.216447,
+        "measurement_to_publish_sim_seconds": 0.4510000000000076,
+        "stages_wall_ms": {
+          "receive_to_submit": 241.771942,
+          "worker_queue": 40.012023,
+          "map_worker": 442.881155,
+          "worker_result_delivery": 243.809456,
+          "snapshot_transport_and_decode": 156.171857,
+          "navigation_to_setpoint": 7.570014
+        }
+      },
+      "excludes": "sensor_acquisition_before_ROS_receive; MAVROS_FCU_delivery; vehicle_response",
+      "reference_causality": "latest_map_safety_check; reference_and_MPC_may_use_older_snapshot"
+    },
+    "timing_gap_previous_callback": null,
+    "setpoint_interface": "/mavros/setpoint_raw/local",
+    "continuous_survey": true,
+    "continuous_passes": 0,
+    "batch_end_index": null,
+    "speed_scale": 1.0,
+    "adaptive_reason": "",
+    "commanded_speed_mps": 2.258682244674128e-18,
+    "measured_speed_mps": 0.0013327506147684048,
+    "commanded_acceleration_mps2": 1.55696196992437e-18,
+    "tracking_error_m": 0.0031719311903202606,
+    "map_clearance_m": 6.5358534847008904,
+    "mission_kind": "mapping",
+    "survey_waypoint": 0,
+    "survey_waypoint_count": 4,
+    "survey_planning": true,
+    "mission_start_received": true,
+    "takeoff_phase": "READY",
+    "takeoff_attempts": 1,
+    "takeoff_result": 0,
+    "armed": true,
+    "fcu_mode": "GUIDED",
+    "altitude_m": 1.7993878511817194,
+    "last_timing_gap_seconds": null,
+    "fcu_frame_aligned": true,
+    "mavros_parameters_ready": true,
+    "reference_ready": true,
+    "takeoff_space_observed": true,
+    "navigation_window_origin": [
+      -5.0,
+      -5.0,
+      -0.6
+    ],
+    "navigation_window_shape": [
+      50,
+      50,
+      40
+    ],
+    "global_known_voxels": 12026,
+    "observed_volume_fraction": 0.0011808255763717057,
+    "observed_xy_fraction": 0.0047932131495228,
+    "global_map_origin": [
+      -40.0,
+      -40.0,
+      -0.6
+    ],
+    "global_map_shape": [
+      460,
+      410,
+      54
+    ],
+    "mission": "HOLD_ABORT",
+    "failure": "mpc_frame_alignment",
+    "replans": 0,
+    "buzzer_events": 0,
+    "health_reason": "",
+    "exploration_phase": "",
+    "exploration_views": 0,
+    "exploration_predicted_gain": 0,
+    "map_unknown_cells": 91490,
+    "map_version": 237,
+    "map_measurement_age": 0.6010000000000062,
+    "cloud_age": 0.1010000000000062,
+    "predictive_controller": "PVA_response_MPC_not_full_NMPC",
+    "predictive_active": false,
+    "predictive_reason": "mpc_frame_alignment",
+    "predictive_solves": 7,
+    "predictive_applied": 6,
+    "predictive_worker_wall_max_ms": 764.1930810004851,
+    "predictive_worker_ready": true,
+    "predictive_recoveries": 3,
+    "predictive_queue_wall_max_ms": 23.344724000708084,
+    "predictive_receive_wall_max_ms": 1074.387797001691,
+    "predictive_solution_age_seconds": 0.16400000000000148,
+    "predictive_measurement_age_seconds": 0.07400000000000517,
+    "predictive_commanded_jerk_mps3": 0.0,
+    "predictive_model_updates": 0,
+    "predictive_model_version": 0,
+    "predictive_parameters": [
+      [
+        1.5667861628474686,
+        0.5735087693316923,
+        1.0456315258284994,
+        0.0037860530645452087
+      ],
+      [
+        1.9225115316320076,
+        0.39714057364627336,
+        1.0114326802958513,
+        0.004679893654398496
+      ],
+      [
+        3.579954964788454,
+        4.923624336515572,
+        0.7165112621191676,
+        0.000652895889731026
+      ]
+    ],
+    "model_controls_flight": true,
+    "predictive_ever_active": true,
+    "simulation_ray_stats": {
+      "total_rays": 11520,
+      "finite_hits": 1922,
+      "explicit_no_return": 9533,
+      "invalid_rays": 65,
+      "source": "verified_organized_gazebo_gpu_lidar",
+      "measurement_stamp": 50.7
+    },
+    "mapping_ray_counts": {
+      "surface_rays": 480,
+      "no_return_rays": 794,
+      "surface_stride": 4,
+      "no_return_stride": 12,
+      "sequence": 237
+    },
+    "mapping_roi": {
+      "ray_samples_considered": 327048,
+      "ray_samples_retained": 37460,
+      "updated_voxels": 2207,
+      "retained_fraction": 0.11453976174751107,
+      "region": {
+        "centre": [
+          0.003981587642299918,
+          0.002896028025797699,
+          1.799280623567467
+        ],
+        "near_radius": 2.0,
+        "radius": 1.5,
+        "routes": [
+          [
+            [
+              0.003981587642299918,
+              0.002896028025797699,
+              1.799280623567467
+            ],
+            [
+              0.0,
+              0.0,
+              2.0
+            ]
+          ]
+        ],
+        "expansion_centres": [],
+        "expansion_radius": 1.5,
+        "expansions": 0,
+        "lookahead_m": 20.0,
+        "policy": "route_corridor_plus_360_near_field",
+        "outside_policy": "unobserved_is_unknown"
+      },
+      "clipping": {
+        "full_trace_samples": 327048,
+        "generated_samples": 46341,
+        "retained_samples": 37460,
+        "rays_without_roi_intersection": 0
+      }
+    },
+    "pipeline_trace": {
+      "received_ns": 9778040579988,
+      "scan_stamp": 50.4,
+      "submitted_ns": 9778282351930,
+      "worker_started_ns": 9778322363953,
+      "worker_finished_ns": 9778765245108,
+      "integrated_ns": 9779009054564,
+      "navigation_received_ns": 9779009056963
+    },
+    "mapping_io_callback_wall_max_ms": {
+      "lidar_receive": 56.70191200078989,
+      "odometry_receive": 183.0355160000181,
+      "map_update_handoff": 237.12277999948128,
+      "mapping_io_update": 286.8904159986414,
+      "local_visual_handoff": 9.372117001476,
+      "visual_worker_local": 338.89618099965446,
+      "global_visual_handoff": 128.60875200021837,
+      "visual_worker_global": 44.12766600034956,
+      "map_log_snapshot": 84.45319200109225
+    },
+    "runtime_isolation": "mapping_io_process"
+  },
+  "exploration_events": [],
+  "survey_sim_seconds": 1.2770000000000081,
+  "survey_stopped_sim_seconds": 1.2770000000000081,
+  "survey_mean_commanded_speed_mps": 5.375172186307192e-19,
+  "survey_mean_measured_speed_mps": 0.002319853143687974,
+  "planner_jobs": [],
+  "processing_pipeline": {
+    "scope": "mapping_ROS_receive_to_first_final_ROS_setpoint_using_map_for_safety",
+    "clock": "same_host_monotonic_wall_time",
+    "samples": 30,
+    "rolling_window": 30,
+    "p50_wall_ms": 1375.266712,
+    "p95_wall_ms": 1638.105722,
+    "max_wall_ms": 2179.990305,
+    "last": {
+      "map_version": 237,
+      "scan_stamp": 50.4,
+      "total_wall_ms": 1132.216447,
+      "measurement_to_publish_sim_seconds": 0.4510000000000076,
+      "stages_wall_ms": {
+        "receive_to_submit": 241.771942,
+        "worker_queue": 40.012023,
+        "map_worker": 442.881155,
+        "worker_result_delivery": 243.809456,
+        "snapshot_transport_and_decode": 156.171857,
+        "navigation_to_setpoint": 7.570014
+      }
+    },
+    "excludes": "sensor_acquisition_before_ROS_receive; MAVROS_FCU_delivery; vehicle_response",
+    "reference_causality": "latest_map_safety_check; reference_and_MPC_may_use_older_snapshot"
+  },
+  "mapping_generated_sample_fraction_mean": 0.1857164859206505,
+  "mapping_corridor_expansions_max": 0,
+  "unexplained_exploration_events": 0,
+  "adaptive_reasons": {},
+  "route_reasons": {
+    "": 105
+  },
+  "legacy_penalty_removed_samples": 0,
+  "directional_braking_limited_samples": 0,
+  "maximum_command_speed_mps": 0.0007683215173574697,
+  "maximum_tracking_error_airborne_m": 0.0033061852637369265,
+  "tracking_error_scope": "SURVEY/EXPLORE/RETURN only; excludes takeoff and ArduPilot landing",
+  "failures": [
+    "mpc_frame_alignment",
+    "mpc_recovering"
+  ]
+}

@@ -1,0 +1,25 @@
+/**:
+  ros__parameters:
+    use_sim_time: true
+    fcu_url: udp://127.0.0.1:14550@
+    gcs_url: ""
+    tgt_system: 1
+    tgt_component: 1
+    fcu_protocol: v2.0
+    plugin_allowlist: [sys_status, sys_time, command, local_position, odometry, setpoint_raw, param, imu]
+/**/time:
+  ros__parameters:
+    timesync_mode: NONE
+    timesync_rate: 0.0
+/**/local_position:
+  ros__parameters:
+    frame_id: fcu_local
+    tf.send: false
+/**/odometry:
+  ros__parameters:
+    fcu.odom_parent_id_des: odom
+    fcu.odom_child_id_des: base_link
+    fcu.map_id_des: odom
+/**/setpoint_raw:
+  ros__parameters:
+    use_sim_time: true

@@ -10,3 +10,14 @@ __pycache__/
 .vscode/
 .idea/
 *~
+.dependencies/
+.venv/
+reports/*.csv
+reports/**
+!reports/CORRIDOR_RESULTS.md
+!reports/corridor_benchmark.json
+!reports/local_speed_profile_benchmark.json
+!reports/local_profile_run1_audit.json
+build_ros/
+install_ros/
+log_ros/

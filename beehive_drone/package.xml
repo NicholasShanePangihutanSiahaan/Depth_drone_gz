@@ -6,6 +6,7 @@
   <description>TODO: Package description</description>
   <maintainer email="nicholasshane08@gmail.com">shane</maintainer>
   <license>TODO: License declaration</license>
+  <buildtool_depend>ament_python</buildtool_depend>
 
   <exec_depend>point-cloud-test</exec_depend>
   <exec_depend>pcl_cstm_msg</exec_depend>

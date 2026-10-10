@@ -4,7 +4,8 @@ import math
 import time
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String, Bool, Float32, Float64
+from rclpy.executors import ExternalShutdownException
+from std_msgs.msg import String, Bool, Float32, Float64, Int32
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
@@ -88,6 +89,7 @@ class FlightManager(Node):
         self.pub_mode = self.create_publisher(String, "/flight/telemetry/current_mode", 10)
         self.pub_alt = self.create_publisher(Float32, "/flight/telemetry/altitude", 10)
         self.pub_hover = self.create_publisher(Bool, "/flight/telemetry/is_hovering", 10)
+        self.pub_takeoff_result = self.create_publisher(Int32, '/flight/response/takeoff_result', 10)
 
         # ==========================================
         # 4. MAVROS SERVICE CLIENTS
@@ -171,8 +173,19 @@ class FlightManager(Node):
         req.altitude = self.target_takeoff_alt
         
         if self.takeoff_client.wait_for_service(timeout_sec=1.0):
-            self.takeoff_client.call_async(req)
+            future = self.takeoff_client.call_async(req)
+            future.add_done_callback(self.takeoff_result)
             self.get_logger().info(f"Eksekusi Takeoff ke ketinggian {self.target_takeoff_alt}m")
+
+    def takeoff_result(self, future):
+        try:
+            response = future.result()
+            self.pub_takeoff_result.publish(Int32(data=int(response.result)))
+            self.get_logger().info(
+                f"Takeoff acknowledgement: success={response.success}, result={response.result}")
+        except Exception as exc:
+            self.pub_takeoff_result.publish(Int32(data=255))
+            self.get_logger().error(f"Takeoff service failed: {exc}")
 
     def cmd_land_cb(self, msg):
         if msg.data:
@@ -214,7 +227,7 @@ def main(args=None):
     node = FlightManager()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     except RuntimeError:
         if rclpy.ok():

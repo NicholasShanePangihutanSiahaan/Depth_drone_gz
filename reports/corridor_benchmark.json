@@ -1,0 +1,93 @@
+{
+  "scope": "synthetic valid max-range rays; integration only, not flight validation",
+  "rays": 1440,
+  "resolution_m": 0.2,
+  "results": {
+    "whole_range": {
+      "median_seconds": 0.1457904109993251,
+      "timings_seconds": [
+        0.1935729659999197,
+        0.1457904109993251,
+        0.156963836999239,
+        0.1367753040003663,
+        0.1360010489997876
+      ],
+      "known_voxels": 127159,
+      "stats": {
+        "ray_samples_considered": 432123,
+        "ray_samples_retained": 432123,
+        "updated_voxels": 127159,
+        "retained_fraction": 1.0,
+        "region": null,
+        "clipping": {}
+      }
+    },
+    "clipped_corridor": {
+      "median_seconds": 0.052922713000043586,
+      "timings_seconds": [
+        0.04261440099980973,
+        0.052922713000043586,
+        0.05671983699994598,
+        0.051727003999985754,
+        0.05513545400026487
+      ],
+      "known_voxels": 4059,
+      "stats": {
+        "ray_samples_considered": 432123,
+        "ray_samples_retained": 50945,
+        "updated_voxels": 4059,
+        "retained_fraction": 0.11789467350731157,
+        "region": {
+          "centre": [
+            0.0,
+            0.0,
+            2.0
+          ],
+          "near_radius": 2.0,
+          "radius": 1.5,
+          "routes": [
+            [
+              [
+                0.0,
+                0.0,
+                2.0
+              ],
+              [
+                0.0,
+                -1.875,
+                2.0
+              ],
+              [
+                0.0,
+                -3.75,
+                2.0
+              ],
+              [
+                0.0,
+                -5.625,
+                2.0
+              ],
+              [
+                0.0,
+                -7.5,
+                2.0
+              ]
+            ]
+          ],
+          "expansion_centres": [],
+          "expansion_radius": 1.5,
+          "expansions": 0,
+          "lookahead_m": 20.0,
+          "policy": "route_corridor_plus_360_near_field",
+          "outside_policy": "unobserved_is_unknown"
+        },
+        "clipping": {
+          "full_trace_samples": 432123,
+          "generated_samples": 61578,
+          "retained_samples": 50945,
+          "rays_without_roi_intersection": 0
+        }
+      }
+    }
+  }
+}

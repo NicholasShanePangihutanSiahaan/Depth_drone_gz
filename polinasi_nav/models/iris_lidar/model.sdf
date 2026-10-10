@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="iris_lidar">
+    <include merge="true"><uri>model://iris_with_ardupilot</uri></include>
+    <link name="mid360_link">
+      <pose>0 0 0.20 0 0 0</pose>
+      <inertial><mass>0.265</mass><inertia><ixx>0.00015</ixx><iyy>0.00015</iyy><izz>0.00015</izz></inertia></inertial>
+      <visual name="livox"><geometry><box><size>0.065 0.065 0.060</size></box></geometry></visual>
+      <sensor name="mid360" type="gpu_lidar">
+        <topic>/livox/lidar</topic><gz_frame_id>mid360</gz_frame_id>
+        <always_on>true</always_on><update_rate>10</update_rate>
+        <lidar><scan>
+          <horizontal><samples>360</samples><resolution>1</resolution><min_angle>-3.14159265359</min_angle><max_angle>3.12413936107</max_angle></horizontal>
+          <vertical><samples>32</samples><resolution>1</resolution><min_angle>-0.12217304764</min_angle><max_angle>0.90757121104</max_angle></vertical>
+        </scan><range><min>0.2</min><max>12</max><resolution>0.01</resolution></range>
+        <noise><type>gaussian</type><mean>0</mean><stddev>0.01</stddev></noise></lidar>
+      </sensor>
+      <sensor name="mid360_imu" type="imu">
+        <topic>/livox/imu</topic><gz_frame_id>mid360_imu</gz_frame_id>
+        <always_on>true</always_on><update_rate>200</update_rate>
+        <imu><angular_velocity>
+          <x><noise type="gaussian"><mean>0</mean><stddev>0.001</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0</mean><stddev>0.001</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0</mean><stddev>0.001</stddev></noise></z>
+        </angular_velocity><linear_acceleration>
+          <x><noise type="gaussian"><mean>0</mean><stddev>0.01</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0</mean><stddev>0.01</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0</mean><stddev>0.01</stddev></noise></z>
+        </linear_acceleration></imu>
+      </sensor>
+    </link>
+    <joint name="lidar_mount" type="fixed"><parent>iris_with_standoffs::base_link</parent><child>mid360_link</child></joint>
+    <link name="rangefinder_link">
+      <pose>0 0 -0.05 0 1.57079632679 0</pose>
+      <inertial><mass>0.01</mass><inertia><ixx>0.00001</ixx><iyy>0.00001</iyy><izz>0.00001</izz></inertia></inertial>
+      <sensor name="down_range" type="gpu_lidar">
+        <topic>/simulation/range_scan</topic><gz_frame_id>rangefinder</gz_frame_id>
+        <always_on>true</always_on><update_rate>20</update_rate>
+        <lidar><scan><horizontal><samples>1</samples><resolution>1</resolution><min_angle>0</min_angle><max_angle>0</max_angle></horizontal></scan>
+          <range><min>0.05</min><max>8</max><resolution>0.01</resolution></range></lidar>
+      </sensor>
+    </link>
+    <joint name="range_mount" type="fixed"><parent>iris_with_standoffs::base_link</parent><child>rangefinder_link</child></joint>
+    <link name="zed_camera_link">
+      <pose>0.20 0 0.02 0 0 0</pose>
+      <inertial><mass>0.02</mass><inertia><ixx>0.00002</ixx><iyy>0.00002</iyy><izz>0.00002</izz></inertia></inertial>
+      <sensor name="zed_placeholder" type="camera">
+        <topic>/zed/image</topic><gz_frame_id>zed_camera_optical</gz_frame_id><always_on>true</always_on><update_rate>10</update_rate>
+        <camera><horizontal_fov>1.5</horizontal_fov><image><width>640</width><height>480</height><format>R8G8B8</format></image>
+          <clip><near>0.1</near><far>20</far></clip></camera>
+      </sensor>
+    </link>
+    <joint name="camera_pitch" type="revolute">
+      <parent>iris_with_standoffs::base_link</parent><child>zed_camera_link</child>
+      <axis><xyz>0 -1 0</xyz><limit><lower>-0.5</lower><upper>0.8</upper></limit><dynamics><damping>0.1</damping></dynamics></axis>
+    </joint>
+    <plugin filename="gz-sim-joint-position-controller-system" name="gz::sim::systems::JointPositionController">
+      <joint_name>camera_pitch</joint_name><topic>/camera/pitch_cmd</topic><p_gain>0.05</p_gain><cmd_max>0.2</cmd_max><cmd_min>-0.2</cmd_min>
+    </plugin>
+    <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
+      <joint_name>camera_pitch</joint_name><topic>/camera/joint_state</topic>
+    </plugin>
+    <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>world</odom_frame><robot_base_frame>base_link</robot_base_frame><dimensions>3</dimensions>
+      <odom_publish_frequency>50</odom_publish_frequency><odom_topic>/simulation/ground_truth/odom</odom_topic>
+    </plugin>
+  </model>
+</sdf>

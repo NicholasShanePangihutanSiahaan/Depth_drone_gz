@@ -1,0 +1,3 @@
+# Only the isolated identification simulator. Keep hover compensation fixed.
+MOT_HOVER_LEARN 0
+LOG_DISARMED 1

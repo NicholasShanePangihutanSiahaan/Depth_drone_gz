@@ -1,0 +1,830 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.9">
+  <world name="polinasi_palm_farm">
+    <physics name="1ms" type="ignore">
+      <max_step_size>.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+    <scene>
+      <ambient>.55 .55 .55 1</ambient>
+      <background>.58 .76 .91 1</background>
+      <shadows>true</shadows>
+    </scene>
+    <light name="tropical_sun" type="directional">
+      <pose>0 0 30 0 0 0</pose>
+      <diffuse>.95 .91 .82 1</diffuse>
+      <specular>.15 .15 .15 1</specular>
+      <cast_shadows>true</cast_shadows>
+      <direction>-.4 -.35 -1</direction>
+    </light>
+    <model name="soil_and_grass">
+      <static>true</static>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/ground.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/ground.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <collision name="solid_ground">
+          <pose>5 0 -0.25 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>92 82 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <include>
+      <uri>model://iris_lidar</uri>
+      <pose>0 0 .195 0 0 0</pose>
+    </include>
+    <model name="oil_palm_00">
+      <static>true</static>
+      <pose>9.0 0.0 0 0 0 -0.74757</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_01">
+      <static>true</static>
+      <pose>18.0 4.5 0 0 0 -1.69194</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_02">
+      <static>true</static>
+      <pose>-9.0 -18.0 0 0 0 -2.09835</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.1084583586931782 1.1084583586931782 1.1084583586931782</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.1084583586931782 1.1084583586931782 1.1084583586931782</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_03">
+      <static>true</static>
+      <pose>0.0 -18.0 0 0 0 0.48971</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0525331643288167 1.0525331643288167 1.0525331643288167</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0525331643288167 1.0525331643288167 1.0525331643288167</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_04">
+      <static>true</static>
+      <pose>9.0 -18.0 0 0 0 0.33338</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9758860159888182 0.9758860159888182 0.9758860159888182</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9758860159888182 0.9758860159888182 0.9758860159888182</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_05">
+      <static>true</static>
+      <pose>18.0 -18.0 0 0 0 1.45534</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0241069897437993 1.0241069897437993 1.0241069897437993</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0241069897437993 1.0241069897437993 1.0241069897437993</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_06">
+      <static>true</static>
+      <pose>27.0 -18.0 0 0 0 1.76689</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0453952430893554 1.0453952430893554 1.0453952430893554</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0453952430893554 1.0453952430893554 1.0453952430893554</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_07">
+      <static>true</static>
+      <pose>36.0 -18.0 0 0 0 2.13187</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9898486277252518 0.9898486277252518 0.9898486277252518</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9898486277252518 0.9898486277252518 0.9898486277252518</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_08">
+      <static>true</static>
+      <pose>-4.5 -9.0 0 0 0 -2.16739</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9174587643518503 0.9174587643518503 0.9174587643518503</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9174587643518503 0.9174587643518503 0.9174587643518503</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_09">
+      <static>true</static>
+      <pose>4.5 -9.0 0 0 0 1.40222</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9218776949076226 0.9218776949076226 0.9218776949076226</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9218776949076226 0.9218776949076226 0.9218776949076226</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_10">
+      <static>true</static>
+      <pose>13.5 -9.0 0 0 0 0.97173</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0351933597471328 1.0351933597471328 1.0351933597471328</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0351933597471328 1.0351933597471328 1.0351933597471328</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_11">
+      <static>true</static>
+      <pose>22.5 -9.0 0 0 0 -2.76775</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0760785753796913 1.0760785753796913 1.0760785753796913</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0760785753796913 1.0760785753796913 1.0760785753796913</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_12">
+      <static>true</static>
+      <pose>31.5 -9.0 0 0 0 -2.93421</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0967229247872456 1.0967229247872456 1.0967229247872456</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0967229247872456 1.0967229247872456 1.0967229247872456</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_13">
+      <static>true</static>
+      <pose>40.5 -9.0 0 0 0 2.14285</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.933968336568619 0.933968336568619 0.933968336568619</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.933968336568619 0.933968336568619 0.933968336568619</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_14">
+      <static>true</static>
+      <pose>-9.0 0.0 0 0 0 1.42150</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0630850289672342 1.0630850289672342 1.0630850289672342</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0630850289672342 1.0630850289672342 1.0630850289672342</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_15">
+      <static>true</static>
+      <pose>27.0 0.0 0 0 0 -2.35617</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0474880758273186 1.0474880758273186 1.0474880758273186</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0474880758273186 1.0474880758273186 1.0474880758273186</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_16">
+      <static>true</static>
+      <pose>36.0 0.0 0 0 0 -2.36394</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.108305392234751 1.108305392234751 1.108305392234751</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.108305392234751 1.108305392234751 1.108305392234751</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_17">
+      <static>true</static>
+      <pose>-4.5 9.0 0 0 0 1.18659</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.1250012325825964 1.1250012325825964 1.1250012325825964</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.1250012325825964 1.1250012325825964 1.1250012325825964</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_18">
+      <static>true</static>
+      <pose>4.5 9.0 0 0 0 -2.80526</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9594500563765269 0.9594500563765269 0.9594500563765269</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9594500563765269 0.9594500563765269 0.9594500563765269</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_19">
+      <static>true</static>
+      <pose>13.5 9.0 0 0 0 0.75335</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0320516734156546 1.0320516734156546 1.0320516734156546</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0320516734156546 1.0320516734156546 1.0320516734156546</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_20">
+      <static>true</static>
+      <pose>22.5 9.0 0 0 0 -1.99748</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.1019450805273103 1.1019450805273103 1.1019450805273103</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.1019450805273103 1.1019450805273103 1.1019450805273103</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_21">
+      <static>true</static>
+      <pose>31.5 9.0 0 0 0 2.17730</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9553540739406883 0.9553540739406883 0.9553540739406883</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9553540739406883 0.9553540739406883 0.9553540739406883</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_22">
+      <static>true</static>
+      <pose>40.5 9.0 0 0 0 -2.22483</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0469147984935336 1.0469147984935336 1.0469147984935336</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0469147984935336 1.0469147984935336 1.0469147984935336</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_23">
+      <static>true</static>
+      <pose>-9.0 18.0 0 0 0 -0.58314</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.045834944055387 1.045834944055387 1.045834944055387</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.045834944055387 1.045834944055387 1.045834944055387</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_24">
+      <static>true</static>
+      <pose>0.0 18.0 0 0 0 -0.04232</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9787061154663623 0.9787061154663623 0.9787061154663623</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9787061154663623 0.9787061154663623 0.9787061154663623</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_25">
+      <static>true</static>
+      <pose>9.0 18.0 0 0 0 -3.00547</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9137373187353219 0.9137373187353219 0.9137373187353219</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>0.9137373187353219 0.9137373187353219 0.9137373187353219</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_26">
+      <static>true</static>
+      <pose>18.0 18.0 0 0 0 -0.26127</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0620530619506585 1.0620530619506585 1.0620530619506585</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0620530619506585 1.0620530619506585 1.0620530619506585</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_27">
+      <static>true</static>
+      <pose>27.0 18.0 0 0 0 -0.46706</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0661104094977416 1.0661104094977416 1.0661104094977416</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.0661104094977416 1.0661104094977416 1.0661104094977416</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_28">
+      <static>true</static>
+      <pose>36.0 18.0 0 0 0 0.24999</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.100088139202908 1.100088139202908 1.100088139202908</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm/meshes/palm.dae</uri>
+              <scale>1.100088139202908 1.100088139202908 1.100088139202908</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="launch_pad">
+      <static>true</static>
+      <link name="pad">
+        <visual name="visual">
+          <pose>0 0 .006 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>2.8 2.8 .012</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .37 .34 1</ambient>
+            <diffuse>.55 .57 .52 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <pose>0 0 .006 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>2.8 2.8 .012</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <gui fullscreen="false">
+      <plugin filename="MinimalScene" name="3D View">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">docked</property>
+        </gz-gui>
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <ambient_light>.55 .55 .55</ambient_light>
+        <background_color>.58 .76 .91</background_color>
+        <camera_pose>-12 -18 16 0 .55 .8</camera_pose>
+      </plugin>
+      <plugin filename="GzSceneManager" name="GzSceneManager">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">5</property>
+          <property type="double" key="height">5</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="InteractiveViewControl" name="InteractiveViewControl">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">5</property>
+          <property type="double" key="height">5</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="CameraTracking" name="CameraTracking">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">5</property>
+          <property type="double" key="height">5</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="WorldControl" name="WorldControl">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">72</property>
+          <property type="double" key="width">290</property>
+          <property type="double" key="z">1</property>
+          <anchors target="3D View">
+            <line own="left" target="left" />
+            <line own="bottom" target="bottom" />
+          </anchors>
+        </gz-gui>
+        <play_pause>true</play_pause>
+        <step>true</step>
+        <start_paused>false</start_paused>
+        <use_event>true</use_event>
+      </plugin>
+      <plugin filename="WorldStats" name="WorldStats">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">110</property>
+          <property type="double" key="width">290</property>
+          <property type="double" key="z">1</property>
+          <anchors target="3D View">
+            <line own="right" target="right" />
+            <line own="bottom" target="bottom" />
+          </anchors>
+        </gz-gui>
+        <sim_time>true</sim_time>
+        <real_time>true</real_time>
+        <real_time_factor>true</real_time_factor>
+        <iterations>true</iterations>
+      </plugin>
+    </gui>
+  </world>
+</sdf>

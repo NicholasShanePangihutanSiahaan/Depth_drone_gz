@@ -1,0 +1,114 @@
+{
+  "scope": "fixed-path numerical reference comparison; no flight physics",
+  "command_speed_limit_mps": 0.3,
+  "paths": {
+    "straight": {
+      "legacy": {
+        "duration_sim_seconds": 37.5,
+        "durations": [
+          12.5,
+          12.5,
+          12.5
+        ],
+        "mean_reference_speed_mps": 0.1598399999939338,
+        "max_reference_speed_mps": 0.2503798894545346,
+        "construction_median_wall_ms": 1.842394998675445,
+        "derivative_bounds": [
+          0.250541015625,
+          0.05528000000000001,
+          0.04177920000000001
+        ]
+      },
+      "local": {
+        "duration_sim_seconds": 28.84049242424242,
+        "durations": [
+          10.415624999999999,
+          8.009242424242423,
+          10.415624999999999
+        ],
+        "mean_reference_speed_mps": 0.2078327899632832,
+        "max_reference_speed_mps": 0.28475774499346035,
+        "construction_median_wall_ms": 1.6251730012299959,
+        "derivative_bounds": [
+          0.2850566306630663,
+          0.06659891911783439,
+          0.05522409197092376
+        ]
+      }
+    },
+    "short_corner": {
+      "legacy": {
+        "duration_sim_seconds": 101.66989190264431,
+        "durations": [
+          24.79753461040105,
+          24.79753461040105,
+          2.479753461040107,
+          2.4797534610401053,
+          22.317781149360943,
+          24.79753461040105
+        ],
+        "mean_reference_speed_mps": 0.0815644856053423,
+        "max_reference_speed_mps": 0.12621260208222526,
+        "construction_median_wall_ms": 3.628191998359398,
+        "derivative_bounds": [
+          0.12629330877106293,
+          0.13500812686933922,
+          0.5612499999999998
+        ]
+      },
+      "local": {
+        "duration_sim_seconds": 43.438805906207904,
+        "durations": [
+          10.415624999999999,
+          9.428899486024022,
+          2.110912119452702,
+          2.6678146778435243,
+          8.39992962288766,
+          10.415624999999999
+        ],
+        "mean_reference_speed_mps": 0.19024948431861197,
+        "max_reference_speed_mps": 0.2903019540930919,
+        "construction_median_wall_ms": 3.031775999261299,
+        "derivative_bounds": [
+          0.29037035679814244,
+          0.1409752725901262,
+          0.5447437205243907
+        ]
+      }
+    },
+    "reversal": {
+      "legacy": {
+        "duration_sim_seconds": 37.500000000000014,
+        "durations": [
+          12.500000000000004,
+          12.500000000000004,
+          12.500000000000004
+        ],
+        "mean_reference_speed_mps": 0.15983999999046736,
+        "max_reference_speed_mps": 0.2999945892081758,
+        "construction_median_wall_ms": 1.842780999140814,
+        "derivative_bounds": [
+          0.29999999999999993,
+          0.07449999999999996,
+          0.06143999999999996
+        ]
+      },
+      "local": {
+        "duration_sim_seconds": 33.45625,
+        "durations": [
+          10.415624999999999,
+          10.415625000000002,
+          12.625
+        ],
+        "mean_reference_speed_mps": 0.1791593498965667,
+        "max_reference_speed_mps": 0.29702567909859406,
+        "construction_median_wall_ms": 1.087649001419777,
+        "derivative_bounds": [
+          0.29702970297029707,
+          0.07303205568081561,
+          0.05963305868867448
+        ]
+      }
+    }
+  }
+}

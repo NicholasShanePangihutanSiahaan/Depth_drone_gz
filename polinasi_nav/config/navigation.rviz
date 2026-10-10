@@ -1,0 +1,98 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Fixed Frame: map
+    Frame Rate: 20
+    Background Color: 35; 35; 35
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Ground grid
+      Enabled: true
+      Cell Size: 1
+    - Class: rviz_default_plugins/TF
+      Name: Frames
+      Enabled: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: MID-360 cloud
+      Enabled: true
+      Topic:
+        Value: /livox/lidar
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 5
+      Style: Points
+      Size (Pixels): 2
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Whole-farm observed obstacle voxels (history)
+      Enabled: true
+      Topic:
+        Value: /mapping/global_occupied
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Accumulated whole-farm LiDAR cloud (display sampled)
+      Enabled: true
+      Topic:
+        Value: /mapping/global_cloud
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+      Style: Points
+      Size (Pixels): 2
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Occupied and observed free
+      Enabled: true
+      Topic:
+        Value: /navigation/occupancy
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+    - Class: rviz_default_plugins/Path
+      Name: Nominal orbit
+      Enabled: true
+      Color: 255; 160; 0
+      Topic:
+        Value: /navigation/nominal_orbit
+    - Class: rviz_default_plugins/Path
+      Name: Survey waypoints (nominal, not collision-certified)
+      Enabled: true
+      Color: 255; 220; 60
+      Topic:
+        Value: /navigation/survey_route
+    - Class: rviz_default_plugins/Path
+      Name: Planned trajectory
+      Enabled: true
+      Color: 0; 180; 255
+      Topic:
+        Value: /navigation/planned_path
+    - Class: rviz_default_plugins/Path
+      Name: Executed path
+      Enabled: true
+      Color: 40; 255; 80
+      Topic:
+        Value: /navigation/executed_path
+    - Class: rviz_default_plugins/Path
+      Name: Exploration viewpoints (selection order, not a flight route)
+      Enabled: true
+      Color: 200; 80; 255
+      Pose Style: Arrows
+      Pose Color: 200; 80; 255
+      Topic:
+        Value: /navigation/exploration_viewpoints
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 15
+      Pitch: 0.7
+      Yaw: 0.7
+      Focal Point:
+        X: 4
+        Y: 0
+        Z: 2
+Window Geometry:
+  Width: 1280
+  Height: 800
