@@ -11,3 +11,6 @@ __pycache__/
 mission_map*
 mission_result*
 .~lock.mission*
+rosbag*
+logs/
+uav_env/
