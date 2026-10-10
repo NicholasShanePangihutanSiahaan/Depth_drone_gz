@@ -53,8 +53,8 @@ class PositionPID:
         requested = controller.command_a+correction
         bounded = limit_norm(requested, self.c['acceleration'])
         output = self.previous_acceleration+limit_norm(bounded-self.previous_acceleration, self.c['jerk']*dt)
-        saturated = (np.linalg.norm(feedback-correction) > 1e-9
-                     or np.linalg.norm(requested-output) > 1e-9)
+        saturated = bool(np.linalg.norm(feedback-correction) > 1e-9
+                         or np.linalg.norm(requested-output) > 1e-9)
         # Conditional integration: do not accumulate errors while authority is
         # limited by correction, acceleration, or jerk. Reset on state changes.
         if not saturated:

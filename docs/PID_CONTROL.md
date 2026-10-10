@@ -58,3 +58,9 @@ Gazebo/RViz dibuka otomatis. Untuk stop semua proses/jendela milik run ini:
 
 Posisi ground truth bukan lokalisasi LiDAR. Jangan mengoperasikan hardware
 dengan preset simulasi ini. Hasil run PID dilaporkan terpisah dari hasil MPC.
+
+Perbaikan 10 Oktober: boolean saturasi dikonversi menjadi `bool` Python agar
+status PID dapat ditulis ke JSON. Tes mencakup keluaran tersaturasi dan normal.
+Launcher ROS sekarang meminta shutdown ketika node navigasi keluar; launcher
+simulasi kemudian menutup proses dan kedua GUI miliknya. Ini penghentian
+simulasi, bukan prosedur failsafe untuk pesawat nyata.

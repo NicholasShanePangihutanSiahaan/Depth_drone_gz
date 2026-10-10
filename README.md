@@ -4,13 +4,17 @@ Pada branch `lidar360-PID`, misi mapping memakai PID feedback PVA, bukan MPC.
 Gunakan `bash tools/start_pid.sh tour` (326 target) atau `tour_check` (4 target).
 Lihat [panduan PID](docs/PID_CONTROL.md). Snapshot MPC ada di `lidar360-mpc`;
 hasil uji MPC tidak otomatis berlaku untuk PID.
+Hasil sementara: enam target PID dilewati tanpa HOLD_ABORT; lihat
+[hasil dan batas pengujian PID](docs/PID_RESULTS.md). Seluruh kebun belum tervalidasi.
 
 Separate simulation prototype, based on upstream `151a6b3b8b916dada056db9f0f212036192c348b`.
 The original `/home/abin/p0l1n4s1` is untouched. Branches are published to
 `NicholasShanePangihutanSiahaan/Depth_drone_gz`; its default branch is untouched.
 
 Installed: ROS 2 Humble, RViz, Gazebo Harmonic bridge and source-built MAVROS.
-Tested: 145 regressions, six historical planner cases, four historical partial-map exploration cases,
+Latest selected tests: 177 unique navigation/ROS-adapter cases passed; legacy
+beehive helper tests have an unresolved import mismatch (see PID results).
+Historical tests include six planner cases, four partial-map exploration cases,
 and GPS-disabled Gazebo/SITL
 takeoff–survey out to 4 m–return–automatic landing using ground truth.
 Full sensor-based flight remains unvalidated.

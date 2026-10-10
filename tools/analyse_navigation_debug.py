@@ -11,13 +11,15 @@ def analyse(path):
     speeds = [r.get('speed_diagnostics', {}) for r in moving]
     clips = [r.get('mapping_roi', {}).get('clipping', {}) for r in rows]
     fractions = [c['generated_samples']/c['full_trace_samples'] for c in clips if c.get('full_trace_samples', 0)]
-    elapsed, commanded_distance, measured_distance, stopped = 0., 0., 0., 0.
+    elapsed, commanded_distance, measured_distance, measured_elapsed, stopped = 0., 0., 0., 0., 0.
     for a,b in zip(rows, rows[1:]):
         dt = b['simulation_time']-a['simulation_time']
         if a.get('flight') == 'MISSION' and a.get('mission') == 'SURVEY' and 0 < dt <= 2.:
             elapsed += dt
             commanded_distance += a.get('commanded_speed_mps', 0.)*dt
-            measured_distance += a.get('measured_speed_mps', 0.)*dt
+            if a.get('measured_speed_mps') is not None:
+                measured_distance += a['measured_speed_mps']*dt
+                measured_elapsed += dt
             stopped += dt if a.get('commanded_speed_mps', 0.) < .02 else 0.
     jobs = {r['planner_job_id']:r.get('planner_stages_last_wall_ms', {}) for r in rows if r.get('planner_job_id')}
     explores, previous = [], None
@@ -31,7 +33,7 @@ def analyse(path):
         exploration_events=explores,
         survey_sim_seconds=elapsed, survey_stopped_sim_seconds=stopped,
         survey_mean_commanded_speed_mps=commanded_distance/elapsed if elapsed else None,
-        survey_mean_measured_speed_mps=measured_distance/elapsed if elapsed else None,
+        survey_mean_measured_speed_mps=measured_distance/measured_elapsed if measured_elapsed else None,
         planner_jobs=list(jobs.values()),
         processing_pipeline=rows[-1].get('processing_pipeline') if rows else None,
         mapping_generated_sample_fraction_mean=sum(fractions)/len(fractions) if fractions else None,

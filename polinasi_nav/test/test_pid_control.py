@@ -30,6 +30,8 @@ def test_pid_hover_and_no_optimizer_or_model_required():
     np.testing.assert_allclose(ctl.command_a, 0.)
     assert not ctl.failure and pid.status()['active_controller'] == 'PID_PVA_feedback'
     assert not hasattr(pid, 'worker') and not pid.status()['model_controls_flight']
+    # Live status publication must accept both saturated and unsaturated PID.
+    json.dumps(pid.status(), allow_nan=False)
 
 
 def test_pid_correction_direction_bounds_and_anti_windup():
@@ -43,6 +45,7 @@ def test_pid_correction_direction_bounds_and_anti_windup():
         assert np.linalg.norm(ctl.command_a-previous) <= c['jerk']*.05+1e-8
         previous = ctl.command_a.copy()
     assert not ctl.failure and pid.last['saturated']
+    json.dumps(pid.status(), allow_nan=False)
     np.testing.assert_allclose(pid.integral, 0.)
     ctl.state = 'RETURN'
     ctl.command_a[:] = 0.

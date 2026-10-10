@@ -2,7 +2,9 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, RegisterEventHandler, EmitEvent
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration
 
@@ -34,6 +36,14 @@ def nodes(context):
         Node(package='polinasi_nav', executable='sensor_gate', parameters=[params, {
              'drop_after': float(LaunchConfiguration('drop_after').perform(context))}], output='screen'),
         Node(package='polinasi_nav', executable='range_bridge', parameters=[params], output='screen')]
+    navigation_node = Node(package='polinasi_nav', executable={'mapping': 'mapping_navigation', 'identification': 'identification_navigation'}.get(mission, 'navigation'), parameters=[params, {'mode': mode,
+        'map_log_dir': LaunchConfiguration('map_log_dir').perform(context),
+        'separate_mapping': isolated,
+        'autostart': LaunchConfiguration('autostart').perform(context) == 'true'}], output='screen')
+    # A dead navigation node must not leave a misleading live simulator behind.
+    # Shutdown ends ros2 launch; the private launcher then closes its owned GUIs.
+    navigation_exit = RegisterEventHandler(OnProcessExit(target_action=navigation_node,
+        on_exit=[EmitEvent(event=Shutdown(reason='Navigation process exited; stopping simulation'))]))
     return configuration_nodes + acquisition_nodes + [
         Node(package='ros_gz_bridge', executable='parameter_bridge', name='simulation_bridge',
              parameters=[{'use_sim_time': True, 'config_file': os.path.join(share,
@@ -46,10 +56,8 @@ def nodes(context):
         Node(package='polinasi_nav', executable='externalnav', parameters=[params], output='screen'),
         Node(package='beehive_drone', executable='flight_manager',
              parameters=[{'use_sim_time': True, 'altitude_source': 'local_position'}], output='screen'),
-        Node(package='polinasi_nav', executable={'mapping': 'mapping_navigation', 'identification': 'identification_navigation'}.get(mission, 'navigation'), parameters=[params, {'mode': mode,
-             'map_log_dir': LaunchConfiguration('map_log_dir').perform(context),
-             'separate_mapping': isolated,
-             'autostart': LaunchConfiguration('autostart').perform(context) == 'true'}], output='screen'),
+        navigation_exit,
+        navigation_node,
     ]
 
 
