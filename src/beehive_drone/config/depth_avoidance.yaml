@@ -1,0 +1,26 @@
+# Fixed-altitude local navigation. All distances in metres, yaw in degrees.
+depth_avoidance_controller:
+  ros__parameters:
+    depth_topic: /zed2i/depth/depth_registered
+    camera_info_topic: /zed2i/depth/camera_info
+    camera_translation: [0.15, 0.0, 0.02]
+    camera_rpy_degrees: [0.0, 0.0, 0.0]
+    # Actual propeller envelope + localisation/depth margin; measure for real UAV.
+    vehicle_radius: 0.40
+    clearance_margin: 0.35
+    vehicle_half_height: 0.30
+    grid_resolution: 0.20
+    planning_radius: 7.0
+    max_depth: 10.0
+    lookahead: 0.65
+    yaw_tolerance_degrees: 12.0
+    depth_timeout: 0.8
+    pose_timeout: 0.5
+    goal_timeout: 1.0
+    max_pose_skew: 0.15
+    blocked_timeout: 30.0
+    orbit_radius: 2.6
+    # Real sensors require matching acquisition timestamps; Gazebo launch
+    # explicitly overrides these two options for simulated images.
+    use_receipt_time: false
+    inf_is_clear: false

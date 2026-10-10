@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="oil_palm_small">
+    <static>true</static>
+    <link name="base_link">
+      <pose>0 0 0 0 0 0</pose>
+
+      <!-- Collision: Tetap pakai silinder sederhana agar komputasi physics Gazebo tidak berat saat UAV terbang di sekitarnya.
+           Ukuran mengikuti batang mesh: 0 .. 2.55 m -->
+      <collision name="collision">
+        <pose>0 0 1.28 0 0 0</pose>
+        <geometry>
+          <cylinder><radius>0.35</radius><length>2.55</length></cylinder>
+        </geometry>
+      </collision>
+
+      <!-- Visual: mesh realistis yang sama dengan oil_palm, hanya beda skala.
+           Mesh aslinya Y-up dan pusatnya jauh dari origin, jadi:
+             roll +90 deg  -> sumbu Y mesh jadi Z dunia (pohon berdiri tegak)
+             scale 1.4     -> tinggi total 3.466 * 1.4 = 4.85 m (sepadan model prosedural lama)
+             offset x/y/z  -> batang di origin, pangkal batang tepat di tanah (z = 0) -->
+      <visual name="visual_mesh">
+        <pose>0.008 -6.808 2.485 1.5707963268 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://oil_palm/Tropical_Oil_Palm_tree.obj</uri>
+            <scale>1.4 1.4 1.4</scale>
+          </mesh>
+        </geometry>
+      </visual>
+
+      <!-- Target Inflorescence: marker koordinat referensi, diletakkan pada posisi tandan buah asli
+           di mesh (material xx-001nklb / palm695x300.jpg) yang berada di z = 2.17 .. 2.89 m -->
+      <visual name="inflorescence_target">
+        <pose>0.35 0 2.53 0 0 0</pose>
+        <geometry><sphere><radius>0.15</radius></sphere></geometry>
+        <material><ambient>0.65 0.45 0.08 1</ambient><diffuse>0.95 0.67 0.16 1</diffuse><specular>0.08 0.05 0.02 1</specular></material>
+      </visual>
+
+    </link>
+  </model>
+</sdf>

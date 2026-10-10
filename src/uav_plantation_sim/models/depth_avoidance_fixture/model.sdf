@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <!-- Test geometry only. Navigation receives images, never these coordinates. -->
+  <model name="depth_avoidance_fixture">
+    <static>true</static>
+    <link name="first_frond">
+      <pose>7 -2.6 1.7 0 0 0</pose>
+      <collision name="frond"><geometry><box><size>0.18 1.0 2.4</size></box></geometry></collision>
+      <visual name="frond"><geometry><box><size>0.18 1.0 2.4</size></box></geometry>
+        <material><ambient>0.15 0.55 0.05 1</ambient><diffuse>0.25 0.7 0.08 1</diffuse></material>
+      </visual>
+    </link>
+    <link name="second_frond">
+      <pose>10.5 -8.66 1.7 0 0 0</pose>
+      <collision name="frond"><geometry><box><size>0.18 1.0 2.4</size></box></geometry></collision>
+      <visual name="frond"><geometry><box><size>0.18 1.0 2.4</size></box></geometry>
+        <material><ambient>0.55 0.4 0.05 1</ambient><diffuse>0.7 0.6 0.1 1</diffuse></material>
+      </visual>
+    </link>
+  </model>
+</sdf>

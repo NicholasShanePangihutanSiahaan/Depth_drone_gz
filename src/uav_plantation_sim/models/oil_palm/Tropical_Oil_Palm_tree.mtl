@@ -1,0 +1,42 @@
+newmtl xx-001
+Kd 0.118646 0.168144 0.066839
+d 1
+Ke 0 0 0
+illum 2
+Ks 0 0 0
+Ns 0
+
+newmtl sfhsy
+Kd 1 1 1
+d 1
+Ke 0 0 0
+illum 2
+map_Kd images/4ocpmgc6.jpg
+Ks 0 0 0
+Ns 0
+
+newmtl xx-001hlkh
+Kd 0.046256 0.055418 0.020451
+d 1
+Ke 0 0 0
+illum 2
+Ks 0 0 0
+Ns 0
+
+newmtl xx-00fdf1
+Kd 0.374924 0.176213 0.089863
+d 1
+Ke 0 0 0
+illum 2
+Ks 0 0 0
+Ns 0
+
+newmtl xx-001nklb
+Kd 1 1 1
+d 1
+Ke 0 0 0
+illum 2
+map_Kd images/palm695x300.jpg
+Ks 0 0 0
+Ns 0
+

@@ -1,0 +1,116 @@
+pcl_proc_node:
+  ros__parameters:
+    use_transform_pcl: false
+    min_sensor_range: 0.3
+    max_sensor_range: 15.0
+    voxel_leaf_size: 0.20
+    processing_period_ms: 500
+    camera_offset_x: 0.0
+    camera_offset_y: 0.0
+    camera_offset_z: 0.0
+    camera_mount_roll: 0.0
+    camera_mount_pitch: 0.0
+    camera_mount_yaw: 0.0
+
+tree_mapper:
+  ros__parameters:
+    frame_id: odom
+    merge_distance: 1.0
+    minimum_seen_count: 3
+    min_radius: 0.10
+    max_radius: 0.65
+    min_height: 0.8
+    max_height: 8.0
+    max_trunk_base_height: 0.65
+    min_cylinder_confidence: 0.20
+    position_alpha: 0.25
+
+mission_state_machine:
+  ros__parameters:
+    flight_altitude: 1.5
+    # Sama dengan konfigurasi real: berhenti 1.5 m dari pusat batang.
+    approach_distance: 1.5
+    tree_distance_tolerance: 0.5
+    approach_goal_tolerance: 0.15
+    verification_retry_limit: 3
+    require_safety_monitor: false
+    auto_start: true
+    state_timeout: 300.0
+    pose_timeout: 5.0
+    post_takeoff_hover_time: 2.0
+    require_vision_before_start: false
+    vision_pose_topic: /mavros/vision_pose/pose
+    vision_pose_timeout: 1.0
+    vision_warmup_time: 0.0
+    abort_mode: ""
+
+dynamic_orbit_controller:
+  ros__parameters:
+    orbit_radius: 1.5
+    orbit_altitude: 1.5
+    orbit_velocity: 0.25
+    orbit_timeout: 180.0
+    radial_tolerance: 0.3
+    yaw_offset: 0.0
+    completion_tolerance_degrees: 2.0
+
+flight_manager:
+  ros__parameters:
+    altitude_source: rangefinder
+    hover_tolerance: 0.2
+    rangefinder_topic: /simulation/rangefinder
+    rangefinder_timeout: 1.0
+    rangefinder_min_valid: 0.08
+    rangefinder_max_valid: 8.0
+    rangefinder_altitude_offset: 0.0
+
+position_setpoint_controller:
+  ros__parameters:
+    publish_rate: 20.0
+    max_horizontal_step: 0.10
+    max_vertical_step: 0.05
+    target_timeout: 0.75
+    output_frame: map
+    terrain_following_enabled: true
+    rangefinder_topic: /simulation/rangefinder
+    desired_agl: 1.5
+    rangefinder_timeout: 0.50
+    rangefinder_min_valid: 0.08
+    rangefinder_max_valid: 8.0
+    rangefinder_altitude_offset: 0.0
+    range_filter_alpha: 0.35
+    range_median_window: 5
+    minimum_tilt_cosine: 0.70
+    max_terrain_correction: 1.0
+    max_terrain_target_rate: 0.50
+    hold_position_on_range_loss: true
+
+velocity_controller:
+  ros__parameters:
+    minimum_control_altitude: 0.20
+    # Harus lebih kecil dari approach_goal_tolerance (0.15 m), agar
+    # controller tidak berhenti sebelum FSM menyatakan titik tercapai.
+    goal_threshold: 0.08
+
+mission_safety_monitor:
+  ros__parameters:
+    pointcloud_topic: /zed2i/depth/points
+    range_topic: /simulation/rangefinder
+    require_rangefinder: true
+    pose_timeout: 5.0
+    cloud_timeout: 3.0
+    range_timeout: 5.0
+    min_range: 0.08
+    max_range: 8.0
+
+mission_analyzer:
+  ros__parameters:
+    output_directory: ~/beehive_mission_reports/sim
+    map_frame: map
+    sample_period: 0.20
+    console_period: 2.0
+    autosave_period: 10.0
+    rangefinder_topic: /simulation/rangefinder
+    expected_takeoff_altitude: 1.5
+    expected_approach_distance: 1.5
+    expected_orbit_radius: 1.5

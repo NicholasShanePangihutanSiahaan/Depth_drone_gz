@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="wooden_crate">
+    <static>true</static>
+    <link name="crate">
+      <pose>0 0 0.45 0 0 0</pose>
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>1.1 1.1 0.9</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="body">
+        <geometry>
+          <box>
+            <size>1.1 1.1 0.9</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.42 0.24 0.11 1</ambient>
+          <diffuse>0.55 0.32 0.15 1</diffuse>
+        </material>
+      </visual>
+      <visual name="slat_x">
+        <pose>0 0 0.15 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.16 0.08 0.08</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.26 0.14 0.06 1</ambient>
+          <diffuse>0.34 0.18 0.08 1</diffuse>
+        </material>
+      </visual>
+      <visual name="slat_y">
+        <pose>0 0 0.35 0 0 1.5708</pose>
+        <geometry>
+          <box>
+            <size>1.16 0.08 0.08</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.26 0.14 0.06 1</ambient>
+          <diffuse>0.34 0.18 0.08 1</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="low_fence">
+    <static>true</static>
+    <link name="fence">
+      <pose>0 0 0 0 0 0</pose>
+      <collision name="collision">
+        <pose>0 0 0.45 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>2.6 0.12 0.9</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="rail_low">
+        <pose>0 0 0.32 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>2.6 0.10 0.10</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.45 0.28 0.13 1</ambient>
+          <diffuse>0.58 0.36 0.17 1</diffuse>
+        </material>
+      </visual>
+      <visual name="rail_high">
+        <pose>0 0 0.72 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>2.6 0.10 0.10</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.45 0.28 0.13 1</ambient>
+          <diffuse>0.58 0.36 0.17 1</diffuse>
+        </material>
+      </visual>
+      <visual name="post_left">
+        <pose>-1.15 0 0.45 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.12 0.16 0.9</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.36 0.21 0.10 1</ambient>
+          <diffuse>0.45 0.27 0.13 1</diffuse>
+        </material>
+      </visual>
+      <visual name="post_right">
+        <pose>1.15 0 0.45 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.12 0.16 0.9</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.36 0.21 0.10 1</ambient>
+          <diffuse>0.45 0.27 0.13 1</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>
