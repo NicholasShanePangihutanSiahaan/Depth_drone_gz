@@ -1,5 +1,9 @@
 # Survei kebun dan peta 3D
 
+Pada branch `lidar360-PID`, launcher mapping memakai PID. Panduan terbaru:
+[PID_CONTROL.md](PID_CONTROL.md). MPC hanya lewat launcher opt-in
+`start_predictive.sh`, tidak diaktifkan bersamaan dengan PID.
+
 Peta tersimpan kini mencakup batas kebun 92 × 82 m. Voxel adalah sel 3D kecil;
 ukurannya 20 cm. Peta navigasi 10 × 10 × 8 m bergerak bersama drone, sedangkan
 hasil pengamatan sebelumnya tetap disimpan dalam peta global.

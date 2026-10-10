@@ -264,6 +264,7 @@ class NavigationNode(ConfigNode):
         self.declare_parameter('mode', 'ground_truth')
         self.identification_empty_arena = identification_empty_arena
         self.predictive = None
+        self.pid = None
         self.alignment_samples = deque(maxlen=100)
         if identification_empty_arena and not (mission_kind == 'mapping'
                 and self.c.get('identification_simulation_only')
@@ -286,6 +287,11 @@ class NavigationNode(ConfigNode):
         self.grid = navigation_window(self.c, self.c['initial_pose']) if self.rolling_map else VoxelMap(self.c)
         controller_type = SurveyController if mission_kind == 'mapping' else MissionController
         self.controller = controller_type(self.c, self.grid, self.get_parameter('mode').value == 'sensor')
+        if self.c.get('pid_enabled'):
+            if self.c.get('predictive_enabled') or mission_kind != 'mapping':
+                raise ValueError('PID mapping controller must be exclusive with MPC')
+            from .pid_control import PositionPID
+            self.pid = PositionPID(self.c)
         if self.c.get('predictive_enabled'):
             if self.get_parameter('mode').value != 'ground_truth' or mission_kind != 'mapping':
                 raise ValueError('MPC prototype requires ground-truth simulation')
@@ -803,6 +809,8 @@ class NavigationNode(ConfigNode):
                    and not self.controller.failure and self.controller.state in ('SURVEY', 'RETURN'))
         self.controller.mpc_waiting_for_fresh = waiting
         result = self.controller.tick(now, dt, self.pose, self.velocity, self.range_value, self.range_stamp)
+        if self.pid is not None:
+            return self.pid.apply(dt, self.controller, self.pose, self.velocity)
         if self.predictive is not None:
             self.predictive.sync_state(self.controller.state)
             if self.controller.failure == 'mpc_recovering':
@@ -898,6 +906,8 @@ class NavigationNode(ConfigNode):
                    'map_measurement_age': now-self.last_integrated_cloud if math.isfinite(self.last_integrated_cloud) else None,
                    'cloud_age': now-self.controller.health.cloud_stamp if math.isfinite(self.controller.health.cloud_stamp) else None}
         status.update(self.extra_status())
+        if self.pid is not None:
+            status.update(self.pid.status())
         if self.predictive is not None:
             status.update(self.predictive.status())
             status['predictive_ever_active'] = self.predictive.activated

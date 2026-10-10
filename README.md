@@ -1,7 +1,13 @@
 # polinasi_lidar
 
+Pada branch `lidar360-PID`, misi mapping memakai PID feedback PVA, bukan MPC.
+Gunakan `bash tools/start_pid.sh tour` (326 target) atau `tour_check` (4 target).
+Lihat [panduan PID](docs/PID_CONTROL.md). Snapshot MPC ada di `lidar360-mpc`;
+hasil uji MPC tidak otomatis berlaku untuk PID.
+
 Separate simulation prototype, based on upstream `151a6b3b8b916dada056db9f0f212036192c348b`.
-The original `/home/abin/p0l1n4s1` is untouched. This repository has no remote.
+The original `/home/abin/p0l1n4s1` is untouched. Branches are published to
+`NicholasShanePangihutanSiahaan/Depth_drone_gz`; its default branch is untouched.
 
 Installed: ROS 2 Humble, RViz, Gazebo Harmonic bridge and source-built MAVROS.
 Tested: 145 regressions, six historical planner cases, four historical partial-map exploration cases,
@@ -111,4 +117,12 @@ For detailed palm trees and coloured farm ground, use the separate
 [`palm_farm` scene](docs/PALM_FARM.md):
 `bash tools/start_simulation.sh ground_truth palm_farm`, then
 `bash tools/view_simulation.sh` in another terminal.
+
+# Kontrol default pada branch lidar360-PID
+
+Misi mapping sekarang memakai PID feedback PVA, bukan MPC. Jalankan
+`bash tools/start_pid.sh tour` atau `bash tools/start_mapping.sh tour`.
+Untuk uji singkat, gunakan `bash tools/start_pid.sh tour_check`.
+Lihat [panduan PID](docs/PID_CONTROL.md). Snapshot MPC tersedia pada branch
+`lidar360-mpc`; hasil validasinya tidak otomatis berlaku untuk PID.
 

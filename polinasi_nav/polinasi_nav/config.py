@@ -75,6 +75,22 @@ def load_config(path=None):
                 'local_speed_profile', 'trajectory_geometry_cache', 'survey_prefetch'):
         if key in c and not isinstance(c[key], bool):
             raise ValueError(f'{key} must be boolean')
+    if 'pid_enabled' in c and not isinstance(c['pid_enabled'], bool):
+        raise ValueError('pid_enabled must be boolean')
+    if c.get('pid_enabled', False):
+        if c.get('predictive_enabled', False):
+            raise ValueError('PID and MPC cannot control flight simultaneously')
+        for name in ('pid_kp', 'pid_ki', 'pid_kd'):
+            values = c.get(name, [])
+            if len(values) != 3 or any(isinstance(v, bool) or not isinstance(v, (int,float))
+                    or not math.isfinite(v) or v < 0 for v in values):
+                raise ValueError(f'{name} must contain three nonnegative finite gains')
+        for name in ('pid_integral_limit', 'pid_correction_acceleration'):
+            value = c.get(name)
+            if isinstance(value, bool) or not isinstance(value, (int,float)) or not math.isfinite(value) or value <= 0:
+                raise ValueError(f'{name} must be finite and positive')
+        if c['pid_correction_acceleration'] > c['acceleration']:
+            raise ValueError('PID correction must fit acceleration authority')
     if c.get('survey_prefetch', False):
         value = c.get('survey_prefetch_seconds', 3.)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:

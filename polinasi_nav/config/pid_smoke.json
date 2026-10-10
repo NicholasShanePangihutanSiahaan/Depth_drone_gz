@@ -1,0 +1,201 @@
+{
+  "resolution": 0.2,
+  "bounds_min": [
+    -40.0,
+    -40.0,
+    -0.6
+  ],
+  "bounds_max": [
+    52.0,
+    42.0,
+    10.2
+  ],
+  "drone_dimensions": [
+    0.65,
+    0.65,
+    0.5
+  ],
+  "clearance": 0.2,
+  "tracking_margin": 0.2,
+  "speed": 0.4,
+  "command_speed": 0.2,
+  "acceleration": 0.5,
+  "jerk": 1.0,
+  "yaw_rate": 0.5,
+  "reaction_time": 0.35,
+  "cloud_timeout": 0.5,
+  "pose_timeout": 0.3,
+  "range_timeout": 0.3,
+  "free_ttl": 10800.0,
+  "blocked_timeout": 12.0,
+  "exploration_enabled": true,
+  "exploration_speed": 0.2,
+  "exploration_radius": 3.0,
+  "exploration_min_move": 0.3,
+  "exploration_look_range": 6.0,
+  "exploration_min_gain": 5,
+  "exploration_candidates": 16,
+  "exploration_max_views": 8,
+  "exploration_timeout": 120.0,
+  "exploration_observe_seconds": 0.8,
+  "exploration_retry_seconds": 2.0,
+  "exploration_revisit_distance": 0.45,
+  "exploration_backtrack": 1.5,
+  "exploration_min_altitude": 1.0,
+  "exploration_max_altitude": 7.0,
+  "tracking_limit": 0.2,
+  "trees": [
+    [
+      9.0,
+      0.0,
+      4.8
+    ],
+    [
+      18.0,
+      4.5,
+      4.8
+    ]
+  ],
+  "home": [
+    0.0,
+    0.0,
+    2.0
+  ],
+  "initial_pose": [
+    0.0,
+    0.0,
+    0.195
+  ],
+  "takeoff_altitude": 2.0,
+  "orbit_radius": 4.2,
+  "orbit_altitude": 4.8,
+  "orbit_speed": 0.35,
+  "viewpoint_count": 12,
+  "inspection_mode": "viewpoints",
+  "inspection_dwell": 0.5,
+  "candidate_heights": [
+    3.8,
+    4.8,
+    6.0
+  ],
+  "candidate_distances": [
+    4.2,
+    5.0
+  ],
+  "candidate_angle_offsets": [
+    0.0,
+    -0.26,
+    0.26,
+    -0.52,
+    0.52
+  ],
+  "camera_pitch_enabled": false,
+  "camera_pitch_min": -0.5,
+  "camera_pitch_max": 0.8,
+  "camera_vertical_fov": 1.0,
+  "camera_max_distance": 6.5,
+  "lidar_mount": [
+    0.0,
+    0.0,
+    0.2,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "camera_mount": [
+    0.2,
+    0.0,
+    0.02
+  ],
+  "self_filter_padding": 0.05,
+  "lidar_range": 20.0,
+  "lidar_min_range": 0.2,
+  "lidar_azimuth_samples": 360,
+  "lidar_elevation_samples": 32,
+  "mapping_stride": 4,
+  "terrain_following": false,
+  "terrain_agl": 2.0,
+  "terrain_max_correction": 0.5,
+  "mock_flower_events": false,
+  "mock_confirmations": 3,
+  "buzzer_duration": 0.3,
+  "survey_dwell": 0.2,
+  "planner_max_expansions": 4000,
+  "navigation_window_size": [
+    10.0,
+    10.0,
+    8.0
+  ],
+  "map_timeout": 1.0,
+  "continuous_survey": true,
+  "survey_batch_points": 4,
+  "survey_pass_radius": 0.2,
+  "exploration_route_guard": true,
+  "exploration_map_wait_seconds": 0.8,
+  "exploration_map_wait_scans": 2,
+  "exploration_min_relevant_gain": 1,
+  "adaptive_directional_clearance": true,
+  "local_speed_profile": true,
+  "trajectory_geometry_cache": true,
+  "survey_prefetch": true,
+  "survey_prefetch_seconds": 3.0,
+  "simulation_no_return_rays": true,
+  "mapping_no_return_stride": 12,
+  "mapping_corridor_enabled": true,
+  "mapping_corridor_radius": 1.5,
+  "mapping_near_radius": 2.0,
+  "mapping_corridor_lookahead": 20.0,
+  "mapping_corridor_expand_step": 1.0,
+  "mapping_corridor_max_radius": 4.0,
+  "mapping_corridor_expand_interval": 0.8,
+  "adaptive_min_scale": 0.25,
+  "adaptive_rate_limit": 0.25,
+  "adaptive_rate_acceleration": 0.4,
+  "adaptive_clearance_slow": 0.05,
+  "adaptive_clearance_full": 0.45,
+  "adaptive_turn_acceleration": 0.25,
+  "map_log_max_points": 1000000,
+  "map_environment": "static_simulated_farm",
+  "survey_waypoints": [
+    [
+      0.25,
+      0.0,
+      2.0
+    ],
+    [
+      0.25,
+      0.25,
+      2.0
+    ],
+    [
+      0.0,
+      0.25,
+      2.0
+    ],
+    [
+      0.0,
+      0.0,
+      2.0
+    ]
+  ],
+  "pid_enabled": true,
+  "predictive_enabled": false,
+  "pid_kp": [
+    0.6,
+    0.6,
+    0.6
+  ],
+  "pid_ki": [
+    0.03,
+    0.03,
+    0.03
+  ],
+  "pid_kd": [
+    0.9,
+    0.9,
+    0.9
+  ],
+  "pid_integral_limit": 0.5,
+  "pid_correction_acceleration": 0.15,
+  "controller_description": "model_free_position_PID_plus_PVA_feedforward"
+}

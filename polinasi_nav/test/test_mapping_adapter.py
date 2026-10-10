@@ -11,6 +11,21 @@ from polinasi_nav.mavros_configurator import MavrosConfigurator, PLUGIN_SETTINGS
 from concurrent.futures import Future
 
 
+def test_pid_node_owns_no_mpc_worker_and_only_one_final_publisher(monkeypatch):
+    from pathlib import Path
+    c = load_config(Path(__file__).resolve().parents[1]/'config/pid_tour_check.json')
+    monkeypatch.setattr(ros_nodes, 'load_config', lambda _: c)
+    rclpy.init(args=['--ros-args', '-p', 'use_sim_time:=true', '-p', 'separate_mapping:=true'])
+    node = ros_nodes.MappingNavigationNode()
+    try:
+        assert node.pid is not None and node.predictive is None
+        assert [p.topic_name for p in node.publishers].count('/mavros/setpoint_raw/local') == 1
+        assert node.pid.status()['active_controller'] == 'PID_PVA_feedback'
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
 def test_raw_target_rotates_derivatives_without_translation_or_double_ned():
     from builtin_interfaces.msg import Time
     from mavros_msgs.msg import PositionTarget

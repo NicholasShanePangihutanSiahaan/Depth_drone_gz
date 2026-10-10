@@ -9,5 +9,4 @@ case "$preset" in tour|smoke|check) ;; *) printf 'Preset must be tour, smoke, or
 # Override with POLINASI_SIM_RTF=0.2 on machines unable to sustain the default.
 export POLINASI_SIM_RTF="${POLINASI_SIM_RTF:-0.2}"
 printf 'Mapping preset: %s; requested simulation time factor: %s.\n' "$preset" "$POLINASI_SIM_RTF"
-exec bash "$project_dir/tools/start_simulation.sh" "$mode" palm_farm mapping \
-  "$project_dir/polinasi_nav/config/mapping_${preset}.json"
+exec bash "$project_dir/tools/start_pid.sh" "$preset" "$mode"
