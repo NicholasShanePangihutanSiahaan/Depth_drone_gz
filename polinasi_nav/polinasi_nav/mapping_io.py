@@ -84,7 +84,10 @@ class MappingIONode(ConfigNode):
                                 received_frames=0,submitted_frames=0,rejection='waiting_for_depth')
         if self.c.get('depth_camera_enabled'):
             self.depth_cloud_pub = self.create_publisher(PointCloud2,'/zed/depth/points',qos_profile_sensor_data)
-            self.create_subscription(Image,'/zed/depth/image',self.depth_image,qos_profile_sensor_data)
+            # Keep newest image only; old queued camera frames cannot help live navigation.
+            latest_depth_qos = copy.copy(qos_profile_sensor_data)
+            latest_depth_qos.depth = 1
+            self.create_subscription(Image,'/zed/depth/image',self.depth_image,latest_depth_qos)
             self.create_subscription(CameraInfo,'/zed/camera_info',
                 lambda msg:setattr(self,'depth_info',msg),qos_profile_sensor_data)
         from .corridor_mapping import CorridorRegion
@@ -210,7 +213,10 @@ class MappingIONode(ConfigNode):
         statistics = dict(global_known_voxels=len(self.history.cells),
             depth_mapping=dict(self.depth_stats,
                 last_integrated_stamp=getattr(self.grid,'depth_integrated_stamp',None),
+                current_job=getattr(self,'depth_job_trace',{}),
+                last_completed_job=getattr(self,'last_completed_depth_job',{}),
                 roi=getattr(self.grid,'depth_roi_stats',[])),
+            mapping_worker_stages=getattr(self.grid,'mapping_worker_stages',{}),
             simulation_ray_stats=self.simulation_ray_stats,
             mapping_ray_counts=getattr(self, 'mapping_ray_counts', {}),
             mapping_roi=getattr(self.grid, 'mapping_roi_stats', {}),

@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import pytest
 from polinasi_nav.depth_mapping import project_depth,approach_camera_target
-from polinasi_nav.coverage_mapping import RollingMapper,navigation_window
+from polinasi_nav.coverage_mapping import RollingMapper,navigation_window,rolling_input
 from polinasi_nav.mapping import FREE,OCCUPIED,UNKNOWN
 from polinasi_nav.config import load_config
 from polinasi_nav.sensor_mounts import mount_rotation
@@ -64,6 +64,28 @@ def test_two_origins_fuse_preserve_obstacles_and_do_not_refresh_lidar_stamp():
     updated,_,_ = worker.integrate(updated,np.array([0.,0.,2.]),np.array([[2.,0.,2.]]),
         [True],1.2,None,1.2,[0.,0.,2.],auxiliary=depth)
     assert updated.state[tuple(updated.indices([2.,0.,2.]))]==OCCUPIED
+
+
+def test_rolling_metadata_input_matches_full_grid_and_retains_depth_stamp():
+    import pickle
+    c = load_config()
+    c.update(bounds_min=[-3.,-3.,0.],bounds_max=[5.,3.,5.],navigation_window_size=[8.,6.,5.])
+    grid = navigation_window(c,[0.,0.,2.])
+    grid.depth_integrated_stamp = .7
+    metadata = rolling_input(grid)
+    assert len(pickle.dumps(metadata)) < 256
+    assert not hasattr(metadata,'state')
+    args = (np.array([0.,0.,2.]),np.array([[2.,0.,2.]]),[True],1.,None,1.,[0.,0.,2.])
+    full = RollingMapper(c).integrate(grid,*args)
+    lean = RollingMapper(c).integrate(metadata,*args)
+    for name in ('state','seen','blocked','blocked_actual','distance','free_distance'):
+        np.testing.assert_array_equal(getattr(full[0],name),getattr(lean[0],name))
+    assert lean[0].depth_integrated_stamp == .7
+    assert full[0].version == lean[0].version
+    assert full[1] == lean[1]
+    for original,compact in zip(full[2],lean[2]):
+        np.testing.assert_array_equal(original,compact)
+    assert lean[0].mapping_worker_stages['depth_observation_stamps']==[]
 
 
 def test_rgbd_generated_only_in_private_world(tmp_path):

@@ -36,6 +36,7 @@ from .visual_worker import build_visual_snapshot
 from .map_transport import decode_window
 from .coverage_mapping import (navigation_window, SparseHistory, initialise_rolling_mapper,
     integrate_rolling_snapshot, write_history_snapshot)
+from .coverage_mapping import rolling_input
 
 
 def seconds(stamp):
@@ -554,6 +555,9 @@ class NavigationNode(ConfigNode):
                 self.controller.grid = self.grid
                 self.last_integrated_cloud = stamp
                 self.last_map = self.now()
+                self.last_completed_depth_job = dict(getattr(self, 'depth_job_trace', {}),
+                    completed_sim_time=self.now(),
+                    integrated_stamp=getattr(updated_grid,'depth_integrated_stamp',None))
                 if isinstance(result[-1], dict) and 'worker_started_ns' in result[-1]:
                     self.pipeline_trace = dict(getattr(self, 'map_job_trace', {}), **result[-1])
                     self.pipeline_trace['integrated_ns'] = time.monotonic_ns()
@@ -591,7 +595,7 @@ class NavigationNode(ConfigNode):
         origin = vector(transform.transform.translation)
         hits = ranges < self.c['lidar_range']-0.05
         # Only finite max-range rays are no-return evidence; invalid rays dropped.
-        snapshot = copy.deepcopy(self.grid)
+        snapshot = rolling_input(self.grid) if self.rolling_map else copy.deepcopy(self.grid)
         stride = self.c['mapping_stride']
         # Alternate the retained ray phase instead of permanently omitting rays.
         sequence = getattr(self, 'mapping_ray_sequence', 0)
@@ -619,6 +623,8 @@ class NavigationNode(ConfigNode):
         if self.rolling_map:
             roi = self.mapping_region(world_points[ray_hits]) if hasattr(self, 'mapping_region') else None
             auxiliary = self.depth_observation() if hasattr(self,'depth_observation') else ()
+            self.depth_job_trace = dict(submitted_sim_time=self.now(),
+                lidar_stamp=stamp, depth_stamps=[float(o[2]) for o in auxiliary])
             self.map_future = self.map_worker.submit(timed_job, integrate_rolling_snapshot, submitted, snapshot, origin,
                 world_points, ray_hits, stamp, pad, now, self.pose.copy(), roi, auxiliary)
         else:

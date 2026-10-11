@@ -5,6 +5,8 @@ cells are unknown. Historical free cells have a bounded, explicitly configured
 lifetime before they may be restored into the collision-checking window.
 """
 import copy
+import time
+from types import SimpleNamespace
 import numpy as np
 from .mapping import VoxelMap, FREE, OCCUPIED
 
@@ -162,20 +164,29 @@ class SparseHistory:
                  'Unlisted cells are unknown; unknown display is sampled. No LiDAR localisation validation.')
 
 
+def rolling_input(grid):
+    """Worker owns history; old window arrays are not inputs to reconstruction."""
+    return SimpleNamespace(version=int(grid.version),
+        depth_integrated_stamp=getattr(grid, 'depth_integrated_stamp', None))
+
+
 class RollingMapper:
     def __init__(self, config):
         self.config = copy.deepcopy(config)
         self.history = SparseHistory(config)
 
     def integrate(self, grid, origin, points, hits, stamp, pad, now, centre, roi=None, auxiliary=()):
+        started = time.perf_counter()
         changed = self.history.integrate(origin, points, hits, stamp, roi)
         lidar_stats = copy.deepcopy(self.history.last_integration_stats)
+        lidar_finished = time.perf_counter()
         depth_stats = []
         for observation in auxiliary:
             depth_origin, depth_points, depth_stamp, depth_roi = observation
             changed.extend(self.history.integrate(depth_origin,depth_points,
                 np.ones(len(depth_points),dtype=bool),depth_stamp,depth_roi))
             depth_stats.append(copy.deepcopy(self.history.last_integration_stats))
+        depth_finished = time.perf_counter()
         updated = navigation_window(self.config, centre)
         self.history.restore(updated, now)
         if pad is not None:
@@ -197,7 +208,15 @@ class RollingMapper:
         updated.depth_roi_stats = depth_stats
         updated.depth_integrated_stamp = max((o[2] for o in auxiliary),
             default=getattr(grid,'depth_integrated_stamp',None))
-        return updated, stamp, self.history.delta(changed)
+        delta = self.history.delta(changed)
+        finished = time.perf_counter()
+        updated.mapping_worker_stages = dict(lidar_wall_ms=(lidar_finished-started)*1000,
+            depth_wall_ms=(depth_finished-lidar_finished)*1000,
+            restore_inflate_delta_wall_ms=(finished-depth_finished)*1000,
+            total_wall_ms=(finished-started)*1000,
+            depth_observation_stamps=[float(o[2]) for o in auxiliary],
+            input_policy='rolling_metadata_only')
+        return updated, stamp, delta
 
 
 _MAPPER = None

@@ -246,6 +246,27 @@ sehingga penyebab komputasi spesifik masih terbuka.
 - **Status:** terbuka. Dua pohon × enam viewpoint lalu landing/disarm
   belum berhasil divalidasi.
 
+## 11 Oktober 2026 — Audit dan pengurangan duplikasi input pemetaan
+
+**Kronologi penemuan:** setelah run `180145` gagal ketika baru approach,
+audit dilanjutkan dengan membandingkan umur frame kamera dan umur hasil
+map. Kamera masih mengirim pengukuran; hasil integrasi yang tertinggal.
+Penelusuran kode menemukan grid lengkap disalin dan dikirim ke worker setiap
+scan, padahal worker rolling-map membangun kembali window dari history
+miliknya dan hanya membutuhkan versi serta timestamp depth dari grid lama.
+
+- **Solusi diterapkan:** kirim metadata kecil sebagai input rolling-map;
+  pertahankan salinan lengkap untuk mapper non-rolling. Antrean subscription
+  depth dibatasi satu frame terbaru. Tambahkan waktu integrasi LiDAR, depth,
+  rekonstruksi/inflasi/delta serta timestamp pekerjaan depth berjalan/selesai.
+- **Pengujian:** tes membandingkan seluruh array keselamatan dan delta hasil
+  input lengkap versus metadata. Kesalahan pertama terjadi pada assertion
+  perbandingan tuple berisi array NumPy; assertion diperbaiki menjadi
+  perbandingan array satu per satu, tanpa mengubah hasil mapper.
+- **Status:** optimasi input dan instrumentasi, bukan bukti akar seluruh
+  keterlambatan selesai. Simulasi ulang masih diperlukan. Timeout sensor,
+  inflasi obstacle dan penolakan unknown tidak dilonggarkan.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
