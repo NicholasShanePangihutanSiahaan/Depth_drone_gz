@@ -267,6 +267,30 @@ miliknya dan hanya membutuhkan versi serta timestamp depth dari grid lama.
   keterlambatan selesai. Simulasi ulang masih diperlukan. Timeout sensor,
   inflasi obstacle dan penolakan unknown tidak dilonggarkan.
 
+## 11 Oktober 2026 — Map berubah saat persiapan uji perbaikan
+
+**Kronologi penemuan:** saat loop `182547` dimulai untuk menguji optimasi
+pemetaan, agen lain sedang menambahkan bunga ke kebun. Pemeriksaan world
+privat run `ros_ground_truth_palm_farm_20261011_182549_63407_mapping`
+menemukan link bunga beserta collision. Jadi run ini sudah memuat lingkungan
+berbunga, walaupun tujuannya masih inspeksi tanpa deteksi bunga.
+Map lama kemudian dikembalikan dan map baru dipisahkan oleh agen lain;
+perubahan file sumber itu tidak mengganti world yang sudah dimuat simulator.
+
+- **Masalah:** perubahan lingkungan dan perbaikan navigasi berlangsung
+  bersamaan, sehingga hasil run ini tidak dapat dibandingkan langsung
+  dengan baseline lama untuk mengisolasi efek optimasi kode.
+- **Keputusan:** sesuai arahan pengguna, lanjutkan run yang masih aktif.
+  Permintaan stop sempat dibuat tetapi dibatalkan sebelum dijalankan;
+  session masih aktif ketika diperiksa. Simulasi berikutnya wajib memakai
+  `palm_farm.sdf` (map lama), bukan `palm_farm_flowers.sdf`.
+- **Hasil sementara:** pada detik simulasi 50,95 drone masih APPROACH
+  pohon ID 1, altitude sekitar 2 m, tanpa failure; umur depth terintegrasi
+  0,35 detik. Ini belum membuktikan dua pohon selesai atau landing.
+- **Pengujian optimasi:** 19 tes terarah dan 22 tes adapter ROS lulus.
+- **Status:** run berlangsung; hasil akhir harus dicatat setelah berhenti.
+  Pekerjaan agen map tidak diubah atau dicampurkan ke commit navigasi.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
