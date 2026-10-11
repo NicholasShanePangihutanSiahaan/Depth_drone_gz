@@ -52,6 +52,9 @@ class TreeInspectionController(SurveyController):
         self.camera_gate = {}
         self.ascent_reference = None
         self.ascent_nominal_acceleration = np.zeros(3)
+        self.ascent_pause_started = None
+        self.ascent_map_pauses = 0
+        self.ascent_map_resumes = 0
         self.subgoal_diagnostics = {}
 
     def _same_altitude_exploration(self):
@@ -105,18 +108,41 @@ class TreeInspectionController(SurveyController):
             self.ascent_nominal_acceleration = np.zeros(3)
             self.view_target = np.array([*self.command[:2],height])
         ref = self.ascent_reference
-        if now-self.grid.last_observation_stamp>self.c.get('tree_ascent_max_map_age',.35)+1e-9 and ref.stop is None:
+        map_fresh = -1e-9 <= now-self.grid.last_observation_stamp <= self.c.get('tree_ascent_max_map_age',.35)+1e-9
+        if not map_fresh and ref.stop is None:
             from .planning import Brake
-            ref.stop = Brake(self.command,self.command_v,self.command_a,ref.c)
+            ref.stop = Brake(self.command,self.command_v,self.ascent_nominal_acceleration,ref.c)
             ref.reason = 'ascent_map_too_old'
+            self.ascent_pause_started = now
+            self.ascent_map_pauses += 1
+            self.ascent_records.append(dict(action='map_pause',position=self.command.tolist(),
+                started=now,scan_stamp=float(self.grid.last_observation_stamp)))
         if ref.finished and np.linalg.norm(velocity)<.04:
-            self.ascent_stop_reason = ref.reason
-            self.ascent_records.append(dict(action='continuous_stop',position=self.command.tolist(),reason=ref.reason,
-                scan_stamp=float(self.grid.last_observation_stamp)))
-            self.ascent_reference = None
-            self.view_target = None
-            self._mount_phase('NORMALIZE',now)
-            return None
+            if ref.reason=='ascent_map_too_old':
+                waited = now-self.ascent_pause_started
+                ref.diagnostics.update(mode='hold_wait_for_fresh_map',wait_seconds=waited,
+                    map_age_seconds=now-self.grid.last_observation_stamp)
+                if waited>self.c.get('tree_mount_timeout',20.):
+                    self.fail('ascent_mapping_recovery_timeout')
+                    return None
+                if not map_fresh or self.grid.last_observation_stamp<=self.ascent_pause_started:
+                    # Common health, actual clearance and final PID gates still run.
+                    return self.command.copy(),np.zeros(3),np.zeros(3),self.elapsed+dt
+                self.ascent_map_resumes += 1
+                self.ascent_records.append(dict(action='map_resume',position=self.command.tolist(),
+                    waited_seconds=waited,scan_stamp=float(self.grid.last_observation_stamp)))
+                self.ascent_reference = ref = ContinuousAscent(ref.height,self.c)
+                self.ascent_nominal_acceleration = np.zeros(3)
+                self.ascent_pause_started = None
+                # Re-run full swept/braking/observation-guard checks below.
+            else:
+                self.ascent_stop_reason = ref.reason
+                self.ascent_records.append(dict(action='continuous_stop',position=self.command.tolist(),reason=ref.reason,
+                    scan_stamp=float(self.grid.last_observation_stamp)))
+                self.ascent_reference = None
+                self.view_target = None
+                self._mount_phase('NORMALIZE',now)
+                return None
         try:
             p,v,a = ref.step(self.grid,self.command,self.command_v,self.ascent_nominal_acceleration,dt)
             self.ascent_nominal_acceleration = a.copy()
@@ -428,6 +454,7 @@ class TreeInspectionController(SurveyController):
             navigation_camera_gate=self.camera_gate,
             exploration_altitude_policy='same_altitude_only' if self._same_altitude_exploration() else 'legacy_3D',
             continuous_ascent=self.ascent_reference.diagnostics if self.ascent_reference is not None else {},
+            ascent_map_pauses=self.ascent_map_pauses,ascent_map_resumes=self.ascent_map_resumes,
             inspection_subgoal_diagnostics=self.subgoal_diagnostics,
             perception_statistics=self.perception_statistics,
             tree_candidates=self.catalog, tree_catalog_stamp=self.catalog_stamp if math.isfinite(self.catalog_stamp) else None,

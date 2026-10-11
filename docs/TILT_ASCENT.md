@@ -16,8 +16,13 @@ Kecepatan maksimum naik 0,12 m/s (target cruise 90% batas), dengan batas
 percepatan/jerk yang sama. Setiap tick menguji swept segment dan lintasan
 pengereman halus pada voxel terinflasi; unknown tetap bukan free.
 Cadangan waktu reaksi 0,7 s, maksimum umur map 0,35 s. Jika koridor berikutnya
-tidak aman atau map terlalu tua, jalankan lintasan rem yang diperiksa kembali,
-lalu hover sebelum menormalisasi LiDAR. Jika cadangan rem ikut terhalang,
+tidak aman atau map terlalu tua, jalankan lintasan rem yang diperiksa kembali.
+Jika hanya map terlambat, hover dengan LiDAR tetap tilt, tunggu pengukuran
+baru yang terintegrasi dan segar, lalu uji ulang koridor sebelum naik lagi.
+Penantian dibatasi `tree_mount_timeout` (default 20 detik simulasi); timeout
+gagal dengan `ascent_mapping_recovery_timeout`, bukan masuk scanning.
+Koridor/guard terhalang atau tinggi tujuan tercapai tetap mengakhiri ascent
+dengan hover sebelum normalisasi LiDAR. Jika cadangan rem ikut terhalang,
 laporkan `ascent_backup_invalidated`; pemeriksaan kesehatan umum tetap aktif.
 Ini bukan jaminan keselamatan hardware atau bukti tinggi maksimum sebenarnya.
 Mode langkah lama tersedia dengan `tree_continuous_ascent=false`.
@@ -59,7 +64,9 @@ Eksplorasi approach/scanning kini hanya boleh pada tinggi yang sama
 (`tree_exploration_same_altitude=true`); tidak ada fallback turun diam-diam.
 Jika tidak ada rute/view yang aman, hold dan timeout tetap berlaku.
 Log `continuous_ascent` mencatat sertifikasi rem, tinggi tujuan, umur/version
-map, dan alasan berhenti; `ascent_records` menyimpan akhir kenaikan.
+map, dan alasan berhenti; `ascent_records` menyimpan akhir kenaikan serta
+`map_pause`/`map_resume`. `ascent_map_pauses` dan `ascent_map_resumes`
+mencatat jumlah jeda/pemulihan. Batas umur map dan margin tidak dilonggarkan.
 
 Radius 2 m berlaku untuk approach dan kandidat scanning, bukan jaminan ruang
 aman atau pasti berada di bawah daun. Target dibulatkan ke pusat voxel 0,2 m,

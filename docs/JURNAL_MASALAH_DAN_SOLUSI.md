@@ -318,6 +318,35 @@ bukan bukti bahwa node crash sebelum watchdog bertindak.
   `run_1_watchdog.jsonl`, dan log ROS direktori run terkait.
 - **Status:** terbuka; instrumentasi tambahan bukan perbaikan akar masalah.
 
+## 11 Oktober 2026 — Map terlambat mengakhiri ascent terlalu dini
+
+**Kronologi penemuan:** pada loop `183635`, world lama tanpa bunga telah
+diverifikasi. Drone berhasil takeoff dan approach pohon ID 1; clock/status
+tetap berjalan melewati titik kegagalan run sebelumnya. Pada detik 76,50
+LiDAR mulai observasi ke atas, lalu ASCEND dimulai pada 81,80. Namun hanya
+0,40 detik kemudian program masuk NORMALIZE dengan `ascent_map_too_old`.
+Pada detik 87,50 program sudah SCAN, padahal altitude tetap sekitar 2 m.
+Tidak ada abort sensor saat itu, tetapi perilaku ini tidak memenuhi maksud
+naik sampai batas aman. Run dihentikan oleh agen untuk perbaikan;
+error watchdog status hilang sesudah penghentian bukan kegagalan penerbangan
+independen pada run ini.
+
+- **Penyebab kode:** map terlambat memicu Brake, tetapi setelah berhenti
+  program memperlakukan alasan itu sebagai akhir ascent dan menormalisasi
+  LiDAR, sama seperti ketika koridor benar-benar terhalang.
+- **Solusi diterapkan:** rem dan hover, pertahankan tilt, tunggu map baru
+  segar setelah jeda dimulai, lalu periksa lagi segmen, pengereman dan guard
+  sebelum melanjutkan naik. Batas umur map tetap 0,35 detik. Timeout pemulihan
+  memakai `tree_mount_timeout` (20 detik default); tidak pulih berarti
+  `ascent_mapping_recovery_timeout`, bukan scan berhasil.
+- **Perbaikan terkait:** rem nominal memakai percepatan nominal ascent,
+  bukan mengintegrasikan koreksi PID horizontal kembali ke referensi naik.
+- **Pengujian:** 20 tes terarah ascent/FSM/depth-health lulus. Kasus tambahan
+  mencakup menunggu dan resume setelah map baru, timeout menjadi failure,
+  serta map baru dengan ceiling unknown tetap menolak naik.
+- **Status:** tes terarah lulus; pemulihan dalam penerbangan belum tervalidasi.
+  Simulasi berikutnya tetap memakai map lama, RViz dan kamera.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

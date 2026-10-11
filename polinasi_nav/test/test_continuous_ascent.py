@@ -132,3 +132,54 @@ def test_pid_feedback_is_not_integrated_into_vertical_reference():
         np.testing.assert_allclose(ctl.command[:2],0.,atol=1e-12)
         np.testing.assert_allclose(ctl.command_v[:2],0.,atol=1e-12)
     assert ctl.command[2]>2.4 and ctl.ascent_reference.stop is None
+
+
+def paused_ascent():
+    c,grid = fixture()
+    ctl = TreeInspectionController(c,grid,asynchronous=False)
+    ctl.state,ctl.tree_phase = 'SURVEY','ASCEND'
+    ctl.active_tree = dict(id=1,xy=[3.,0.],observed_stem_top=4.)
+    ctl.command = np.array([0.,0.,2.])
+    ctl.command_a = np.array([.2,-.2,.1])
+    for i in range(200):
+        now = 1.+i*.05
+        result = ctl._live_reference(now,.05,ctl.command,ctl.command_v)
+        if result is not None:
+            ctl.command,ctl.command_v,ctl.command_a,_ = result
+        if ctl.ascent_reference.finished:
+            break
+    assert ctl.ascent_reference.finished
+    assert ctl.tree_phase=='ASCEND' and not ctl.failure
+    np.testing.assert_allclose(ctl.command[:2],0.,atol=1e-12)
+    return ctl,grid,now
+
+
+def test_stale_ascent_holds_then_resumes_only_on_new_fresh_map():
+    ctl,grid,now = paused_ascent()
+    held = ctl.command.copy()
+    result = ctl._live_reference(now+.1,.05,held,np.zeros(3))
+    np.testing.assert_allclose(result[0],held)
+    assert ctl.ascent_map_resumes==0 and ctl.tree_phase=='ASCEND'
+    grid.last_observation_stamp = now+.2
+    result = ctl._live_reference(now+.2,.05,held,np.zeros(3))
+    assert ctl.ascent_map_resumes==1 and ctl.ascent_reference.stop is None
+    assert result[0][2]>held[2]
+    json.dumps(ctl.inspection_status(),allow_nan=False)
+
+
+def test_ascent_mapping_recovery_timeout_is_failure_not_successful_scan():
+    ctl,grid,now = paused_ascent()
+    ctl._live_reference(ctl.ascent_pause_started+21.,.05,ctl.command,np.zeros(3))
+    assert ctl.failure=='ascent_mapping_recovery_timeout'
+    assert ctl.tree_phase!='SCAN'
+
+
+def test_recovered_map_with_unknown_ceiling_does_not_allow_ascent():
+    ctl,grid,now = paused_ascent()
+    grid.state[:,:,grid.indices([0.,0.,2.9])[2]:] = UNKNOWN
+    grid.rebuild(now+.2)
+    grid.last_observation_stamp = now+.2
+    ctl._live_reference(now+.2,.05,ctl.command,np.zeros(3))
+    assert ctl.ascent_map_resumes==1
+    assert ctl.ascent_reference.stop is not None
+    assert ctl.ascent_reference.reason in ('observation_guard_limit','observed_stopping_corridor_limit')
