@@ -558,6 +558,51 @@ menghentikan run dan kedua viewer. Landing belum terjadi.
 - **Status:** pohon pertama lengkap, pohon kedua belum selesai; dua pohon
   lalu landing belum tercapai. Loop berikutnya memakai map lama.
 
+## 12 Oktober 2026 — Mengurangi gerakan mundur saat memilih titik explore
+
+**Kronologi penemuan:** pengguna melihat drone sering menjauh setelah scan
+viewpoint. Audit executed path run `231335` menemukan radius dari pusat
+pohon meningkat sekitar 2,00→2,26 m setelah viewpoint ke-2,
+2,00→2,60 m setelah ke-3, dan 2,00→2,76 m setelah ke-5. Perpindahan itu
+bertepatan dengan `EXPLORE`, bukan aturan mundur setelah setiap scan.
+Proyeksi lintasan terhadap arah badan saat scan juga negatif, tetapi itu
+tidak membuktikan drone terbang mundur terhadap yaw aktual sepanjang gerak.
+
+- **Penyebab:** scorer lama menyeimbangkan gain, jarak dan progress, tetapi
+  tidak memprioritaskan arah viewpoint akhir atau memberi penalti kembali
+  ke lintasan yang sudah ditempuh. Gain besar dapat memenangkan langkah
+  yang menjauh dari tujuan.
+- **Solusi:** fitur opt-in pada konfigurasi tilt. Bila ada kandidat aman
+  dan informatif searah viewpoint berikutnya, pilih dari kelompok itu.
+  Beri penalti progress negatif/gerakan berlawanan arah serta kembali
+  dekat titik-titik pada tiga lintasan sebelumnya. Sampel riwayat dibatasi
+  64 titik; ini penalti endpoint, bukan pemeriksaan seluruh overlap rute.
+  Kandidat samping dan mundur tetap dicadangkan bila kelompok searah
+  tidak menghasilkan informasi baru yang cukup. Radius, jumlah kandidat,
+  anggaran explore, pemeriksaan map dan braking tidak dilonggarkan.
+- **Pengujian menemukan masalah:** tes fallback pertama gagal karena
+  kandidat samping mendominasi jatah fallback. Pembagian kandidat diubah
+  menjadi kelompok searah/samping/mundur, total tetap maksimal sesuai
+  `exploration_candidates`. Tes kemudian lulus.
+- **Log:** `route_blockage.exploration_selection` berisi preferred goal,
+  jumlah kandidat eligible/evaluated, alasan `forward_informative` atau
+  `fallback_only_informative`, titik terpilih, gain, progress, jarak tempuh,
+  revisit fraction, penalti dan skor. Tidak adanya kandidat dicatat juga.
+- **Pengujian:** 49 tes exploration/route-guard/local-subgoal/depth/ascent/
+  runner dan 23 tes adapter ROS lulus. Tes tambahan memeriksa gain besar
+  di belakang tidak mengalahkan kandidat searah yang informatif, fallback
+  mundur tetap tersedia, dan penalti riwayat mengubah pilihan tanpa
+  mengizinkan segmen tidak aman. Hasil penerbangan fitur ini belum ada.
+- **Dasar metode:** inspirasi next-best-view berbasis informasi dan biaya
+  perjalanan dari [Bircher dkk., 2016](https://www.research-collection.ethz.ch/entities/publication/ae2aefd8-1e86-4601-bb36-fa175be18481).
+  Prioritas arah dan bobot penalti di sini adalah heuristik implementasi
+  lokal, bukan reproduksi penuh planner RRT pada paper atau parameter
+  yang telah dioptimalkan dalam penerbangan.
+- **Status:** perbaikan partial descent approach sudah tersimpan dalam
+  `2d54eec`; fitur arah explore melengkapinya sebelum loop berikutnya.
+  Tidak menjanjikan semua gerakan menjauh hilang: bila itu satu-satunya
+  posisi pengamatan aman yang informatif, fallback tetap dapat dipilih.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

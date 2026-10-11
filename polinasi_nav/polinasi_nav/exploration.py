@@ -4,7 +4,7 @@ A viewpoint is a drone position, not an unknown cell to fly into. Information
 gain predicts first unknown cells visible inside the mounted LiDAR coverage;
 only later real measurements may mark those cells free or occupied.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial.transform import Rotation
 from .mapping import FREE, UNKNOWN, OCCUPIED
@@ -16,6 +16,7 @@ class ExplorationView:
     path: list
     gain: int
     score: float
+    diagnostics: dict = field(default_factory=dict)
 
 
 def visible_unknown(grid, position, yaw=0.):
@@ -52,7 +53,8 @@ def visible_unknown(grid, position, yaw=0.):
     return np.unique(ids[rays, first[rays]], axis=0)
 
 
-def choose_view(grid, current, mission_hint, visited=(), yaw=0., relevant_unknown=None, same_altitude=False):
+def choose_view(grid, current, mission_hint, visited=(), yaw=0., relevant_unknown=None, same_altitude=False,
+                preferred_goal=None, recent_path=()):
     """Choose a local directly reachable view; never weaken unknown inflation.
 
     Straight observed-free hops keep selection bounded and avoid expensive
@@ -60,6 +62,13 @@ def choose_view(grid, current, mission_hint, visited=(), yaw=0., relevant_unknow
     """
     c = grid.c
     current, hint = np.asarray(current), np.asarray(mission_hint)
+    preferred = hint if preferred_goal is None else np.asarray(preferred_goal,float)
+    directional = c.get('exploration_directional_preference',False)
+    direction = preferred-current
+    direction = direction/max(np.linalg.norm(direction),1e-9)
+    tolerance = c.get('exploration_progress_tolerance',.1)
+    grid.exploration_selection_diagnostics = dict(policy='directional_next_best_view' if directional else 'legacy',
+        preferred_goal=preferred.tolist(),eligible_points=0,evaluated_candidates=0,reason='no_safe_informative_view')
     if not grid.safe(current):
         return None
     points = grid.centers(np.argwhere(~grid.blocked))
@@ -77,19 +86,37 @@ def choose_view(grid, current, mission_hint, visited=(), yaw=0., relevant_unknow
         points = points[np.linalg.norm(points-previous, axis=1) >= c['exploration_revisit_distance']]
     if not len(points):
         return None
+    grid.exploration_selection_diagnostics['eligible_points'] = len(points)
     order = np.argsort(np.linalg.norm(points-hint, axis=1)+0.25*np.linalg.norm(points-current, axis=1))
     candidates = []
-    for point in points[order]:
-        if not grid.safe(point):
-            continue
-        if candidates and min(np.linalg.norm(point-p) for p in candidates) < c['exploration_revisit_distance']:
-            continue
-        if not grid.line_safe(current, point):
-            continue
-        candidates.append(point)
-        if len(candidates) >= c['exploration_candidates']:
-            break
+    forward = ((points-current)@direction>=-tolerance) & (
+        np.linalg.norm(current-preferred)-np.linalg.norm(points-preferred,axis=1)>=-tolerance)
+    backward_group = (points-current)@direction < -tolerance
+    groups = [order] if not directional else [order[forward[order]],
+        order[(~forward & ~backward_group)[order]],order[backward_group[order]]]
+    # Reserve budget for fallback too: forward positions may reveal no new cells.
+    quota = c['exploration_candidates'] if not directional else max(1,c['exploration_candidates']//2)
+    for group_index,group in enumerate(groups):
+        count = 0
+        limit = (quota if group_index==0 else
+                 max(0,(c['exploration_candidates']-quota)//2) if group_index==1 else
+                 c['exploration_candidates']-len(candidates))
+        for point in points[group]:
+            if count>=limit:
+                break
+            if not grid.safe(point):
+                continue
+            if candidates and min(np.linalg.norm(point-p) for p in candidates) < c['exploration_revisit_distance']:
+                continue
+            if not grid.line_safe(current, point):
+                continue
+            candidates.append(point)
+            count += 1
     best = None
+    best_forward = None
+    recent = np.asarray(recent_path,float).reshape(-1,3)
+    if len(recent)>64:
+        recent = recent[np.linspace(0,len(recent)-1,64,dtype=int)]
     relevant = None
     if relevant_unknown is not None:
         relevant = np.zeros(grid.shape, dtype=bool)
@@ -108,6 +135,30 @@ def choose_view(grid, current, mission_hint, visited=(), yaw=0., relevant_unknow
         gain = np.exp(-np.linalg.norm(cells-hint, axis=1)/c['exploration_look_range']).sum()
         progress = np.linalg.norm(current-hint)-np.linalg.norm(point-hint)
         score = gain+3.*progress-0.5*np.linalg.norm(point-current)
+        target_progress = np.linalg.norm(current-preferred)-np.linalg.norm(point-preferred)
+        along = float((point-current)@direction)
+        backward = max(0.,-along)+max(0.,-target_progress)
+        revisit = max(0.,1.-float(np.min(np.linalg.norm(recent-point,axis=1)))/c['exploration_revisit_distance']) if len(recent) else 0.
+        penalty = (c.get('exploration_backward_penalty',4.)*backward+
+                   c.get('exploration_retrace_penalty',2.)*revisit) if directional else 0.
+        score -= penalty
+        terms = dict(information_gain=float(gain),route_hint_progress_m=float(progress),
+            target_progress_m=float(target_progress),along_target_m=along,
+            travel_m=float(np.linalg.norm(point-current)),backward_cost_m=float(backward),
+            revisit_fraction=float(revisit),penalty=float(penalty),score=float(score))
+        candidate = ExplorationView(point.copy(),[current.copy(),point.copy()],len(unknown),float(score),terms)
         if best is None or score > best.score:
-            best = ExplorationView(point.copy(), [current.copy(), point.copy()], len(unknown), float(score))
+            best = candidate
+        if target_progress>=-tolerance and along>=-tolerance and (best_forward is None or score>best_forward.score):
+            best_forward = candidate
+    if directional and best_forward is not None:
+        best = best_forward
+    grid.exploration_selection_diagnostics.update(evaluated_candidates=len(candidates),
+        reason=('forward_informative' if directional and best_forward is not None else
+                'fallback_only_informative' if directional and best is not None else
+                'legacy_informative' if best is not None else 'no_safe_informative_view'),
+        selected=best.point.tolist() if best is not None else None,
+        score_terms=best.diagnostics if best is not None else {})
+    if best is not None:
+        best.diagnostics = dict(grid.exploration_selection_diagnostics)
     return best

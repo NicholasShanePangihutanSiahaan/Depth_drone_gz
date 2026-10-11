@@ -150,9 +150,14 @@ class MissionController:
                  now-self.exploration_started > self.c['exploration_timeout'])):
             self.fail('exploration_exhausted')
             return None
-        view = choose_view(self.grid, current, self._mission_hint(current), self.exploration_visited,
+        hint = self._mission_hint(current)
+        recent = [p for path in self.paths[-3:] for p in np.asarray(path)[::max(1,len(path)//20)]]
+        preferred = getattr(self,'view_target',None)
+        view = choose_view(self.grid, current, hint, self.exploration_visited,
                            self.yaw, relevant_unknown=relevant_unknown,
-                           same_altitude=self._same_altitude_exploration())
+                           same_altitude=self._same_altitude_exploration(),
+                           preferred_goal=preferred,recent_path=recent)
+        self.route_blockage['exploration_selection'] = self.grid.exploration_selection_diagnostics
         if view is None:
             return None
         self.exploration_started = now if self.exploration_started is None else self.exploration_started

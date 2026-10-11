@@ -1,5 +1,6 @@
 """Partial-map fixtures: exploration never authorises flight into unknown."""
 import unittest
+from unittest.mock import patch
 import numpy as np
 from polinasi_nav.config import load_config
 from polinasi_nav.control import MissionController
@@ -39,6 +40,50 @@ def step(ctl, now, cloud_stamp=None):
 
 
 class ExplorationTests(unittest.TestCase):
+    def directional_map(self):
+        c,g = partial_map()
+        c.update(exploration_directional_preference=True,exploration_min_gain=1)
+        g.state[:] = FREE
+        g.rebuild(0.)
+        return c,g
+
+    def test_forward_information_wins_over_high_gain_backward_candidate(self):
+        c,g = self.directional_map()
+        def observations(grid,p,yaw):
+            if p[0]>.4:
+                return np.array([[10,10,10]])
+            if p[0]<-.4:
+                return np.array([[i,10,10] for i in range(40)])
+            return np.empty((0,3),int)
+        with patch('polinasi_nav.exploration.visible_unknown',side_effect=observations):
+            view = choose_view(g,c['home'],[3.,0.,2.1])
+        self.assertIsNotNone(view)
+        self.assertGreater(view.point[0],c['home'][0])
+        self.assertEqual(view.diagnostics['reason'],'forward_informative')
+        self.assertLessEqual(view.diagnostics['evaluated_candidates'],c['exploration_candidates'])
+        self.assertTrue(g.line_safe(c['home'],view.point))
+
+    def test_backward_fallback_survives_when_forward_has_no_information(self):
+        c,g = self.directional_map()
+        def observations(grid,p,yaw):
+            return np.array([[10,10,10]]) if p[0]<0. else np.empty((0,3),int)
+        with patch('polinasi_nav.exploration.visible_unknown',side_effect=observations):
+            view = choose_view(g,c['home'],[3.,0.,2.1])
+        self.assertIsNotNone(view)
+        self.assertLess(view.point[0],c['home'][0])
+        self.assertEqual(view.diagnostics['reason'],'fallback_only_informative')
+        self.assertGreater(view.diagnostics['score_terms']['penalty'],0.)
+        self.assertTrue(g.safe(view.point) and g.line_safe(c['home'],view.point))
+
+    def test_recent_path_penalty_changes_choice_without_weakening_safety(self):
+        c,g = self.directional_map()
+        with patch('polinasi_nav.exploration.visible_unknown',return_value=np.array([[10,10,10]])):
+            first = choose_view(g,c['home'],[3.,0.,2.1])
+            other = choose_view(g,c['home'],[3.,0.,2.1],recent_path=[first.point])
+        self.assertIsNotNone(other)
+        self.assertGreater(np.linalg.norm(other.point-first.point),g.res/2)
+        self.assertTrue(g.line_safe(c['home'],other.point))
+
     def test_view_and_path_are_free_and_map_is_not_modified(self):
         c, g = partial_map()
         before = g.state.copy()

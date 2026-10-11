@@ -229,6 +229,10 @@
   "tree_camera_observe_before_plan": true,
   "tree_camera_observe_dwell": 0.4,
   "tree_exploration_same_altitude": true,
+  "exploration_directional_preference": true,
+  "exploration_progress_tolerance": 0.1,
+  "exploration_backward_penalty": 4.0,
+  "exploration_retrace_penalty": 2.0,
   "tree_tilt_angles": [
     1.1868238913561442
   ],

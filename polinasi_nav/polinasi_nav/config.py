@@ -84,6 +84,14 @@ def load_config(path=None):
         value = c['mapping_no_return_stride']
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise ValueError('mapping_no_return_stride must be a positive integer')
+    if 'exploration_directional_preference' in c and not isinstance(c['exploration_directional_preference'],bool):
+        raise ValueError('exploration_directional_preference must be boolean')
+    if c.get('exploration_directional_preference') and c['exploration_candidates']<2:
+        raise ValueError('directional exploration needs at least two candidates for fallback')
+    for key in ('exploration_progress_tolerance','exploration_backward_penalty','exploration_retrace_penalty'):
+        if key in c and (isinstance(c[key],bool) or not isinstance(c[key],(int,float))
+                or not math.isfinite(c[key]) or c[key]<0):
+            raise ValueError(f'{key} must be finite and nonnegative')
     for key in ('exploration_route_guard', 'adaptive_directional_clearance', 'simulation_no_return_rays', 'mapping_corridor_enabled',
                 'local_speed_profile', 'trajectory_geometry_cache', 'survey_prefetch'):
         if key in c and not isinstance(c[key], bool):

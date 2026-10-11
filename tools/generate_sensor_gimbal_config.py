@@ -14,6 +14,8 @@ c.update(automatic_tilt_ascent=True,tree_approach_altitude=2.,tree_ascent_step=.
          tree_ascent_observation_guard=.5,
          tree_camera_observe_before_plan=True,tree_camera_observe_dwell=.4,
          tree_exploration_same_altitude=True,
+         exploration_directional_preference=True,exploration_progress_tolerance=.1,
+         exploration_backward_penalty=4.,exploration_retrace_penalty=2.,
          tree_tilt_angles=[math.radians(68)],tree_tilt_dwell=.8,tree_mount_timeout=20.,
          simulation_lidar_hide_self=False)
 c.update(depth_camera_enabled=True,depth_camera_timeout=1.,depth_min_range=.3,
