@@ -442,6 +442,22 @@ pengujian baru. Perubahan polling terakhir disimpan dengan status belum diuji.
   masing-masing serta landing dan disarm, bukan perkiraan dari awal run.
 - **Bukti lokal:** `reports/inspection_loop_20261011_192122/run_1_audit.json`.
 
+## 11 Oktober 2026 — Loop dilanjutkan dan polling lolos tes adapter
+
+**Kronologi:** pengguna meminta loop dimulai lagi setelah penghentian
+sebelumnya. Sebelum menerbangkan drone, dijalankan tes adapter ROS pada
+domain terisolasi. Seluruh 23 tes lulus, termasuk bahwa polling mapper
+tidak mengirim snapshot bila versi map tidak berubah. Ini memvalidasi
+regresi adapter, bukan membuktikan berkurangnya latensi penerbangan.
+
+- **Simulasi baru:** `reports/inspection_loop_20261011_225246/`.
+- **Lingkungan:** ground-truth, map lama `palm_farm`, misi inspeksi dua
+  pohon, RViz dan kamera; bukan validasi lokalisasi LiDAR.
+- **Status saat pencatatan:** simulasi terdaftar dan proses persiapan
+  origin/kesiapan sistem sedang berjalan. Hasil penerbangan belum ada.
+- **Batas klaim:** perubahan polling kini lolos tes adapter, tetapi
+  keberhasilan scan dua pohon dan landing masih harus dibuktikan.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
