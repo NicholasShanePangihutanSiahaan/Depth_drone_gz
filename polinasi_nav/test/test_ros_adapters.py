@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 import json
 from unittest.mock import Mock
+from types import SimpleNamespace
 
 rclpy = pytest.importorskip('rclpy')
 pytest.importorskip('mavros_msgs')
@@ -21,6 +22,20 @@ def ros_context():
     rclpy.init(args=['--ros-args', '-p', 'use_sim_time:=true'])
     yield
     rclpy.shutdown()
+
+
+def test_held_reference_does_not_recycle_pid_acceleration_and_braking_is_preserved():
+    controller = SimpleNamespace(failure='',trajectory=None,command_v=np.zeros(3),
+        command_a=np.array([.3,-.2,.1]),tick=Mock(return_value=(np.zeros(3),np.zeros(3))))
+    pid = Mock()
+    fake = SimpleNamespace(controller=controller,predictive=None,pid=pid,pose=np.zeros(3),
+        velocity=np.zeros(3),range_value=None,range_stamp=None)
+    NavigationNode.control_step(fake,1.,.05)
+    np.testing.assert_allclose(controller.command_a,0.)
+    controller.failure = 'test_braking'
+    controller.command_a = np.array([.2,0.,0.])
+    NavigationNode.control_step(fake,1.05,.05)
+    np.testing.assert_allclose(controller.command_a,[.2,0.,0.])
 
 
 def test_navigation_initialises_and_publishes_visualisation():

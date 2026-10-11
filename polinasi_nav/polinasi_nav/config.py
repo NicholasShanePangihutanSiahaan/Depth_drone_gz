@@ -28,6 +28,19 @@ def load_config(path=None):
         raise ValueError('command_speed must be positive and no greater than speed')
     if not isinstance(c['exploration_enabled'], bool):
         raise ValueError('exploration_enabled must be boolean')
+    if c.get('depth_camera_enabled'):
+        if not c.get('sensor_gimbals_enabled'):
+            raise ValueError('depth camera requires measured gimbal transforms')
+        for key in ('depth_camera_timeout','depth_min_range','depth_max_range'):
+            v = c.get(key)
+            if isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or v<=0:
+                raise ValueError(key+' must be positive and finite')
+        for key in ('depth_mapping_stride','depth_mapping_budget'):
+            v = c.get(key)
+            if isinstance(v,bool) or not isinstance(v,int) or v<1:
+                raise ValueError(key+' must be a positive integer')
+        if c['depth_min_range']>=c['depth_max_range'] or not 0<c.get('depth_approach_depression_degrees',0)<=28:
+            raise ValueError('invalid depth range or approach depression within camera joint limits')
     if 'navigation_window_size' in c:
         size = c['navigation_window_size']
         if len(size) != 3 or any(not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0 for v in size):

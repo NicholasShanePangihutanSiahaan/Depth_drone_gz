@@ -151,7 +151,8 @@ class MissionController:
             self.fail('exploration_exhausted')
             return None
         view = choose_view(self.grid, current, self._mission_hint(current), self.exploration_visited,
-                           self.yaw, relevant_unknown=relevant_unknown)
+                           self.yaw, relevant_unknown=relevant_unknown,
+                           same_altitude=self._same_altitude_exploration())
         if view is None:
             return None
         self.exploration_started = now if self.exploration_started is None else self.exploration_started
@@ -167,6 +168,9 @@ class MissionController:
         self.dwell, self.confirmations, self.buzzer_remaining = 0., 0, 0.
         self.visible_view = False
         return view.path
+
+    def _same_altitude_exploration(self):
+        return False
 
     def _guarded_exploration(self, now, current):
         blockers = self.grid.corridor_blockers(current, self._mission_hint(current))
@@ -271,14 +275,17 @@ class MissionController:
             self.fail('route_changed')
             return self._braking(dt)
         self.checked_map_version = self.grid.version
-        if self.trajectory is None:
+        live = self._live_reference(now, dt, position, velocity)
+        if self.failure:
+            return self._braking(dt)
+        if live is None and self.trajectory is None:
             if np.linalg.norm(velocity) > 0.08:
                 return self.command.copy(), np.zeros(3)
             if not self._prepare_trajectory(now, position, range_value, range_stamp):
                 if self.failure:
                     return self._braking(dt)
                 return self.command.copy(), np.zeros(3)
-        candidate, v, a, next_elapsed = self._sample_next(dt, position, velocity)
+        candidate, v, a, next_elapsed = live if live is not None else self._sample_next(dt, position, velocity)
         if self.failure:
             return self._braking(dt)
         # Optional range-based terrain correction is BEFORE the final map gate.
@@ -312,7 +319,7 @@ class MissionController:
         self._on_motion(now, position)
         if self.failure:
             return self._braking(dt)
-        if self.elapsed >= self.trajectory.duration and np.linalg.norm(position-self.goal) < 0.12 and np.linalg.norm(velocity) < 0.08:
+        if self.trajectory is not None and self.elapsed >= self.trajectory.duration and np.linalg.norm(position-self.goal) < 0.12 and np.linalg.norm(velocity) < 0.08:
             self.dwell += dt
             if self.state == 'EXPLORE':
                 self.exploration_phase = 'OBSERVE'
@@ -336,6 +343,9 @@ class MissionController:
                 self.trajectory = None
                 self._advance()
         return self.command.copy(), self.command_v.copy()
+
+    def _live_reference(self, now, dt, position, velocity):
+        return None  # Opt-in reactive references still pass all common safety gates.
 
     def _prepare_trajectory(self, now, position, range_value=None, range_stamp=None):
         """Shared route creation/certification; mapping surveys run it off-thread."""

@@ -14,7 +14,8 @@ def test_tour_preset_preserves_route_and_all_existing_safety_settings():
                  'adaptive_model_file'}
     assert {k: v for k, v in tour.items() if k not in overrides} == {
         k: v for k, v in original.items() if k not in overrides}
-    assert len(tour['survey_waypoints']) == 326
+    assert len(tour['survey_waypoints']) == 269
+    assert tour['nominal_route_policy'] == 'pure_lawnmower_no_tree_bypass'
     assert not original.get('predictive_enabled', False)
     assert tour['predictive_enabled'] and tour['predictive_simulation_only']
     assert not tour['predictive_adaptation']

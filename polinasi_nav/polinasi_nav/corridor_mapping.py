@@ -113,7 +113,7 @@ class CorridorRegion:
         self.last_expansion_stamp = -np.inf
         self.expansions = 0
 
-    def region(self, current, status, nominal, planned, stamp):
+    def region(self, current, status, nominal, planned, stamp, hit_points=None):
         blockage = status.get('route_blockage', {})
         blocked = (blockage.get('occupied_count', 0) > 0 and
                    blockage.get('reason') != 'route_found')
@@ -136,8 +136,57 @@ class CorridorRegion:
             path = np.asarray(planned)
             nearest = int(np.argmin(np.linalg.norm(path-current, axis=1)))
             routes.append(lookahead(current, path[nearest:], horizon))
-        return dict(centre=np.asarray(current).tolist(), near_radius=self.c['mapping_near_radius'],
+        region = dict(centre=np.asarray(current).tolist(), near_radius=self.c['mapping_near_radius'],
             radius=self.c['mapping_corridor_radius'], routes=routes,
             expansion_centres=[p.tolist() for p in self.centres], expansion_radius=self.radius,
             expansions=self.expansions, lookahead_m=horizon,
             policy='route_corridor_plus_360_near_field', outside_policy='unobserved_is_unknown')
+        if hit_points is not None:
+            points = np.asarray(hit_points, float).reshape(-1, 3)
+            points = points[np.all(np.isfinite(points), axis=1)]
+            # Select relevant measured surfaces before the endpoint ROI filter.
+            # A selection halo never declares space free.
+            halo = dict(region)
+            dimensions = np.asarray(self.c['drone_dimensions'])
+            margin = (max(np.linalg.norm(dimensions[:2]/2), dimensions[2]/2)+self.c['clearance']
+                      +self.c.get('tracking_margin', 0.)+self.c['resolution'])
+            halo['radius'] += margin
+            halo['near_radius'] += margin
+            candidates = points[contains(points, halo) & ~contains(points, region)]
+            # The halo must not expand along the entire flat ground merely
+            # because it lies below a 2 m high route. Promote side surfaces
+            # within the swept body's vertical band. Ground/foliage INSIDE the
+            # base ROI remain obstacles; no surface is reclassified as free.
+            vertical_margin = (dimensions[2]/2+self.c['clearance']
+                               +self.c.get('tracking_margin', 0.)+self.c['resolution'])
+            useful = np.zeros(len(candidates), dtype=bool)
+            delta = candidates-np.asarray(current)
+            useful |= ((np.linalg.norm(delta[:,:2], axis=1) <= halo['near_radius'])
+                       & (np.abs(delta[:,2]) <= vertical_margin))
+            for route in region['routes']:
+                for start, end in zip(route, route[1:]):
+                    start, end = np.asarray(start), np.asarray(end)
+                    direction = end[:2]-start[:2]
+                    t = np.clip((candidates[:,:2]-start[:2])@direction/max(float(direction@direction),1e-12),0.,1.)
+                    z = start[2]+t*(end[2]-start[2])
+                    useful |= np.abs(candidates[:,2]-z) <= vertical_margin
+            candidates = candidates[useful]
+            added = 0
+            for p in candidates:
+                if not self.centres or min(np.linalg.norm(p-q) for q in self.centres) > 1.:
+                    self.centres.append(p.copy())
+                    added += 1
+                    if added >= 4:
+                        break
+            if added:
+                self.centres = self.centres[-16:]
+                self.radius = min(self.c['mapping_corridor_max_radius'],
+                                  max(self.radius, self.c['mapping_corridor_radius']
+                                      +self.c['mapping_corridor_expand_step']))
+                self.expansions += 1
+                region.update(expansion_centres=[p.tolist() for p in self.centres],
+                              expansion_radius=self.radius, expansions=self.expansions)
+            region['surface_halo_candidates'] = len(candidates)
+            region['surface_expansion_centres_added'] = added
+            region['surface_halo_margin_m'] = margin
+        return region

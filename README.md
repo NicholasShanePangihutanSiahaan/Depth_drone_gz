@@ -1,7 +1,7 @@
 # polinasi_lidar
 
 Pada branch `lidar360-PID`, misi mapping memakai PID feedback PVA, bukan MPC.
-Gunakan `bash tools/start_pid.sh tour` (326 target) atau `tour_check` (4 target).
+Gunakan `bash tools/start_pid.sh tour` (269 target lawnmower murni) atau `tour_check` (4 target).
 Lihat [panduan PID](docs/PID_CONTROL.md). Snapshot MPC ada di `lidar360-mpc`;
 hasil uji MPC tidak otomatis berlaku untuk PID.
 Hasil sementara: enam target PID dilewati tanpa HOLD_ABORT; lihat
@@ -129,4 +129,10 @@ Misi mapping sekarang memakai PID feedback PVA, bukan MPC. Jalankan
 Untuk uji singkat, gunakan `bash tools/start_pid.sh tour_check`.
 Lihat [panduan PID](docs/PID_CONTROL.md). Snapshot MPC tersedia pada branch
 `lidar360-mpc`; hasil validasinya tidak otomatis berlaku untuk PID.
+
+Perbaikan voxel palsu saat tilt LiDAR dan uji ulangnya:
+[audit renderer LiDAR](docs/LIDAR_RENDERING_FIX.md). Launcher memasang patch
+sampler pada resource Gazebo privat, tanpa mengubah instalasi sistem atau
+menghapus sinar/obstacle. [Eksperimen arena kosong](docs/EMPTY_MOUNT_TEST.md)
+tetap tersedia untuk reproduksi.
 

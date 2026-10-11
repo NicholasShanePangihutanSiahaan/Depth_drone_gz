@@ -331,6 +331,7 @@
   ],
   "coverage_edge_margin": 4.5,
   "coverage_lane_spacing": 8.0,
+  "nominal_route_policy": "pure_lawnmower_no_tree_bypass",
   "survey_max_duration": 600.0,
   "predictive_enabled": true,
   "predictive_simulation_only": true,

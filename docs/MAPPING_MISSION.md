@@ -118,8 +118,11 @@ and 0.2 m/s command speed. The local window moved while retaining global history
 The full farm tour and sensor localisation remain unvalidated.
 See [validation](VALIDATION.md) and [Bahasa Indonesia instructions](SURVEI_KEBUN.md).
 
-- `mapping_tour.json` defines 326 short goals on zigzag lanes at 2 m height,
-  spaced at most 2 m apart, with a nominal route length about 569 m. The
+- `mapping_tour.json` defines 269 short goals on pure lawnmower lanes at 2 m height,
+  spaced at most 2 m apart, with a nominal route length about 519 m. No trunk
+  bypass is precomputed; live occupancy planning owns detours. Occupied goals
+  are rejected rather than silently skipped. This revised route is unit-tested,
+  not full-flight validated. The
   buffered convex tree footprint (4.5 m edge margin) excludes empty outer
   scene borders. Tree layout guides goals, never free-space evidence.
   Trunk positions guide nominal goals only; they never populate the live map.

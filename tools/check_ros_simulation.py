@@ -9,7 +9,7 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import qos_profile_sensor_data
 from rosgraph_msgs.msg import Clock
-from sensor_msgs.msg import PointCloud2, Imu, Range, JointState
+from sensor_msgs.msg import PointCloud2, Imu, Range, JointState, Image, CameraInfo
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Bool, String
@@ -34,6 +34,8 @@ class Probe(Node):
                  '/localisation/odometry': Odometry, '/mavros/odometry/out': Odometry,
                  '/mavros/local_position/pose': PoseStamped,
                  '/simulation/rangefinder': Range, '/camera/joint_state': JointState}
+        types.update({'/zed/depth/image':Image,'/zed/camera_info':CameraInfo,
+                      '/zed/depth/points':PointCloud2})
         for topic, message_type in types.items():
             self.create_subscription(message_type, topic, lambda msg, t=topic: self.receive(t, msg), qos_profile_sensor_data)
         self.create_subscription(Bool, '/localisation/healthy', self.health, 10)
@@ -135,6 +137,14 @@ def main():
         checks['one_navigation_snapshot_producer'] = node.count_publishers('/mapping/navigation_snapshot') == 1
         age = node.status.get('map_measurement_age')
         checks['navigation_snapshot_fresh'] = age is not None and 0 <= age < 1.
+    depth = node.status.get('depth_mapping',{})
+    if depth.get('enabled'):
+        checks['depth_streams_received'] = all(node.counts.get(t,0)>1 for t in
+            ('/zed/depth/image','/zed/camera_info','/zed/depth/points'))
+        checks['depth_optical_frames_match'] = all(node.frames.get(t)=='zed_camera_optical' for t in
+            ('/zed/depth/image','/zed/camera_info','/zed/depth/points'))
+        stamp = depth.get('last_integrated_stamp')
+        checks['depth_integrated_fresh'] = stamp is not None and 0<=now-stamp<1.
     if empty_identification:
         for key in ('cloud_received', 'range_received', 'camera_feedback_received'):
             checks.pop(key)

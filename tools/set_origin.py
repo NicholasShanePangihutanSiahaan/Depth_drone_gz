@@ -11,10 +11,27 @@ def main():
     parser.add_argument('--port', type=int, default=5762)
     parser.add_argument('--timeout', type=float, default=30.)
     args = parser.parse_args()
-    connection = mavutil.mavlink_connection(f'tcp:127.0.0.1:{args.port}', source_system=250, source_component=191)
-    heartbeat = connection.wait_heartbeat(timeout=15)
-    if heartbeat is None or connection.target_system != 1:
-        raise RuntimeError('expected simulation system 1')
+    # Launcher registration precedes TCP/EKF readiness. Wait for the actual
+    # autopilot heartbeat, not a MAVROS heartbeat from another component.
+    deadline = time.monotonic()+args.timeout
+    connection = None
+    heartbeat = None
+    while time.monotonic() < deadline:
+        if connection is None:
+            try:
+                connection = mavutil.mavlink_connection(f'tcp:127.0.0.1:{args.port}', source_system=250, source_component=191)
+            except OSError:
+                time.sleep(.5)
+                continue
+        message = connection.recv_match(type='HEARTBEAT', blocking=True, timeout=.5)
+        if message is not None and message.get_srcSystem()==1 and message.get_srcComponent()==1:
+            heartbeat = message
+            connection.target_system, connection.target_component = 1, 1
+            break
+    if heartbeat is None:
+        if connection is not None:
+            connection.close()
+        raise RuntimeError('simulation autopilot heartbeat not ready before timeout')
     if heartbeat.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED:
         connection.close()
         raise RuntimeError('set simulation references only while disarmed')

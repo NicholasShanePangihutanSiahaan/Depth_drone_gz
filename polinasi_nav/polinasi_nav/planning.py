@@ -166,16 +166,39 @@ class Health:
         return ''
 
 
-def brake_safe(grid, position, velocity, config, acceleration=None, actual=False):
+def brake_safe(grid, position, velocity, config, acceleration=None, actual=False, diagnostics=None):
+    def result(value, reason):
+        if diagnostics is not None:
+            diagnostics.update(safe=bool(value), reason=reason, actual_margin=actual)
+        return value
     speed = float(np.linalg.norm(velocity))
+    if diagnostics is not None:
+        diagnostics.update(position=np.asarray(position).tolist(),
+                           velocity=np.asarray(velocity).tolist(), speed_mps=speed)
     if speed < 1e-6:
-        return grid.safe(position, actual)
+        safe = grid.safe(position, actual)
+        if not safe and diagnostics is not None and hasattr(grid, 'describe_blockage'):
+            diagnostics['blockage'] = grid.describe_blockage(grid.indices(position), actual)
+        return result(safe, 'stationary_safe' if safe else 'stationary_blocked')
     acceleration = np.zeros(3) if acceleration is None else np.asarray(acceleration)
     reaction_end = np.asarray(position)+np.asarray(velocity)*config['reaction_time']
+    if diagnostics is not None:
+        diagnostics.update(acceleration=acceleration.tolist(), reaction_end=reaction_end.tolist(),
+                           reaction_time_seconds=float(config['reaction_time']))
     if not grid.line_safe(position, reaction_end, actual):
-        return False
+        if diagnostics is not None and hasattr(grid, 'describe_blockage'):
+            detail = {}
+            grid.line_safe(position, reaction_end, actual, diagnostics=detail)
+            diagnostics['blockage'] = detail
+        return result(False, 'reaction_segment_blocked')
     stop = Brake(reaction_end, velocity, acceleration, config)
-    return stop.max_speed <= config['speed']+1e-6 and stop.path_safe(grid, actual)
+    if diagnostics is not None:
+        diagnostics.update(predicted_max_speed_mps=stop.max_speed, stop_duration_seconds=stop.duration)
+    if stop.max_speed > config['speed']+1e-6:
+        return result(False, 'predicted_speed_limit')
+    safe = stop.path_safe(grid, actual, diagnostics)
+    return result(safe, 'safe' if safe else diagnostics.get('path_reason', 'braking_path_blocked')
+                  if diagnostics is not None else 'braking_path_blocked')
 
 
 class Brake:
@@ -217,7 +240,7 @@ class Brake:
         velocities = sum(k*times[:, None]**(k-1)*coeff[k] for k in range(1, 6))
         self.max_speed = float(np.linalg.norm(velocities, axis=1).max())
 
-    def path_safe(self, grid, actual=False):
+    def path_safe(self, grid, actual=False, diagnostics=None):
         # A polynomial lies inside its Bernstein/Bezier control hull. Bound
         # each short interval with that hull, so thin voxel intersections cannot
         # be missed between samples of the curved braking trajectory.
@@ -234,11 +257,31 @@ class Brake:
                 controls[:, i] += math.comb(i, k)/math.comb(5, k)*local[:, k]
         lo, hi = grid.indices(controls.min(axis=1)), grid.indices(controls.max(axis=1))
         if not np.all(grid.inside(lo)) or not np.all(grid.inside(hi)):
+            if diagnostics is not None:
+                index = int(np.flatnonzero(~(grid.inside(lo) & grid.inside(hi)))[0])
+                diagnostics.update(path_reason='braking_outside_window',
+                    interval_seconds=[float(times[index]),float(times[index+1])],
+                    blocked_box_min=grid.centers(lo[index]).tolist(),
+                    blocked_box_max=grid.centers(hi[index]).tolist())
+                if hasattr(grid, 'describe_blockage'):
+                    cell = lo[index] if not grid.inside(lo[index]) else hi[index]
+                    diagnostics['blockage'] = grid.describe_blockage(cell, actual)
             return False
         blocked = grid.blocked_actual if actual else grid.blocked
-        for lower, upper in zip(lo, hi):
+        for index, (lower, upper) in enumerate(zip(lo, hi)):
             region = tuple(slice(int(a), int(b)+1) for a, b in zip(lower, upper))
             if np.any(blocked[region]):
+                if diagnostics is not None:
+                    diagnostics.update(path_reason='braking_box_blocked',
+                        interval_seconds=[float(times[index]),float(times[index+1])],
+                        witness_policy='conservative_Bezier_hull_box_not_confirmed_curve_collision',
+                        blocked_box_min=grid.centers(lower).tolist(),
+                        blocked_box_max=grid.centers(upper).tolist(),
+                        raw_unknown_cells=int(np.count_nonzero(grid.state[region] == -1)),
+                        raw_occupied_cells=int(np.count_nonzero(grid.state[region] == 1)))
+                    if hasattr(grid, 'describe_blockage'):
+                        cell = lower+np.argwhere(blocked[region])[0]
+                        diagnostics['blockage'] = grid.describe_blockage(cell, actual)
                 return False
         return True
 

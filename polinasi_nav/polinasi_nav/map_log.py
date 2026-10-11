@@ -34,7 +34,8 @@ class MapLog:
         if stamp is None:
             return
         event = (status.get('mission'), status.get('failure'), status.get('survey_waypoint'),
-                 status.get('route_blockage', {}).get('reason'), status.get('adaptive_reason'))
+                 status.get('route_blockage', {}).get('reason'), status.get('adaptive_reason'),
+                 status.get('tree_phase'), status.get('inspection_tree_id'),status.get('inspection_view'))
         if stamp-self.debug_stamp < .5 and event == self.debug_event:
             return
         self.debug_stamp, self.debug_event = stamp, event
@@ -126,7 +127,7 @@ header{padding:12px 18px;background:#192330} label{margin-right:16px;white-space
 canvas{display:block;width:100%;height:75vh;touch-action:none;cursor:grab}
 p{margin:8px 0}button{padding:5px 12px} #details{font-size:12px;color:#aebdce}
 </style>
-<header><strong>LiDAR point cloud + 3D voxel grid</strong>
+<header><strong>Measured point cloud + 3D voxel grid</strong>
 <p>Drag to rotate · Scroll to zoom · All coordinates in metres (map frame: X/Y horizontal, Z up).</p>
 <p><label><input id="points" type="checkbox" checked> Cyan: surface points</label>
 <label><input id="occupied" type="checkbox" checked> Red: occupied</label>

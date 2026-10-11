@@ -32,11 +32,15 @@ def farm_region(margin=4.5):
 
 
 def coverage_route(bounds=None, spacing=8., step=2., altitude=2.):
-    """Nominal lawnmower route only: never creates free occupancy evidence."""
-    trunks, equations, polygon, farm_bounds = farm_region()
+    """Straight coverage lanes; obstacle detours belong to the live planner.
+
+    Tree layout selects the farm footprint only, never offsets a waypoint or
+    inserts a trunk bypass. Nominal points may therefore be occupied/unknown.
+    """
+    _, equations, _, farm_bounds = farm_region()
     xmin, xmax, ymin, ymax = farm_bounds if bounds is None else bounds
-    def inside(point):
-        return np.all(equations[:, :2]@np.asarray(point[:2])+equations[:, 2] <= 1e-7)
+    if spacing <= 0 or step <= 0:
+        raise ValueError('lane spacing and waypoint step must be positive')
     def row_limits(y):
         lo, hi = xmin, xmax
         for nx, ny, offset in equations:
@@ -53,12 +57,6 @@ def coverage_route(bounds=None, spacing=8., step=2., altitude=2.):
         start = current[:]
         for i in range(1, count+1):
             p = [a+(b-a)*i/count for a, b in zip(start, end)]
-            # Layout guides nominal goals only; all actual paths require LiDAR.
-            if any(math.hypot(p[0]-x, p[1]-y) < 2.2 for x, y in trunks):
-                candidates = [q for q in ([p[0], p[1]+offset, altitude] for offset in (-2.5, 2.5)) if inside(q)]
-                if not candidates:
-                    candidates = [q for q in ([p[0]+offset, p[1], altitude] for offset in (-2.5, 2.5)) if inside(q)]
-                p = max(candidates, key=lambda q: min(math.hypot(q[0]-x, q[1]-y) for x, y in trunks))
             if not points or math.dist(points[-1], p) > .01:
                 points.append(p)
         current = end[:]
@@ -76,31 +74,7 @@ def coverage_route(bounds=None, spacing=8., step=2., altitude=2.):
         append_segment([end_x, y, altitude])
     # Return in short steps so home is always inside the rolling window.
     append_segment([0., 0., altitude])
-    # Offsetting a goal around a trunk can create a long jump. Subdivide those
-    # legs too, so every next goal remains within the rolling navigation window.
-    dense, start = [], [0., 0., altitude]
-    for end in points:
-        legs = [end]
-        dx, dy = end[0]-start[0], end[1]-start[1]
-        for x, y in trunks:
-            f = max(0., min(1., ((x-start[0])*dx+(y-start[1])*dy)/max(dx*dx+dy*dy, 1e-9)))
-            if math.hypot(start[0]+f*dx-x, start[1]+f*dy-y) < 2.2:
-                a = math.atan2(start[1]-y, start[0]-x)
-                b = math.atan2(end[1]-y, end[0]-x)
-                delta = math.atan2(math.sin(b-a), math.cos(b-a))
-                count = max(1, math.ceil(abs(delta)/(math.pi/8)))
-                legs = [[x+2.4*math.cos(a+delta*i/count), y+2.4*math.sin(a+delta*i/count), altitude]
-                        for i in range(count+1)] + [end]
-                break
-        if not all(inside(q) for q in legs):
-            raise ValueError('nominal trunk bypass exits farm footprint')
-        previous = start
-        for goal in legs:
-            count = max(1, math.ceil(math.dist(previous, goal)/step))
-            dense.extend([[a+(b-a)*i/count for a, b in zip(previous, goal)] for i in range(1, count+1)])
-            previous = goal
-        start = end
-    return dense
+    return points
 
 
 def main():
@@ -144,6 +118,7 @@ def main():
                 coverage_roi=region, coverage_polygon=polygon,
                 coverage_region_source='configured_simulated_tree_layout', coverage_tree_centres=trunks,
                 coverage_edge_margin=4.5, coverage_lane_spacing=8.,
+                nominal_route_policy='pure_lawnmower_no_tree_bypass',
                 # Stop-to-stop quintic timing is longer than distance/speed.
                 # Budget the full nominal tour; still a bounded static-scene
                 # history policy, not permission to navigate on stale sensors.

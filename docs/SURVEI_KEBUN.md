@@ -63,8 +63,11 @@ POLINASI_SIM_RTF=0.2 bash tools/start_mapping.sh tour ground_truth
 ```
 
 Ganti `tour` dengan `check` untuk uji pergi 4 m lalu kembali, atau `smoke`
-untuk loop sangat kecil. `tour` memakai 326 target pendek dalam jalur zigzag,
-sekitar 569 m perjalanan nominal. Area survei mengikuti batas luar sebaran
+untuk loop sangat kecil. `tour` memakai 269 target pendek dalam jalur zigzag,
+sekitar 519 m perjalanan nominal. Rute awal lawnmower murni, tanpa belokan
+berdasarkan posisi batang; detour adalah tugas planner berbasis voxel LiDAR.
+Target di dalam obstacle tidak otomatis dilewati dan dapat menyebabkan hold.
+Area survei mengikuti batas luar sebaran
 29 pohon ditambah margin tepi 4,5 m, bukan seluruh lantai kosong. Posisi pohon
 berasal dari konfigurasi dunia simulasi, bukan deteksi otomatis; semua jalur
 terbang tetap harus lolos pemeriksaan peta LiDAR.
@@ -117,7 +120,7 @@ python3 tools/start_mission.py
 
 Pantau `mission`, `survey_waypoint`, `failure`, dan `health_reason` di terminal
 pengamat. `SURVEY` adalah survei, `EXPLORE` mencari posisi pengamatan tambahan,
-`RETURN` kembali, dan `LAND` mendarat. Jumlah target `tour` adalah 326, bukan 4.
+`RETURN` kembali, dan `LAND` mendarat. Jumlah target `tour` adalah 269, bukan 4.
 Jika ingin status lengkap, gunakan terminal tambahan:
 
 ```bash

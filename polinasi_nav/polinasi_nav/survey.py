@@ -57,9 +57,10 @@ class SurveyController(MissionController):
         self.prefetch_key = None
         self.prefetch_submitted = self.prefetch_used = self.prefetch_rejected = 0
         self.prefetch_reason = ''
+        self.skipped_targets = []
 
     def _planning_clone(self):
-        clone = object.__new__(SurveyController)
+        clone = object.__new__(type(self))
         excluded = ('executor', 'pending_plan', 'prefetched_plan', 'prefetch_key')
         for key, value in self.__dict__.items():
             if key not in excluded:
@@ -100,6 +101,16 @@ class SurveyController(MissionController):
             return self.grid.safe(self.goal)
         if self.state != 'SURVEY':
             return super()._choose_goal(current)
+        while (self.waypoint_index < len(self.waypoints)
+               and self.grid.occupied_goal(self.waypoints[self.waypoint_index])):
+            self.skipped_targets.append(dict(index=int(self.waypoint_index),
+                point=self.waypoints[self.waypoint_index].tolist(),
+                reason='observed_occupied_body_margin', observation_stamp=float(self.grid.last_observation_stamp),
+                coverage_complete=False))
+            self.waypoint_index += 1
+        if self.waypoint_index >= len(self.waypoints):
+            self.state = 'RETURN'
+            return self._choose_goal(current)
         self.goal = self.waypoints[self.waypoint_index].copy()
         delta = self.goal-np.asarray(current)
         self.goal_yaw = math.atan2(delta[1], delta[0]) if np.linalg.norm(delta[:2]) > .05 else self.yaw
@@ -212,6 +223,11 @@ class SurveyController(MissionController):
         if clone.failure:
             self.fail(clone.failure)
             return False
+        new_skips = clone.skipped_targets[len(self.skipped_targets):]
+        if any(not self.grid.occupied_goal(item['point']) for item in new_skips):
+            return False
+        self.waypoint_index = clone.waypoint_index
+        self.skipped_targets = clone.skipped_targets
         # Reject a route invalidated during planning. Actual command/braking
         # checks also run on the current live grid before every setpoint.
         if ready and not clone.trajectory.safe(self.grid):
@@ -229,6 +245,11 @@ class SurveyController(MissionController):
         for key in ('route_wait_started', 'route_wait_stamp', 'route_wait_scans',
                     'route_blockage', 'route_planner_reason'):
             setattr(self, key, getattr(clone, key))
+        for key in ('tree_phase','active_tree','view_target','inspection_view','search_started',
+                    'finish_reason','tree_angle','rejected_views','mount_phase_started',
+                    'mount_settled_since','mount_angle_index','inspection_altitude','ascent_stop_reason'):
+            if hasattr(clone,key):
+                setattr(self,key,getattr(clone,key))
         return ready
 
     def _plan_route(self, start, goal):
@@ -280,16 +301,29 @@ class SurveyController(MissionController):
         low, high = self.c.get('adaptive_clearance_slow', .05), self.c.get('adaptive_clearance_full', .45)
         space = np.clip((clearance-low)/max(high-low, 1e-8), self.phase.minimum, 1.)
         legacy_space = float(space)
+        stopping_checks = []
         if self.c.get('adaptive_directional_clearance', False):
             # Check stopping along motion, not just distance to a side boundary.
             # Full body/margin inflation and jerk-limited Brake remain intact.
             space = 0.
             for factor in (1., .75, .5, self.phase.minimum):
+                detail = dict(speed_factor=float(factor))
                 if brake_safe(self.grid, position, nominal_v*factor, self.c,
-                              nominal_a*factor**2):
+                              nominal_a*factor**2, diagnostics=detail):
+                    stopping_checks.append(detail)
                     space = factor
                     break
+                stopping_checks.append(detail)
             if space == 0.:
+                # Commit this failed decision, not the previous tick's diagnostics.
+                self.speed_diagnostics = dict(policy='directional_braking',
+                    occupied_clearance_m=float(occupied), inflated_free_clearance_m=float(free),
+                    braking_scale=0., target_scale=0., nominal_speed_mps=float(np.linalg.norm(nominal_v)),
+                    measured_velocity=np.asarray(velocity).tolist(),
+                    commanded_velocity=self.command_v.tolist(),
+                    commanded_acceleration=self.command_a.tolist(),
+                    trajectory_elapsed_seconds=float(self.elapsed),
+                    stopping_checks=stopping_checks)
                 self.fail('no_directional_stopping_corridor')
                 return self.command.copy(), self.command_v.copy(), self.command_a.copy(), self.elapsed
         curvature_load = (np.linalg.norm(np.cross(nominal_v, nominal_a))/max(np.linalg.norm(nominal_v), 1e-8))
@@ -300,6 +334,7 @@ class SurveyController(MissionController):
         if self.adaptive_reason == 'clearance' and self.c.get('adaptive_directional_clearance', False):
             self.adaptive_reason = 'directional_braking'
         self.speed_diagnostics = dict(occupied_clearance_m=float(occupied),
+            stopping_checks=stopping_checks,
             inflated_free_clearance_m=float(free), legacy_space_scale=legacy_space,
             braking_scale=float(space), tracking_scale=float(tracking), turn_scale=float(turn),
             target_scale=float(target), nominal_speed_mps=float(np.linalg.norm(nominal_v)),

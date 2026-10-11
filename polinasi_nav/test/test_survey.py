@@ -79,6 +79,22 @@ def test_return_uses_checked_local_legs_and_does_not_descend_early():
     assert ctl.state == 'DESCEND'
 
 
+def test_skip_only_known_occupied_goal_not_unknown():
+    c, grid, ctl = make()
+    ctl.state = 'SURVEY'
+    grid.state[tuple(grid.indices(ctl.waypoints[0]))] = OCCUPIED
+    grid.rebuild(0.)
+    assert ctl._choose_goal([0.,0.,2.])
+    assert ctl.waypoint_index == 1 and len(ctl.skipped_targets) == 1
+    assert not ctl.skipped_targets[0]['coverage_complete']
+    c, grid, ctl = make()
+    ctl.state = 'SURVEY'
+    grid.state[tuple(grid.indices(ctl.waypoints[0]))] = UNKNOWN
+    grid.rebuild(0.)
+    assert not ctl._choose_goal([0.,0.,2.])
+    assert ctl.waypoint_index == 0 and not ctl.skipped_targets
+
+
 def test_unknown_route_holds_without_counting_waypoints():
     c, grid, ctl = make()
     ctl.state = 'SURVEY'

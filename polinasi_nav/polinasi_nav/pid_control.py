@@ -46,6 +46,7 @@ class PositionPID:
             return controller._braking(dt if np.isfinite(dt) and 0 < dt <= .1 else .05)
         error = controller.command-np.asarray(position)
         derivative = controller.command_v-np.asarray(velocity)
+        previous_integral = self.integral.copy()
         candidate_integral = np.clip(self.integral+error*dt,
                                     -self.c['pid_integral_limit'], self.c['pid_integral_limit'])
         feedback = self.kp*error+self.ki*candidate_integral+self.kd*derivative
@@ -60,12 +61,37 @@ class PositionPID:
         if not saturated:
             self.integral = candidate_integral
         self.last = dict(active=True, reason='tracking', position_error_m=error.tolist(),
+            actual_position=np.asarray(position).tolist(), actual_velocity=np.asarray(velocity).tolist(),
+            reference_position=controller.command.tolist(), reference_velocity=controller.command_v.tolist(),
+            nominal_acceleration=controller.command_a.tolist(),
             velocity_error_mps=derivative.tolist(), integral=self.integral.tolist(),
             correction_acceleration=correction.tolist(), output_acceleration=output.tolist(),
             saturated=saturated, commanded_jerk_mps3=float(np.linalg.norm(output-self.previous_acceleration)/dt))
-        safe = (np.linalg.norm(output) <= self.c['acceleration']+1e-8
-                and brake_safe(controller.grid, position, velocity, self.c, output, actual=True)
-                and brake_safe(controller.grid, controller.command, controller.command_v, self.c, output))
+        checks = []
+        safe = False
+        # Reduce only additional feedback if it invalidates a safe nominal
+        # reference. Every candidate, including zero correction, is certified.
+        for scale in (1., .5, 0.):
+            requested = controller.command_a+correction*scale
+            bounded = limit_norm(requested, self.c['acceleration'])
+            output = self.previous_acceleration+limit_norm(bounded-self.previous_acceleration, self.c['jerk']*dt)
+            actual_check, reference_check = {}, {}
+            actual_safe = brake_safe(controller.grid, position, velocity, self.c, output,
+                                     actual=True, diagnostics=actual_check)
+            reference_safe = brake_safe(controller.grid, controller.command, controller.command_v,
+                                        self.c, output, diagnostics=reference_check)
+            safe = bool(np.linalg.norm(output) <= self.c['acceleration']+1e-8
+                        and actual_safe and reference_safe)
+            checks.append(dict(correction_scale=scale, actual=actual_check, reference=reference_check))
+            if safe:
+                break
+        self.last.update(safety_checks=checks, correction_scale=scale,
+                         output_acceleration=output.tolist(),
+                         commanded_jerk_mps3=float(np.linalg.norm(output-self.previous_acceleration)/dt))
+        if scale < 1.:
+            # Reduced authority must not wind up the integrator.
+            self.integral = previous_integral
+            self.last.update(integral=self.integral.tolist(), saturated=True)
         if not safe:
             # Brake from the last actually published acceleration, not the
             # nominal acceleration or an unchecked newly proposed correction.

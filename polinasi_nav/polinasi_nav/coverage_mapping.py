@@ -152,6 +152,7 @@ class SparseHistory:
             observed_xy_fraction=len(self.observed_columns)/(self.shape[0]*self.shape[1]),
             free_navigation_ttl_seconds=self.c['free_ttl'], environment_policy=self.c.get('map_environment', 'unspecified'),
             lidar_max_range_m=self.c['lidar_range'], simulation_real_time_factor=self.c.get('simulation_real_time_factor'),
+            measurement_sources=['LiDAR','simulated_RGBD_not_ZED_stereo'] if self.c.get('depth_camera_enabled') else ['LiDAR'],
             coverage_roi=self.c.get('coverage_roi'),
             coverage_polygon=self.c.get('coverage_polygon'),
             coverage_region_source=self.c.get('coverage_region_source'),
@@ -166,8 +167,15 @@ class RollingMapper:
         self.config = copy.deepcopy(config)
         self.history = SparseHistory(config)
 
-    def integrate(self, grid, origin, points, hits, stamp, pad, now, centre, roi=None):
+    def integrate(self, grid, origin, points, hits, stamp, pad, now, centre, roi=None, auxiliary=()):
         changed = self.history.integrate(origin, points, hits, stamp, roi)
+        lidar_stats = copy.deepcopy(self.history.last_integration_stats)
+        depth_stats = []
+        for observation in auxiliary:
+            depth_origin, depth_points, depth_stamp, depth_roi = observation
+            changed.extend(self.history.integrate(depth_origin,depth_points,
+                np.ones(len(depth_points),dtype=bool),depth_stamp,depth_roi))
+            depth_stats.append(copy.deepcopy(self.history.last_integration_stats))
         updated = navigation_window(self.config, centre)
         self.history.restore(updated, now)
         if pad is not None:
@@ -185,7 +193,10 @@ class RollingMapper:
         updated.last_observation_stamp = stamp
         updated.version = grid.version+1
         updated.rebuild(now)
-        updated.mapping_roi_stats = self.history.last_integration_stats
+        updated.mapping_roi_stats = lidar_stats
+        updated.depth_roi_stats = depth_stats
+        updated.depth_integrated_stamp = max((o[2] for o in auxiliary),
+            default=getattr(grid,'depth_integrated_stamp',None))
         return updated, stamp, self.history.delta(changed)
 
 

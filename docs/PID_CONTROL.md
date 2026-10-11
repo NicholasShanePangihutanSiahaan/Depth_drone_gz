@@ -52,7 +52,15 @@ Terminal lain dengan environment yang sama:
 /usr/bin/python3 tools/start_mission.py
 ```
 
-Gunakan `tour` untuk 326 target, `tour_check` untuk empat target dan pulang/land.
+Gunakan `tour` untuk 269 target lawnmower murni, `tour_check` untuk empat target dan pulang/land.
+Rute kuning tidak lagi menyisipkan belokan berdasarkan koordinat batang.
+Koordinat pohon hanya menentukan batas area survei; detour berasal dari planner
+dan peta LiDAR. Target yang terbukti terkena occupied + margin tubuh dilewati
+dan dicatat sebagai belum tercakup; unknown tidak dilewati otomatis. Sambungan
+ke target berikutnya tetap diperiksa planner. Planner dapat hold bila belum
+ada target/rute aman. Pelebaran ROI dari pantulan dekat koridor dan diagnosis
+rinci `pid_final_safety` kini tersedia; lihat OBSTACLE_AVOIDANCE_UPDATE.md.
+Hasil enam target pada PID_RESULTS memakai rute versi sebelumnya.
 Gazebo/RViz dibuka otomatis. Untuk stop semua proses/jendela milik run ini:
 `python3 tools/stop_simulation.py`.
 

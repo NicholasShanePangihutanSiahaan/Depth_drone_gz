@@ -38,16 +38,20 @@ if [[ "$mission" == identification ]]; then nav_config="$project_dir/polinasi_na
 if [[ -n "${4:-}" ]]; then nav_config="$4"; fi
 test -f "$nav_config"
 mkdir -p "$run_dir"
+if [[ "${POLINASI_LIDAR_RENDER_FIX:-1}" == 1 ]]; then
+  python3 "$project_dir/tools/prepare_lidar_rendering.py" "$run_dir/rendering_resources"
+  export GZ_RENDERING_RESOURCE_PATH="$run_dir/rendering_resources"
+fi
 if [[ "$mission" == mapping || "$mission" == identification ]]; then
   python3 "$project_dir/tools/prepare_sim_world.py" "$project_dir/polinasi_nav/worlds/$scenario.sdf" \
     "$run_dir/world.sdf" --factor "${POLINASI_SIM_RTF:-0.2}" --sensor-config "$nav_config"
   export POLINASI_SIM_WORLD="$run_dir/world.sdf"
   nav_config="$run_dir/mission_config.json"
 fi
-gazebo_pid=; sitl_pid=; ros_pid=; gazebo_gui_pid=; rviz_pid=
+gazebo_pid=; sitl_pid=; ros_pid=; gazebo_gui_pid=; rviz_pid=; camera_gui_pid=
 cleanup() {
   trap - EXIT INT TERM HUP
-  for child in "$rviz_pid" "$gazebo_gui_pid" "$ros_pid" "$sitl_pid" "$gazebo_pid"; do
+  for child in "$camera_gui_pid" "$rviz_pid" "$gazebo_gui_pid" "$ros_pid" "$sitl_pid" "$gazebo_pid"; do
     if [[ -n "$child" ]] && kill -0 -- "-$child" 2>/dev/null; then
       kill -INT -- "-$child" 2>/dev/null || true
     fi
@@ -57,19 +61,19 @@ cleanup() {
   # launcher owns, including ROS nodes and their spawned CPU workers.
   for attempt in {1..25}; do
     running=false
-    for child in "$rviz_pid" "$gazebo_gui_pid" "$ros_pid" "$sitl_pid" "$gazebo_pid"; do
+    for child in "$camera_gui_pid" "$rviz_pid" "$gazebo_gui_pid" "$ros_pid" "$sitl_pid" "$gazebo_pid"; do
       if [[ -n "$child" ]] && kill -0 -- "-$child" 2>/dev/null; then running=true; fi
     done
     if [[ "$running" == false ]]; then break; fi
     sleep 0.2
   done
-  for child in "$rviz_pid" "$gazebo_gui_pid" "$ros_pid" "$sitl_pid" "$gazebo_pid"; do
+  for child in "$camera_gui_pid" "$rviz_pid" "$gazebo_gui_pid" "$ros_pid" "$sitl_pid" "$gazebo_pid"; do
     if [[ -n "$child" ]] && kill -0 -- "-$child" 2>/dev/null; then
       kill -TERM -- "-$child" 2>/dev/null || true
     fi
   done
   sleep 1
-  for child in "$rviz_pid" "$gazebo_gui_pid" "$ros_pid" "$sitl_pid" "$gazebo_pid"; do
+  for child in "$camera_gui_pid" "$rviz_pid" "$gazebo_gui_pid" "$ros_pid" "$sitl_pid" "$gazebo_pid"; do
     if [[ -n "$child" ]] && kill -0 -- "-$child" 2>/dev/null; then
       kill -KILL -- "-$child" 2>/dev/null || true
     fi
@@ -85,10 +89,15 @@ if [[ "$scenario" == sensor_dropout ]]; then drop_after=25.0; fi
 setsid ros2 launch polinasi_nav sitl_navigation.launch.py localisation:="$mode" \
   mission:="$mission" drop_after:="$drop_after" config:="$nav_config" map_log_dir:="$map_log_dir" >"$run_dir/ros.log" 2>&1 & ros_pid=$!
 if [[ "${POLINASI_SIM_GUI:-1}" == 1 && -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
-  setsid bash "$project_dir/tools/view_simulation.sh" >"$run_dir/gazebo_gui.log" 2>&1 & gazebo_gui_pid=$!
+  if [[ "${POLINASI_GAZEBO_GUI:-1}" == 1 ]]; then
+    setsid bash "$project_dir/tools/view_simulation.sh" >"$run_dir/gazebo_gui.log" 2>&1 & gazebo_gui_pid=$!
+  fi
   setsid rviz2 -d "$project_dir/polinasi_nav/config/navigation.rviz" \
     --ros-args -p use_sim_time:=true >"$run_dir/rviz.log" 2>&1 & rviz_pid=$!
-  printf 'Gazebo and RViz opened; this launcher also closes both when stopped.\n'
+  if [[ "${POLINASI_CAMERA_GUI:-0}" == 1 ]]; then
+    setsid ros2 run rqt_image_view rqt_image_view /zed/image >"$run_dir/camera_gui.log" 2>&1 & camera_gui_pid=$!
+  fi
+  printf 'Requested GUI windows opened; this launcher closes its owned viewers when stopped.\n'
 elif [[ "${POLINASI_SIM_GUI:-1}" == 1 ]]; then
   printf 'No desktop display is available; cannot show Gazebo/RViz.\n' >&2
   exit 1

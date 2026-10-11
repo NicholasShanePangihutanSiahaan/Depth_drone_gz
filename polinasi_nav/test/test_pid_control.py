@@ -64,6 +64,23 @@ def test_unknown_final_corridor_brakes_not_fallback():
     ctl.grid.blocked[:] = ctl.grid.blocked_actual[:] = True
     assert pid.apply(.05, ctl, ctl.command, np.zeros(3)) == ('brake','hold')
     assert ctl.failure == 'pid_final_safety' and not pid.last['active']
+    assert all(not trial['actual']['safe'] for trial in pid.last['safety_checks'])
+
+
+def test_pid_can_reduce_feedback_only_after_both_safety_checks(monkeypatch):
+    c, ctl, pid = fixture()
+    def certify(grid, position, velocity, config, acceleration=None, actual=False, diagnostics=None):
+        safe = np.linalg.norm(acceleration) < .01
+        diagnostics.update(safe=bool(safe), reason='safe' if safe else 'braking_box_blocked')
+        return safe
+    monkeypatch.setattr('polinasi_nav.pid_control.brake_safe', certify)
+    pid.apply(.05, ctl, ctl.command-[.1,0,0], np.zeros(3))
+    assert not ctl.failure and pid.last['correction_scale'] == 0.
+    assert len(pid.last['safety_checks']) == 3
+    assert pid.last['safety_checks'][-1]['actual']['safe']
+    assert pid.last['safety_checks'][-1]['reference']['safe']
+    np.testing.assert_allclose(pid.integral, 0.)
+    json.dumps(pid.status(), allow_nan=False)
 
 
 @pytest.mark.parametrize('dt,position', [(float('nan'), [0,0,2]), (.05, [float('nan'),0,2])])

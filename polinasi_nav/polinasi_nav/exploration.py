@@ -52,7 +52,7 @@ def visible_unknown(grid, position, yaw=0.):
     return np.unique(ids[rays, first[rays]], axis=0)
 
 
-def choose_view(grid, current, mission_hint, visited=(), yaw=0., relevant_unknown=None):
+def choose_view(grid, current, mission_hint, visited=(), yaw=0., relevant_unknown=None, same_altitude=False):
     """Choose a local directly reachable view; never weaken unknown inflation.
 
     Straight observed-free hops keep selection bounded and avoid expensive
@@ -70,6 +70,9 @@ def choose_view(grid, current, mission_hint, visited=(), yaw=0., relevant_unknow
             & (points[:, 2] <= c['exploration_max_altitude'])
             & (goal_distance <= np.linalg.norm(current-hint)+c['exploration_backtrack']))
     points = points[keep]
+    if same_altitude:
+        points = points[np.abs(points[:,2]-current[2])<=grid.res/2+1e-8].copy()
+        points[:,2] = current[2]
     for previous in visited:
         points = points[np.linalg.norm(points-previous, axis=1) >= c['exploration_revisit_distance']]
     if not len(points):
@@ -77,6 +80,8 @@ def choose_view(grid, current, mission_hint, visited=(), yaw=0., relevant_unknow
     order = np.argsort(np.linalg.norm(points-hint, axis=1)+0.25*np.linalg.norm(points-current, axis=1))
     candidates = []
     for point in points[order]:
+        if not grid.safe(point):
+            continue
         if candidates and min(np.linalg.norm(point-p) for p in candidates) < c['exploration_revisit_distance']:
             continue
         if not grid.line_safe(current, point):

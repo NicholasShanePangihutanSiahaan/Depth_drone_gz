@@ -11,11 +11,14 @@ import numpy as np
 from rclpy.qos import QoSProfile, DurabilityPolicy, qos_profile_sensor_data
 from std_msgs.msg import String, UInt8MultiArray
 from nav_msgs.msg import Odometry, Path as PathMsg
-from sensor_msgs.msg import PointCloud2, Range
+from sensor_msgs.msg import PointCloud2, Range, Image, CameraInfo
+from rclpy.time import Time
+from tf2_ros import TransformException
+from sensor_msgs_py import point_cloud2
 from mavros_msgs.msg import State
 from visualization_msgs.msg import MarkerArray
 from tf2_ros import Buffer, TransformListener
-from .ros_nodes import ConfigNode, NavigationNode, run
+from .ros_nodes import ConfigNode, NavigationNode, run, seconds, rotation, vector
 from .coverage_mapping import navigation_window, SparseHistory, initialise_rolling_mapper
 from .map_log import MapLog
 from .map_transport import encode_window
@@ -73,6 +76,17 @@ class MappingIONode(ConfigNode):
             ('survey_pub', PathMsg, '/navigation/survey_route')):
             setattr(self, attribute, self.create_publisher(message, topic, visual_qos))
         self.simulation_ray_stats = {}
+        self.depth_pending, self.depth_info = None, None
+        self.depth_submitted_stamp = -math.inf
+        self.depth_sequence = 0
+        self.depth_stats = dict(enabled=bool(self.c.get('depth_camera_enabled')),
+                                source='simulated_rgbd_not_ZED_stereo',last_valid_stamp=None,
+                                received_frames=0,submitted_frames=0,rejection='waiting_for_depth')
+        if self.c.get('depth_camera_enabled'):
+            self.depth_cloud_pub = self.create_publisher(PointCloud2,'/zed/depth/points',qos_profile_sensor_data)
+            self.create_subscription(Image,'/zed/depth/image',self.depth_image,qos_profile_sensor_data)
+            self.create_subscription(CameraInfo,'/zed/camera_info',
+                lambda msg:setattr(self,'depth_info',msg),qos_profile_sensor_data)
         from .corridor_mapping import CorridorRegion
         self.corridor = CorridorRegion(self.c) if self.c.get('mapping_corridor_enabled', False) else None
         lidar_topic = '/mapping/lidar_rays' if self.c.get('simulation_no_return_rays', False) else '/livox/lidar'
@@ -101,12 +115,67 @@ class MappingIONode(ConfigNode):
         if msg.armed and self.flight_stage == 'WAIT_EXTERNALNAV':
             self.flight_stage = 'MISSION'  # Never seed an airborne/moving launch bubble.
 
+    @measured('depth_receive')
+    def depth_image(self,msg):
+        stamp = seconds(msg.header.stamp)
+        self.depth_stats['received_frames'] += 1
+        self.depth_stats['last_received_stamp'] = stamp
+        if msg.header.frame_id!='zed_camera_optical' or not 0<=self.now()-stamp<self.c['depth_camera_timeout']:
+            self.depth_stats['rejection'] = 'depth_frame_or_timestamp_invalid'
+            return
+        if self.depth_pending is None or stamp>seconds(self.depth_pending.header.stamp):
+            self.depth_pending = msg
+
+    @measured('depth_projection_and_handoff')
+    def depth_observation(self):
+        msg,info = self.depth_pending,self.depth_info
+        if msg is None or info is None:
+            return ()
+        stamp = seconds(msg.header.stamp)
+        if stamp<=self.depth_submitted_stamp:
+            return ()
+        if not 0<=self.now()-stamp<self.c['depth_camera_timeout']:
+            self.depth_stats['rejection'] = 'stale_depth_image'
+            return ()
+        if (info.header.frame_id!=msg.header.frame_id or info.width!=msg.width or info.height!=msg.height):
+            self.depth_stats['rejection'] = 'depth_intrinsics_mismatch'
+            return ()
+        try:
+            from .depth_mapping import project_depth
+            points,stats = project_depth(bytes(msg.data),msg.width,msg.height,msg.step,msg.encoding,
+                msg.is_bigendian,info.k,self.c['depth_min_range'],self.c['depth_max_range'],
+                self.c['depth_mapping_stride'],self.c['depth_mapping_budget'],self.depth_sequence)
+            tf = self.buffer.lookup_transform('map',msg.header.frame_id,Time.from_msg(msg.header.stamp))
+            body_tf = self.buffer.lookup_transform('base_link',msg.header.frame_id,Time.from_msg(msg.header.stamp))
+            body = points@rotation(body_tf.transform.rotation).T+vector(body_tf.transform.translation)
+            keep = ~np.all(np.abs(body)<=np.asarray(self.c['drone_dimensions'])/2+self.c['self_filter_padding'],axis=1)
+            stats['self_filtered_rays'] = int(np.count_nonzero(~keep))
+            points = points[keep]
+            if not len(points):
+                self.depth_stats.update(stats,rejection='no_valid_depth_rays')
+                return ()
+            origin = vector(tf.transform.translation)
+            world = points@rotation(tf.transform.rotation).T+origin
+        except (ValueError,TransformException) as exc:
+            self.depth_stats['rejection'] = 'depth_projection_or_stamp_TF_unavailable:'+str(exc)[:160]
+            return ()
+        self.depth_submitted_stamp = stamp
+        self.depth_sequence += 1
+        self.depth_stats.update(stats,last_valid_stamp=stamp,rejection='',
+            submitted_frames=self.depth_stats['submitted_frames']+1,
+            camera_origin_map=origin.tolist(),retained_rays=int(len(points)),
+            frame=msg.header.frame_id)
+        self.depth_cloud_pub.publish(point_cloud2.create_cloud_xyz32(msg.header,points.tolist()))
+        if self.map_log:
+            self.map_log.add_hits(world)
+        return ((origin,world,stamp,self.mapping_region(world)),)
+
     def flight_paths(self, msg):
         data = json.loads(msg.data)
         self.planned = data['planned']
         self.controller.exploration_points = data['exploration']
 
-    def mapping_region(self):
+    def mapping_region(self, hit_points=None):
         if self.corridor is None:
             return None
         state = self.last_status.get('mission', 'TAKEOFF')
@@ -124,8 +193,12 @@ class MappingIONode(ConfigNode):
             nominal = [nominal]
         else:
             nominal = [[*self.c['home'][:2], self.c['takeoff_altitude']]]
+        if self.c.get('active_tree_inspection'):
+            hint = self.last_status.get('inspection_goal_hint')
+            if hint is not None:
+                nominal = [[*self.c['home'][:2],self.c['takeoff_altitude']],hint] if state=='TAKEOFF' else [hint]
         return self.corridor.region(self.pose, self.last_status, nominal, self.planned,
-            self.last_integrated_cloud)
+            self.last_integrated_cloud, hit_points=hit_points)
 
     @measured('mapping_io_update')
     def update(self):
@@ -135,6 +208,9 @@ class MappingIONode(ConfigNode):
         if self.grid.version == self.last_snapshot_version or not math.isfinite(self.last_integrated_cloud):
             return
         statistics = dict(global_known_voxels=len(self.history.cells),
+            depth_mapping=dict(self.depth_stats,
+                last_integrated_stamp=getattr(self.grid,'depth_integrated_stamp',None),
+                roi=getattr(self.grid,'depth_roi_stats',[])),
             simulation_ray_stats=self.simulation_ray_stats,
             mapping_ray_counts=getattr(self, 'mapping_ray_counts', {}),
             mapping_roi=getattr(self.grid, 'mapping_roi_stats', {}),

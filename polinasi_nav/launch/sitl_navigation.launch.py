@@ -21,14 +21,28 @@ def nodes(context):
     if mission == 'identification' and mode != 'ground_truth':
         raise ValueError('identification is simulation ground_truth only')
     params = {'use_sim_time': True, 'config_file': LaunchConfiguration('config').perform(context)}
+    import json
+    with open(params['config_file']) as config_stream:
+        gimbals = json.load(config_stream).get('sensor_gimbals_enabled',False)
+    if gimbals and (mode != 'ground_truth' or mission != 'mapping'):
+        raise ValueError('Sensor gimbals currently require ground_truth mapping simulation')
     if LaunchConfiguration('autostart').perform(context) not in ('true', 'false'):
         raise ValueError('autostart must be true or false')
     configuration_nodes = [Node(package='polinasi_nav', executable='mavros_configurator',
                                 parameters=[{'use_sim_time': True}], output='screen')] if isolated else []
+    if gimbals:
+        configuration_nodes.append(Node(package='polinasi_nav',executable='sensor_mounts',
+            parameters=[params,{'mode':mode}],output='screen'))
     if mission == 'mapping':
         configuration_nodes.append(Node(package='polinasi_nav', executable='mapping_io',
             parameters=[params, {'mode': mode,
                 'map_log_dir': LaunchConfiguration('map_log_dir').perform(context)}], output='screen'))
+        import json
+        with open(params['config_file']) as config_stream:
+            active_inspection = json.load(config_stream).get('active_tree_inspection',False)
+        if active_inspection:
+            configuration_nodes.append(Node(package='polinasi_nav',executable='tree_detector',
+                parameters=[params],output='screen'))
     if mission == 'identification':
         configuration_nodes.append(Node(package='polinasi_nav', executable='identification_recorder',
             parameters=[params, {'output_dir': os.path.dirname(LaunchConfiguration('map_log_dir').perform(context))}], output='screen'))

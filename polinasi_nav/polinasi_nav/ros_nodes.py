@@ -107,6 +107,8 @@ class LocalisationNode(ConfigNode):
         self.declare_parameter('mode', 'ground_truth')
         self.declare_parameter('world_to_odom', [0., 0., 0., 0., 0., 0.])
         self.mode = self.get_parameter('mode').value
+        if self.c.get('sensor_gimbals_enabled') and self.mode != 'ground_truth':
+            raise ValueError('LiDAR–IMU estimator does not support moving sensor extrinsics')
         if self.mode not in ('ground_truth', 'sensor'):
             raise ValueError('mode must be ground_truth or sensor')
         transform = self.get_parameter('world_to_odom').value
@@ -135,6 +137,8 @@ class LocalisationNode(ConfigNode):
         for parent, child, xyz, rpy in [('map', 'odom', [0., 0., 0.], [0., 0., 0.]),
                 ('base_link', 'mid360', self.c['lidar_mount'][:3], self.c['lidar_mount'][3:]),
                 ('mid360', 'mid360_imu', [0., 0., 0.], [0., 0., 0.])]:
+            if self.c.get('sensor_gimbals_enabled') and child == 'mid360':
+                continue  # Exactly one owner: measured joint feedback node.
             t = TransformStamped()
             t.header.stamp = self.get_clock().now().to_msg()
             t.header.frame_id, t.child_frame_id = parent, child
@@ -286,7 +290,15 @@ class NavigationNode(ConfigNode):
         self.history = SparseHistory(self.c) if self.rolling_map and not self.separate_mapping else None
         self.grid = navigation_window(self.c, self.c['initial_pose']) if self.rolling_map else VoxelMap(self.c)
         controller_type = SurveyController if mission_kind == 'mapping' else MissionController
+        if self.c.get('active_tree_inspection'):
+            if mission_kind != 'mapping':
+                raise ValueError('Active inspection requires the isolated mapping flight stack')
+            from .tree_mission import TreeInspectionController
+            controller_type = TreeInspectionController
         self.controller = controller_type(self.c, self.grid, self.get_parameter('mode').value == 'sensor')
+        if self.c.get('active_tree_inspection'):
+            self.create_subscription(String,'/perception/trees',
+                lambda msg:self.controller.receive_trees(json.loads(msg.data)),1)
         if self.c.get('pid_enabled'):
             if self.c.get('predictive_enabled') or mission_kind != 'mapping':
                 raise ValueError('PID mapping controller must be exclusive with MPC')
@@ -335,7 +347,13 @@ class NavigationNode(ConfigNode):
         self.safe_pub = self.create_publisher(PoseStamped, '/control/safe_target_pose', 10)
         self.status_pub = self.create_publisher(String, '/navigation/status', 10)
         self.buzzer_pub = self.create_publisher(Bool, '/actuators/mock_buzzer', 10)
-        self.pitch_pub = self.create_publisher(Float64, '/camera/pitch_cmd', 10)
+        self.pitch_pub = self.create_publisher(Float64, '/mounts/camera/pitch_target' if self.c.get('sensor_gimbals_enabled') else '/camera/pitch_cmd', 10)
+        self.mount_status,self.mount_status_stamp = {},-math.inf
+        if self.c.get('sensor_gimbals_enabled'):
+            if self.c.get('camera_yaw_enabled',True):
+                self.camera_yaw_pub = self.create_publisher(Float64,'/mounts/camera/yaw_target',1)
+            self.lidar_pitch_pub = self.create_publisher(Float64,'/mounts/lidar/pitch_target',1)
+            self.create_subscription(String,'/mounts/status',self.mount_feedback,1)
         self.mode_pub = self.create_publisher(String, '/flight/cmd/set_mode', 10)
         self.arm_pub = self.create_publisher(Bool, '/flight/cmd/set_arm', 10)
         self.takeoff_pub = self.create_publisher(Float32, '/flight/cmd/takeoff', 10)
@@ -402,6 +420,7 @@ class NavigationNode(ConfigNode):
             self.pose = None
             return
         self.estimated_yaw = math.atan2(matrix[1, 0], matrix[0, 0])
+        self.body_rotation = matrix
         self.controller.health.pose_stamp = stamp
         if getattr(self, 'predictive', None) is not None:
             if not hasattr(self, 'predictive_pose_samples'):
@@ -456,6 +475,10 @@ class NavigationNode(ConfigNode):
             if index < len(msg.position) and math.isfinite(msg.position[index]):
                 self.camera_pitch_measured = msg.position[index]
                 self.camera_stamp = seconds(msg.header.stamp)
+
+    def mount_feedback(self,msg):
+        self.mount_status = json.loads(msg.data)
+        self.mount_status_stamp = float(self.mount_status['stamp'])
 
     def start_cb(self, msg):
         self.started = msg.data
@@ -549,13 +572,16 @@ class NavigationNode(ConfigNode):
         try:
             transform = self.buffer.lookup_transform('map', msg.header.frame_id, Time.from_msg(msg.header.stamp))
             matrix = rotation(transform.transform.rotation)
+            if self.c.get('sensor_gimbals_enabled'):
+                body_tf = self.buffer.lookup_transform('base_link',msg.header.frame_id,Time.from_msg(msg.header.stamp))
         except (TransformException, ValueError):
             return
         self.pending.clear()
         points = cloud_points(msg)
         mount = self.c['lidar_mount']
-        mr = Rotation.from_euler('xyz', mount[3:]).as_matrix()
-        body = points@mr.T+mount[:3]
+        mr = rotation(body_tf.transform.rotation) if self.c.get('sensor_gimbals_enabled') else Rotation.from_euler('xyz', mount[3:]).as_matrix()
+        translation = vector(body_tf.transform.translation) if self.c.get('sensor_gimbals_enabled') else mount[:3]
+        body = points@mr.T+translation
         keep = ~np.all(np.abs(body) <= np.asarray(self.c['drone_dimensions'])/2+self.c['self_filter_padding'], axis=1)
         ranges = np.linalg.norm(points, axis=1)
         keep &= np.all(np.isfinite(points), axis=1) & (ranges >= self.c['lidar_min_range']) & (ranges <= self.c['lidar_range']+0.01)
@@ -591,13 +617,16 @@ class NavigationNode(ConfigNode):
         self.map_job_trace = dict(received_ns=getattr(self, 'scan_receipts', {}).pop(stamp, None),
                                  scan_stamp=stamp, submitted_ns=submitted)
         if self.rolling_map:
-            roi = self.mapping_region() if hasattr(self, 'mapping_region') else None
+            roi = self.mapping_region(world_points[ray_hits]) if hasattr(self, 'mapping_region') else None
+            auxiliary = self.depth_observation() if hasattr(self,'depth_observation') else ()
             self.map_future = self.map_worker.submit(timed_job, integrate_rolling_snapshot, submitted, snapshot, origin,
-                world_points, ray_hits, stamp, pad, now, self.pose.copy(), roi)
+                world_points, ray_hits, stamp, pad, now, self.pose.copy(), roi, auxiliary)
         else:
             self.map_future = self.map_worker.submit(timed_job, integrate_snapshot, submitted, snapshot, origin, world_points, ray_hits, stamp, pad, now)
 
     def publish_camera_tf(self):
+        if self.c.get('sensor_gimbals_enabled'):
+            return  # Mount node owns both moving joints and optical transform.
         if self.c['camera_pitch_enabled'] and not 0 <= self.now()-self.camera_stamp < 0.3:
             return
         t = TransformStamped()
@@ -682,6 +711,39 @@ class NavigationNode(ConfigNode):
             health_reason = health_reason or 'waiting_for_mavros_parameters'
         if not self.reference_ready:
             health_reason = health_reason or 'waiting_for_confirmed_origin_and_home'
+        if self.c.get('sensor_gimbals_enabled'):
+            self.controller.mount_feedback = self.mount_status
+            self.controller.depth_feedback = self.map_statistics.get('depth_mapping',{})
+            self.controller.body_yaw_measured = self.estimated_yaw
+            self.controller.vehicle_speed = float(np.linalg.norm(self.velocity))
+        mount_fsm = (self.c.get('automatic_tilt_ascent') and self.flight_stage=='MISSION'
+                     and self.controller.mount_permission() and self.mount_status.get('feedback_fresh'))
+        if self.c.get('sensor_gimbals_enabled') and (not 0 <= now-self.mount_status_stamp < .3
+                or (not self.mount_status.get('navigation_ready') and not mount_fsm)):
+            health_reason = health_reason or 'lidar_mount_not_navigation_ready'
+        if (self.c.get('active_tree_inspection') and self.flight_stage=='WAIT_EXTERNALNAV'
+                and self.controller.preflight_hint() is None):
+            health_reason = health_reason or 'waiting_for_confirmed_measured_tree'
+        if (self.c.get('active_tree_inspection') and self.flight_stage=='MISSION'
+                and self.now()-self.controller.catalog_stamp > 5.):
+            health_reason = health_reason or 'stale_tree_perception'
+        if (self.c.get('depth_camera_enabled') and self.flight_stage=='MISSION'
+                and getattr(self.controller,'camera_navigation_view',lambda:False)()):
+            from .depth_health import DepthHoldGuard
+            if not hasattr(self,'depth_hold_guard'):
+                self.depth_hold_guard = DepthHoldGuard()
+            depth = self.map_statistics.get('depth_mapping',{})
+            stationary_safe = bool(self.controller.state=='SURVEY'
+                and self.controller.trajectory is None
+                and np.linalg.norm(self.velocity)<.04 and np.linalg.norm(self.controller.command_v)<.01
+                and self.grid.safe(self.pose,actual=True) and self.grid.safe(self.controller.command))
+            action = self.depth_hold_guard.assess(now,depth,stationary_safe,
+                self.c['depth_camera_timeout'],self.c.get('depth_integration_hold_timeout',2.))
+            self.controller.depth_navigation_paused = action=='hold_wait_for_integration'
+            if action=='fail':
+                health_reason = health_reason or 'stale_depth_camera'
+        else:
+            self.controller.depth_navigation_paused = False
         if self.rolling_map and self.flight_stage == 'MISSION' and now-self.last_integrated_cloud > self.c.get('map_timeout', 1.):
             health_reason = health_reason or 'stale_integrated_map'
         if (self.mission_kind == 'mapping' and self.fcu_alignment is None
@@ -775,7 +837,29 @@ class NavigationNode(ConfigNode):
             if self.landing_sent and not self.state.armed and self.landing_confirmed(now):
                 self.controller.state = 'COMPLETE'
         self.buzzer_pub.publish(Bool(data=self.controller.buzzer_remaining > 0))
-        self.pitch_pub.publish(Float64(data=float(self.controller.pitch)))
+        if self.c.get('sensor_gimbals_enabled'):
+            if self.c.get('automatic_tilt_ascent'):
+                self.lidar_pitch_pub.publish(Float64(data=float(self.controller.lidar_target())))
+            tree = getattr(self.controller,'active_tree',None)
+            if tree is not None and self.flight_stage == 'MISSION':
+                from .sensor_mounts import camera_angles,bounded_target
+                target = [*tree['xy'],max(tree['observed_stem_top']-.4,self.pose[2]+.5)
+                    if self.c.get('inspection_transit_camera') and self.controller.inspection_hover()
+                    else tree['observed_stem_top']-.4]
+                if self.c.get('depth_camera_enabled') and self.controller.camera_navigation_view():
+                    from .depth_mapping import approach_camera_target
+                    hint = self.controller.command+self.controller.command_v*2.
+                    if np.linalg.norm(self.controller.command_v[:2])<.02:
+                        hint = self.controller.goal if self.controller.goal is not None else self.controller.view_target
+                    target = approach_camera_target(self.pose,
+                        hint if hint is not None else [*tree['xy'],self.pose[2]],
+                        self.c['depth_approach_depression_degrees'])
+                yaw,pitch = camera_angles(self.pose,self.body_rotation,target,self.c['camera_mount'])
+                if self.c.get('camera_yaw_enabled',True):
+                    self.camera_yaw_pub.publish(Float64(data=bounded_target('camera_yaw',yaw)))
+                self.pitch_pub.publish(Float64(data=bounded_target('camera_pitch',pitch)))
+        else:
+            self.pitch_pub.publish(Float64(data=float(self.controller.pitch)))
         self.publish_status(now, health_reason or '')
 
     def landing_confirmed(self, now):
@@ -810,6 +894,12 @@ class NavigationNode(ConfigNode):
         self.controller.mpc_waiting_for_fresh = waiting
         result = self.controller.tick(now, dt, self.pose, self.velocity, self.range_value, self.range_stamp)
         if self.pid is not None:
+            if (not self.controller.failure and self.controller.trajectory is None
+                    and getattr(self.controller,'ascent_reference',None) is None):
+                # A held position has zero nominal derivatives. Do not feed
+                # yesterday's PID correction back as today's feedforward.
+                self.controller.command_v = np.zeros(3)
+                self.controller.command_a = np.zeros(3)
             return self.pid.apply(dt, self.controller, self.pose, self.velocity)
         if self.predictive is not None:
             self.predictive.sync_state(self.controller.state)
@@ -877,6 +967,9 @@ class NavigationNode(ConfigNode):
                    'mission_kind': self.mission_kind,
                    'survey_waypoint': getattr(self.controller, 'waypoint_index', None),
                    'survey_waypoint_count': len(self.controller.waypoints) if self.mission_kind == 'mapping' else None,
+                   'survey_skipped_targets': getattr(self.controller, 'skipped_targets', []),
+                   'survey_skipped_target_count': len(getattr(self.controller, 'skipped_targets', [])),
+                   'survey_coverage_policy': 'skipped_targets_not_claimed_observed',
                    'survey_planning': getattr(self.controller, 'pending_plan', None) is not None,
                    'mission_start_received': self.started,
                    'takeoff_phase': self.takeoff_sequence.phase if self.takeoff_sequence else None,
@@ -898,6 +991,7 @@ class NavigationNode(ConfigNode):
                    'global_map_shape': list(map(int, self.history.shape)) if self.history else list(map(int, self.grid.shape)),
                    'mission': self.controller.state, 'failure': self.controller.failure, 'replans': self.controller.replans,
                    'buzzer_events': self.controller.buzzer_events, 'health_reason': health_reason,
+                   'depth_safety': self.depth_hold_guard.status if hasattr(self,'depth_hold_guard') else {},
                    'exploration_phase': self.controller.exploration_phase,
                    'exploration_views': self.controller.exploration_views,
                    'exploration_predicted_gain': self.controller.exploration_gain,
@@ -941,7 +1035,10 @@ class NavigationNode(ConfigNode):
                 pipeline=status['processing_pipeline'], planner=status['planner_stages_last_wall_ms'])))
 
     def extra_status(self):
-        return {}
+        data = self.controller.inspection_status() if hasattr(self.controller,'inspection_status') else {}
+        if self.c.get('sensor_gimbals_enabled'):
+            data['sensor_mounts'] = self.mount_status
+        return data
 
     @measured('map_log_snapshot')
     def save_map_log(self):

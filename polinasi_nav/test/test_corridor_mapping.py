@@ -89,6 +89,28 @@ def test_lookahead_follows_route_length_and_roi_keeps_near_360():
     assert contains([[-1., 0., 2.], [0., 1., 2.], [5., 0., 2.], [5., 2., 2.]], roi()).tolist() == [True, True, True, False]
 
 
+def test_surface_near_route_expands_before_endpoint_is_discarded():
+    c = load_config(Path(__file__).resolve().parents[1]/'config/pid_tour_check.json')
+    corridor = CorridorRegion(c)
+    hit = [4., 2., 2.]
+    region = corridor.region([0.,0.,2.], {}, [[6.,0.,2.]], [], 1., [hit, [0.,15.,2.]])
+    assert region['expansions'] == 1
+    assert contains([hit], region)[0]
+    assert not contains([[0.,15.,2.]], region)[0]
+    history = SparseHistory(c)
+    history.integrate(np.array([0.,0.,2.]), [hit], [True], 1., region)
+    key = int(np.ravel_multi_index(history.indices(hit), history.shape))
+    assert history.cells[key][0] == OCCUPIED
+
+
+def test_far_flat_ground_does_not_expand_whole_route():
+    c = load_config(Path(__file__).resolve().parents[1]/'config/pid_tour_check.json')
+    corridor = CorridorRegion(c)
+    r = corridor.region([0.,0.,2.], {}, [[15.,0.,2.]], [], 1., [[5.,0.,0.],[10.,0.,0.]])
+    assert not r['expansion_centres'] and r['expansions'] == 0
+
+
+
 def test_observed_expansion_opens_detour_but_not_fully_blocked_route():
     # Known-map fixture, not a LiDAR/ArduPilot flight validation.
     from polinasi_nav.mapping import VoxelMap, UNKNOWN

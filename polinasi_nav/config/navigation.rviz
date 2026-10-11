@@ -34,7 +34,17 @@ Visualization Manager:
         Durability Policy: Transient Local
         Depth: 1
     - Class: rviz_default_plugins/PointCloud2
-      Name: Accumulated whole-farm LiDAR cloud (display sampled)
+      Name: Camera depth cloud (simulated RGB-D, not ZED stereo)
+      Enabled: true
+      Topic:
+        Value: /zed/depth/points
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 1
+      Style: Points
+      Size (Pixels): 3
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Accumulated measured cloud (LiDAR and optional depth, sampled)
       Enabled: true
       Topic:
         Value: /mapping/global_cloud

@@ -129,12 +129,51 @@ class VoxelMap:
         height = int(np.any(kernel, axis=(0, 1)).sum())
         return maximum_filter1d(xy, size=height, axis=2, mode='constant', cval=1)
 
+    def occupied_goal(self, point):
+        """Known occupied body/margin overlap only; unknown never justifies skip."""
+        index = self.indices(point)
+        if not self.inside(index):
+            return False
+        offsets = np.argwhere(self.kernel)-np.asarray(self.kernel.shape)//2
+        ids = index+offsets
+        ids = ids[self.inside(ids)]
+        return bool(len(ids) and np.any(self.state[tuple(ids.T)] == OCCUPIED))
+
     def safe(self, point, actual=False):
         i = self.indices(point)
         blocked = self.blocked_actual if actual else self.blocked
         return bool(self.inside(i) and not blocked[tuple(i)])
 
-    def line_safe(self, start, end, actual=False):
+    def describe_blockage(self, index, actual=False):
+        """Bounded audit of raw cells responsible for one inflated rejection."""
+        index = np.asarray(index, dtype=int)
+        kernel = self.actual_kernel if actual else self.kernel
+        ids = index + np.argwhere(kernel)-np.asarray(kernel.shape)//2
+        inside = self.inside(ids)
+        valid = ids[inside]
+        states = self.state[tuple(valid.T)]
+        unknown, occupied = valid[states == UNKNOWN], valid[states == OCCUPIED]
+        outside = int(np.count_nonzero(~inside))
+        causes = []
+        if len(occupied):
+            causes.append('occupied')
+        if len(unknown):
+            causes.append('unknown')
+        if outside:
+            causes.append('outside_window')
+        if not causes:
+            causes.append('inflated_mask_without_raw_blocker')
+        return dict(frame='map', blocked_index=index.tolist(),
+            blocked_cell_centre=self.centers(index).tolist(), actual_margin=bool(actual),
+            causes=causes, footprint_unknown_cells=int(len(unknown)),
+            footprint_occupied_cells=int(len(occupied)), footprint_outside_cells=outside,
+            unknown_samples=self.centers(unknown[:8]).tolist(),
+            occupied_samples=self.centers(occupied[:8]).tolist(),
+            samples_truncated=bool(len(unknown)>8 or len(occupied)>8),
+            map_version=int(self.version),
+            observation_stamp=float(self.last_observation_stamp) if np.isfinite(self.last_observation_stamp) else None)
+
+    def line_safe(self, start, end, actual=False, diagnostics=None):
         # Exact grid-plane crossings: fixed-spacing samples can miss a thin
         # intersection with a blocked corner, even with very small spacing.
         start, end = np.asarray(start), np.asarray(end)
@@ -159,7 +198,15 @@ class VoxelMap:
                               ((0,0,0), (0,0,1), (0,1,0), (0,1,1),
                                (1,0,0), (1,0,1), (1,1,0), (1,1,1))])
         blocked = self.blocked_actual if actual else self.blocked
-        return bool(np.all(self.inside(ids)) and not np.any(blocked[tuple(ids.T)]))
+        inside = self.inside(ids)
+        rejected = ~inside
+        rejected[inside] = blocked[tuple(ids[inside].T)]
+        safe = not np.any(rejected)
+        if not safe and diagnostics is not None:
+            diagnostics.update(self.describe_blockage(ids[np.flatnonzero(rejected)[0]], actual))
+            diagnostics.update(segment_start=start.tolist(), segment_end=end.tolist(),
+                               witness_policy='first_rejected_supercover_cell_not_time_ordered')
+        return bool(safe)
 
     def visible(self, start, end):
         """Visibility is a thin optical ray; unknown also prevents confirmation."""
