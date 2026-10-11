@@ -39,3 +39,10 @@ def test_wrapper_opens_only_rviz_and_camera():
     assert 'export POLINASI_GAZEBO_GUI=0' in shell
     for key in ('SIM_GUI','CAMERA_GUI'):
         assert 'export POLINASI_' + key + '=1' in shell
+
+
+def test_baseline_environment_rejects_flower_world_before_mission(tmp_path):
+    import pytest
+    (tmp_path/'world.sdf').write_text('<sdf><world><model name="palm"><link name="flower_male_00"/></model></world></sdf>')
+    with pytest.raises(ValueError,match='baseline_world_contains_flowers'):
+        loop.baseline_environment(tmp_path)

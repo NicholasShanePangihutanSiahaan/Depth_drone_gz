@@ -1,5 +1,6 @@
 """Bounded simulation-only runner. Never edits code or kills other runs."""
 import argparse
+import hashlib
 import fcntl
 import json
 import os
@@ -7,10 +8,25 @@ from pathlib import Path
 import signal
 import subprocess
 import time
+import xml.etree.ElementTree as ET
 
 from stop_simulation import live
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def baseline_environment(run):
+    """Check loaded private world, not just the scenario argument."""
+    path = run/'world.sdf'
+    tree = ET.parse(path)
+    if any('flower' in element.get('name','').lower()
+           for tag in ('model','link') for element in tree.iter(tag)):
+        raise ValueError('baseline_world_contains_flowers; refusing mission start')
+    assets = [path, ROOT/'polinasi_nav/worlds/palm_farm.sdf',
+              ROOT/'polinasi_nav/models/palm_farm/meshes/palm.dae',
+              ROOT/'polinasi_nav/models/palm_farm/meshes/ground.dae']
+    return dict(scenario='palm_farm',flowers_present=False,
+        hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in assets})
 
 
 def audit(path):
@@ -50,7 +66,7 @@ def audit(path):
                 last_phase=last.get('tree_phase'), last_mission=last.get('mission'),
                 event_sample_max_speed_mps=max_speed,
                 event_sample_max_tracking_error_m=max_tracking,
-                measurement_scope='phase-change samples, not full-flight extrema',
+                measurement_scope='phase-change and periodic watchdog samples, not full-flight extrema',
                 localisation='ground_truth; not LiDAR localisation validation')
 
 
@@ -123,6 +139,8 @@ def main():
                             raise RuntimeError('launcher_registration_timeout')
                         time.sleep(.5)
                     print('Registered simulation: ' + run.name, flush=True)
+                    (folder/(name+'_environment.json')).write_text(
+                        json.dumps(baseline_environment(run),indent=2)+'\n')
                     step([str(ROOT / '.venv/bin/python'), 'tools/set_origin.py', '--timeout', '120'], name + '_origin', 150)
                     setup = folder / (name + '_setup.json')
                     step(['/usr/bin/python3', 'tools/check_ros_simulation.py', '--output', str(setup)], name + '_setup', 120)

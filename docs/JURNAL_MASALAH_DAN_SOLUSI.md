@@ -291,6 +291,33 @@ perubahan file sumber itu tidak mengganti world yang sudah dimuat simulator.
 - **Status:** run berlangsung; hasil akhir harus dicatat setelah berhenti.
   Pekerjaan agen map tidak diubah atau dicampurkan ke commit navigasi.
 
+## 11 Oktober 2026 — Status navigasi tidak diterima setelah approach
+
+**Kronologi penemuan:** loop `182547` sempat melewati kegagalan depth run
+sebelumnya dan drone bergerak sekitar 0,27 m/s. Pada sampel terakhir,
+detik 68,45, drone masih APPROACH pohon pertama, hampir diam, dan umur
+depth terintegrasi 0,25 detik. Watchdog kemudian tidak menerima status
+navigasi selama 15 detik waktu nyata dan menghentikan run beserta viewers.
+Ini berbeda dari `stale_depth_camera`: belum ada failure sensor pada
+status terakhir. Traceback di log ROS berasal dari SIGINT saat shutdown,
+bukan bukti bahwa node crash sebelum watchdog bertindak.
+
+- **Diagnosis:** penyebab hilangnya status belum terbukti. Log lama tidak
+  mencatat umur `/clock` ketika status hilang, sehingga belum dapat
+  membedakan clock/simulator tertahan dari callback navigasi tertahan.
+- **Solusi diagnostik:** watchdog menyimpan checkpoint penuh setiap 5 detik
+  waktu nyata, termasuk umur penerimaan status dan `/clock`, selain event
+  perubahan fase. Batas penghentian 15 detik tidak diperlonggar.
+- **Kontrol lingkungan:** runner berikutnya memeriksa world privat dan
+  menolak memulai misi jika ada model/link bunga. Hash world dan mesh
+  map lama disimpan dalam `run_1_environment.json` untuk audit lokal.
+- **Hasil:** belum ada pohon selesai atau landing terkonfirmasi pada run
+  ini. Simulasi ulang map lama diperlukan; tidak mengklaim optimasi kode
+  menyelesaikan seluruh keterlambatan.
+- **Bukti:** `reports/inspection_loop_20261011_182547/run_1_audit.json`,
+  `run_1_watchdog.jsonl`, dan log ROS direktori run terkait.
+- **Status:** terbuka; instrumentasi tambahan bukan perbaikan akar masalah.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
