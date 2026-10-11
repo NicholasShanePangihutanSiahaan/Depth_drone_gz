@@ -105,6 +105,39 @@ def lookahead(current, path, maximum):
     return np.asarray(result).tolist()
 
 
+def simplify_roi_route(route, tolerance):
+    """Bound distance of every original segment to simplified chords.
+
+    Distance to a convex segment is convex: bounding both endpoints of each
+    original edge also bounds the full edge. Enlarging capsule radius by the
+    returned error therefore retains the original ROI, not only its vertices.
+    This never simplifies a flight trajectory or labels unknown cells free.
+    """
+    points = np.asarray(route,float).reshape(-1,3)
+    if len(points)<3:
+        return points.tolist(),0.
+    keep = {0,len(points)-1}
+    pending = [(0,len(points)-1)]
+    error = 0.
+    while pending:
+        first,last = pending.pop()
+        if last-first<2:
+            continue
+        d = points[last]-points[first]
+        middle = points[first+1:last]
+        t = np.clip((middle-points[first])@d/max(float(d@d),1e-12),0.,1.)
+        distances = np.linalg.norm(middle-(points[first]+t[:,None]*d),axis=1)
+        index = int(np.argmax(distances))
+        bound = float(distances[index])
+        if bound>tolerance:
+            split = first+1+index
+            keep.add(split)
+            pending.extend(((first,split),(split,last)))
+        else:
+            error = max(error,bound)
+    return points[sorted(keep)].tolist(),error
+
+
 class CorridorRegion:
     def __init__(self, config):
         self.c = config
@@ -136,8 +169,15 @@ class CorridorRegion:
             path = np.asarray(planned)
             nearest = int(np.argmin(np.linalg.norm(path-current, axis=1)))
             routes.append(lookahead(current, path[nearest:], horizon))
+        original_segments = sum(max(0,len(r)-1) for r in routes)
+        simplified = [simplify_roi_route(r,min(.05,self.c['resolution']/4)) for r in routes]
+        routes = [r for r,_ in simplified]
+        route_error = max((e for _,e in simplified),default=0.)
         region = dict(centre=np.asarray(current).tolist(), near_radius=self.c['mapping_near_radius'],
-            radius=self.c['mapping_corridor_radius'], routes=routes,
+            radius=self.c['mapping_corridor_radius']+route_error, routes=routes,
+            route_simplification=dict(original_segments=original_segments,
+                simplified_segments=sum(max(0,len(r)-1) for r in routes),
+                enclosure_margin_m=route_error,policy='conservative_capsule_superset_not_flight_smoothing'),
             expansion_centres=[p.tolist() for p in self.centres], expansion_radius=self.radius,
             expansions=self.expansions, lookahead_m=horizon,
             policy='route_corridor_plus_360_near_field', outside_policy='unobserved_is_unknown')
@@ -158,7 +198,7 @@ class CorridorRegion:
             # within the swept body's vertical band. Ground/foliage INSIDE the
             # base ROI remain obstacles; no surface is reclassified as free.
             vertical_margin = (dimensions[2]/2+self.c['clearance']
-                               +self.c.get('tracking_margin', 0.)+self.c['resolution'])
+                               +self.c.get('tracking_margin', 0.)+self.c['resolution']+route_error)
             useful = np.zeros(len(candidates), dtype=bool)
             delta = candidates-np.asarray(current)
             useful |= ((np.linalg.norm(delta[:,:2], axis=1) <= halo['near_radius'])

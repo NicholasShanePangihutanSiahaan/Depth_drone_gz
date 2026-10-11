@@ -2,6 +2,7 @@ import copy
 import numpy as np
 from pathlib import Path
 from polinasi_nav.corridor_mapping import contains, sample_intersections, CorridorRegion, lookahead
+from polinasi_nav.corridor_mapping import simplify_roi_route
 from polinasi_nav.coverage_mapping import SparseHistory
 from polinasi_nav.config import load_config
 from polinasi_nav.mapping import FREE, OCCUPIED
@@ -22,6 +23,28 @@ def test_far_hit_keeps_near_free_evidence_without_mapping_far_obstacle():
     assert not h.occupied_keys
     stats = h.last_integration_stats['clipping']
     assert stats['generated_samples'] < stats['full_trace_samples']/4
+
+
+def test_roi_chords_enclose_original_curved_capsules_without_changing_flight_path():
+    x = np.linspace(0.,6.,101)
+    path = np.column_stack((x,.15*np.sin(x*2),np.full_like(x,2.)))
+    before = path.copy()
+    simplified,error = simplify_roi_route(path,.05)
+    assert len(simplified)<len(path)/3 and 0<=error<=.05
+    original = roi(); original['routes'] = [path.tolist()]
+    enlarged = dict(original,routes=[simplified],radius=original['radius']+error+1e-12)
+    rng = np.random.default_rng(361)
+    samples = path[rng.integers(0,len(path),10000)]+rng.normal(size=(10000,3))*.4
+    assert np.all(contains(samples[ contains(samples,original)],enlarged))
+    np.testing.assert_array_equal(path,before)
+
+
+def test_roi_simplification_preserves_corner_and_endpoint_extent():
+    path = [[0,0,2],[1,0,2],[2,0,2],[2,1,2],[2,2,2]]
+    reduced,error = simplify_roi_route(path,.05)
+    assert reduced==[[0.,0.,2.],[2.,0.,2.],[2.,2.,2.]] and error==0.
+    reduced,error = simplify_roi_route([[0,0,2],[2,0,2],[0,0,2]],.05)
+    assert len(reduced)==3 and error==0.
 
 
 def test_clipped_sampling_matches_full_sampling_filtered_to_exact_roi():

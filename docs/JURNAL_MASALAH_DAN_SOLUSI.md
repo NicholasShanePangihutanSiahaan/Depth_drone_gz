@@ -347,6 +347,45 @@ independen pada run ini.
 - **Status:** tes terarah lulus; pemulihan dalam penerbangan belum tervalidasi.
   Simulasi berikutnya tetap memakai map lama, RViz dan kamera.
 
+## 11 Oktober 2026 — Scanning terhenti karena biaya koridor ROI rapat
+
+**Kronologi penemuan:** loop `185204` memakai map lama yang terverifikasi.
+Perbaikan ascent berhasil: drone tidak langsung scanning ketika map terlambat,
+melainkan menjalankan 16 pause/resume dan naik sampai sekitar 3,42 m.
+Ascent berakhir dengan `observation_guard_limit`, lalu scanning dimulai.
+Tiga viewpoint tercatat selesai pada scan timestamp 129,8; 156,7; 198,4.
+Perpindahan ke viewpoint ketiga sempat membutuhkan satu pengamatan tambahan
+untuk satu unknown voxel dan berhasil mendapat rute langsung. Perpindahan
+berikutnya membutuhkan pengamatan tambahan untuk enam unknown voxel.
+Pada detik 216,45, ketika drone mulai bergerak lagi sekitar 0,083 m/s,
+run berhenti dengan `stale_depth_camera`. Depth valid berumur 0,65 detik,
+tetapi hasil terintegrasi 1,05 detik. Jadi pemulihan ascent membantu satu
+fase, bukan menyelesaikan keterlambatan seluruh pipeline.
+
+- **Bukti biaya:** pekerjaan map terakhir sekitar 2166,88 ms waktu nyata:
+  LiDAR 1323,17 ms; depth 461,31 ms; restore/inflasi/delta 382,40 ms.
+  ROI pada log memuat 77 segmen koridor, termasuk 76 segmen dari titik rapat
+  trajectory. Pemeriksaan membership mengulang pekerjaan untuk tiap segmen.
+  Biaya callback visual/log juga tidak nol; ini bukan diagnosis tunggal
+  semua sumber latensi.
+- **Solusi diterapkan:** sederhanakan hanya polyline ROI dengan deviasi
+  maksimal 0,05 m (atau seperempat resolusi bila lebih kecil), lalu tambah
+  radius koridor sebesar batas deviasi yang dihitung. Koridor baru mencakup
+  koridor lama secara konservatif. Tidak mengubah trajectory/perintah
+  terbang, inflasi tubuh, timeout sensor, atau menjadikan unknown bebas.
+  Log ROI menyimpan jumlah segmen sebelum/sesudah dan tambahan radius.
+- **Pengujian:** 28 tes terarah ROI/depth/ascent lulus. Benchmark geometri
+  memakai ROI tersimpan dan 1000 sinar sintetis: 77 segmen menjadi 4;
+  tambahan radius 0,02863 m; seluruh sampel ROI lama tetap tercakup.
+  Median sampling/pemeriksaan ROI 129,16 ms menjadi 36,97 ms (sekitar
+  3,49 kali lebih cepat pada benchmark ini). Ini bukan pengukuran seluruh
+  pipeline penerbangan atau jaminan kecepatan drone naik 3,49 kali.
+- **Bukti lokal:** `reports/inspection_loop_20261011_185204/`,
+  `reports/roi_simplification_benchmark.json`.
+- **Status:** ascent pulih dalam run ini tetapi sering berhenti; pemulihan
+  belum mulus. Optimasi ROI belum diuji dalam penerbangan; dua pohon lalu
+  landing tetap belum tervalidasi.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
