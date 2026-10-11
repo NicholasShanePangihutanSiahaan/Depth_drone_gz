@@ -10,7 +10,27 @@ Semua penerbangan yang dirangkum di sini memakai posisi ground truth
 (posisi sebenarnya dari simulator), dengan navigasi GPS dinonaktifkan.
 Hasilnya bukan validasi lokalisasi LiDAR–IMU atau keselamatan hardware.
 
+Bagian **Kronologi penemuan** menceritakan urutan kejadian berdasarkan log
+dan dokumentasi yang tersedia, bukan pengamatan visual baru. Angka detik
+di dalam cerita adalah waktu simulasi, bukan lama menunggu di laptop.
+`BRAKE` berarti program masuk fase pengereman; tidak dengan sendirinya
+membuktikan drone sudah diam atau sudah landing. Enam viewpoint selesai
+berarti enam posisi pengamatan memenuhi syarat program, bukan bukti seluruh
+permukaan pohon terlihat atau bunga terdeteksi.
+
 ## 10 Oktober 2026 — Voxel palsu saat LiDAR dimiringkan
+
+**Kronologi penemuan:** saat memeriksa hasil LiDAR yang dimiringkan, terlihat
+susunan voxel aneh yang terus muncul pada bagian tertentu. Awalnya perlu
+dibedakan apakah itu daun, tanah, pantulan badan drone, atau kesalahan sensor
+simulasi. Karena itu pengujian dipindahkan ke arena kosong, tanpa pohon,
+dengan drone tidak di-arm. Lantai tetap merupakan obstacle yang sah;
+yang dicari adalah voxel tambahan di atas lantai. Voxel aneh masih muncul
+bahkan ketika visual badan drone disembunyikan. Temuan ini membuat penjelasan
+“semua voxel tersebut adalah pantulan badan” tidak cukup. Audit dilanjutkan
+ke rendering GPU LiDAR. Setelah patch sampler, pengujian arena kosong tidak
+lagi menghasilkan voxel palsu non-lantai. Kubus nyata kemudian ditambahkan
+untuk memastikan perbaikannya bukan sekadar menghapus semua obstacle.
 
 - **Masalah:** muncul voxel non-lantai di arena kosong, termasuk ketika
   visual badan drone disembunyikan. Tidak cukup dijelaskan oleh pantulan badan.
@@ -25,6 +45,19 @@ Hasilnya bukan validasi lokalisasi LiDAR–IMU atau keselamatan hardware.
 - **Status:** teruji untuk kasus simulator tersebut; bukan uji sensor Livox nyata.
 
 ## 10 Oktober 2026 — Rute nominal dan perluasan ROI terlalu besar
+
+**Kronologi penemuan:** ketika melihat peta hasil survey, jalur nominal
+tampak sudah berbelok mengitari pohon. Ini menimbulkan pertanyaan apakah
+belokan dibuat oleh obstacle avoidance atau sudah dimasukkan ke rute awal.
+Audit menunjukkan rute awal memang memiliki bypass berdasarkan layout
+batang. Rute kemudian diubah menjadi lawnmower murni agar jalur penghindaran
+benar-benar ditentukan dari hasil sensor. Pada pengujian berikutnya drone
+berhasil melewati tujuh target, tetapi kemudian berhenti dengan
+`stale_integrated_map`. Pemeriksaan log pemetaan menunjukkan banyak
+perluasan ROI berasal dari pantulan lantai, bukan hanya obstacle relevan di
+sekitar jalur terbang. Jadi masalah berikutnya bukan semata bentuk rute:
+pekerjaan pemetaan ikut membesar sampai hasil map terlambat. Perluasan ROI
+kemudian dibatasi, tanpa mengubah unknown menjadi ruang bebas.
 
 - **Masalah:** rute awal memiliki bypass berdasarkan layout pohon, sehingga
   tidak murni lawnmower. Perluasan region of interest (ROI: area pemetaan
@@ -42,6 +75,15 @@ Hasilnya bukan validasi lokalisasi LiDAR–IMU atau keselamatan hardware.
 
 ## 11 Oktober 2026 — Origin diminta sebelum SITL siap
 
+**Kronologi penemuan:** loop pertama mulai menyiapkan simulator dan hendak
+mengatur titik acuan lokal sebelum mengirim perintah misi. Namun proses
+`set_origin.py` langsung berhenti dengan `ConnectionRefusedError`. Audit
+tidak memiliki event penerbangan: masalah muncul sebelum takeoff, bukan
+drone gagal approach atau scanning. Skrip mencoba terhubung ketika endpoint
+SITL belum siap menerima koneksi. Startup diperbaiki agar menunggu dan
+mencoba lagi sampai timeout, kemudian memverifikasi identitas FCU. Pada
+loop-loop berikutnya tahapan origin berhasil dilewati dan drone bisa takeoff.
+
 - **Masalah:** loop `054607` gagal sebelum misi, dengan
   `ConnectionRefusedError` saat menjalankan `set_origin.py`.
 - **Solusi diterapkan:** tunggu koneksi sampai timeout, ulangi koneksi,
@@ -52,6 +94,20 @@ Hasilnya bukan validasi lokalisasi LiDAR–IMU atau keselamatan hardware.
 - **Status:** startup berikutnya teruji; tidak membuktikan misi penerbangan selesai.
 
 ## 11 Oktober 2026 — Naik kontinu dan daun setelah normalisasi LiDAR
+
+**Kronologi penemuan:** saat pengujian naik kontinu, referensi yang seharusnya
+hanya naik vertikal sempat ikut dipengaruhi koreksi PID horizontal. Ini
+menunjukkan bahwa perintah nominal dan koreksi pengendali belum cukup
+terpisah. Setelah pemisahan itu diperbaiki, masalah lain muncul pada loop
+`054821`: drone sudah approach, mengamati atas, dan naik; tetapi ketika
+LiDAR kembali horizontal untuk scanning, daun yang baru teramati membuat
+pemeriksaan akhir PID menolak perintah. Log melaporkan
+`emergency_unavoidable:pid_final_safety`, bukan bukti tabrakan fisik.
+Artinya, lolos pemeriksaan saat LiDAR menghadap atas belum cukup untuk
+menjamin posisi tersebut tetap lolos ketika arah pengamatan berubah.
+Buffer vertikal teramati 0,5 m kemudian ditambahkan agar kenaikan berhenti
+lebih konservatif sebelum normalisasi LiDAR. Perubahan ini membantu run
+berikutnya mencapai scanning, tetapi belum menyelesaikan semua masalah misi.
 
 - **Masalah:** referensi naik sempat terpengaruh koreksi PID horizontal.
   Setelah LiDAR kembali horizontal, daun yang baru terlihat dapat menyebabkan
@@ -69,6 +125,19 @@ Hasilnya bukan validasi lokalisasi LiDAR–IMU atau keselamatan hardware.
 
 ## 11 Oktober 2026 — Ruang bawah jalur belum terbukti bebas
 
+**Kronologi penemuan:** pada loop `060227`, drone berhasil takeoff, approach
+pohon ID 1, memiringkan LiDAR, naik, lalu mulai scanning sekitar ketinggian
+2,94 m. Pada detik 113,55 log sudah menunjukkan indeks viewpoint 1.
+Ketika hendak melanjutkan perpindahan scanning, drone justru masuk EXPLORE
+pada detik 118, kembali ke SURVEY pada 128,90, lalu berhenti dengan
+`blocked_route` pada 161,45. Dari tampilan point cloud jalur dapat terlihat
+lapang, tetapi pemeriksaan voxel membutuhkan seluruh ruang tubuh dan margin
+di bawah jalur terbukti bebas, bukan hanya garis lintasannya. Audit menemukan
+pengamatan tanah jauh yang diperlukan dibuang oleh batas depth 8 m.
+Batas simulasi dan proyeksinya kemudian diperluas menjadi 20 m. Run berikutnya
+berhasil menyelesaikan enam viewpoint pohon pertama; keberhasilan itu
+terbatas pada run dan model RGB-D ideal tersebut, bukan jaminan sensor nyata.
+
 - **Masalah:** loop `060227` berhenti `blocked_route` saat scanning;
   batas depth 8 m membuang pengamatan tanah jauh yang diperlukan untuk
   memeriksa ruang di bawah jalur.
@@ -85,6 +154,21 @@ Hasilnya bukan validasi lokalisasi LiDAR–IMU atau keselamatan hardware.
 
 ## 11 Oktober 2026 — Titik bantu menuju pohon berada dalam daun
 
+**Kronologi penemuan:** pada loop `062312`, drone sudah berhasil scanning
+pohon pertama, ID 4. Setelah naik hingga sekitar 3,02 m dan menyelesaikan
+enam viewpoint, program masuk SEARCH pada detik 241,35 lalu memilih pohon
+ID 7 pada 241,40. Seharusnya drone mulai perjalanan ke pohon berikutnya,
+tetapi pada detik 259,25 program masuk BRAKE dengan `blocked_route`.
+Audit tidak berhenti pada kesimpulan “pohon kedua tidak bisa dicapai”.
+Pemeriksaan planner dan peta tersimpan menunjukkan bahwa titik bantu pendek
+yang dipilih menuju pohon kedua justru berada di dalam obstacle setelah
+ditambah ukuran drone dan margin keselamatan. Karena endpoint itu tidak
+aman, A* menolaknya sebelum dapat mencari jalan mengitari daun.
+Pemilih titik bantu diperbaiki untuk mencari alternatif yang sudah teramati
+bebas. Replay menemukan alternatif aman, dan pada run berikutnya drone
+benar-benar menjalankan detour awal menuju pohon kedua. Namun perjalanan
+itu kemudian gagal karena masalah depth yang berbeda, dijelaskan di bawah.
+
 - **Masalah:** setelah pohon pertama selesai pada loop `062312`, titik
   bantu approach sejauh maksimum 2 m masuk inflasi obstacle. A* menolak
   endpoint tersebut sebelum dapat mencari detour.
@@ -100,6 +184,21 @@ Hasilnya bukan validasi lokalisasi LiDAR–IMU atau keselamatan hardware.
 
 ## 11 Oktober 2026 — Hasil depth terlambat ketika drone hampir diam
 
+**Kronologi penemuan:** pada loop `104225`, drone kembali menyelesaikan
+scanning pohon ID 4, kali ini sekitar ketinggian 2,87 m. Pada detik 237,00
+enam viewpoint selesai, lalu pohon ID 7 dipilih pada 237,05. Berbeda dari
+percobaan sebelumnya, titik bantu alternatif memungkinkan drone menjalankan
+detour awal; ketinggiannya kemudian sekitar 2,73 m saat approach.
+Tetapi pada detik 255,40 program masuk BRAKE dengan `stale_depth_camera`.
+Saat kegagalan tercatat, kecepatan terukur hanya sekitar 0,007 m/s,
+sehingga drone hampir diam. Pemeriksaan timestamp menunjukkan data depth
+valid masih datang, tetapi hasil yang sudah diintegrasikan ke map tertinggal
+sekitar satu detik. Dengan demikian, nama error tidak boleh langsung
+ditafsirkan sebagai kamera mati. Aturan kontrol diperbaiki agar batas satu
+detik tidak salah ditolak akibat floating point dan agar drone yang sudah
+diam pada posisi aman boleh menunggu integrasi secara terbatas. Solusi itu
+belum mengatasi keterlambatan ketika drone sedang bergerak.
+
 - **Masalah:** loop `104225` menyelesaikan enam viewpoint pohon ID 4,
   kemudian gagal `stale_depth_camera` pada approach berikutnya.
   Pengukuran depth valid masih tersedia, tetapi hasil integrasi map terlambat.
@@ -114,6 +213,20 @@ Hasilnya bukan validasi lokalisasi LiDAR–IMU atau keselamatan hardware.
 - **Status:** belum menyelesaikan akar keterlambatan pipeline pemetaan.
 
 ## 11 Oktober 2026 — Depth terintegrasi terlambat saat bergerak
+
+**Kronologi penemuan:** setelah aturan menunggu ketika diam ditambahkan,
+simulasi diulang dari awal pada loop `180145`, dengan RViz dan viewer kamera
+dibuka sejak startup. Drone berhasil takeoff sampai sekitar 2 m dan mulai
+approach pohon ID 4. Kali ini masalah muncul jauh lebih awal: pada detik
+27,25, sebelum scanning pohon pertama, program masuk BRAKE. Kecepatannya
+sekitar 0,248 m/s, jadi kondisi menunggu “drone sudah diam” tidak terpenuhi.
+Log menunjukkan pengukuran depth valid berumur sekitar 0,25 detik, tetapi
+hasil integrasinya berumur sekitar 1,05 detik. Ini mengungkap batas solusi
+sebelumnya: aturan hold membantu kasus diam, tetapi belum membuat pipeline
+pemetaan cukup cepat saat bergerak. Run dihentikan oleh watchdog untuk audit;
+bukan selesai dua pohon atau landing normal. Belum ada pengukuran yang
+memisahkan biaya integrasi, antrean, dan pengaruh GUI secara meyakinkan,
+sehingga penyebab komputasi spesifik masih terbuka.
 
 - **Masalah:** loop `180145` berhenti pada APPROACH, waktu simulasi
   27,25 detik, dengan `stale_depth_camera`. Kecepatan terukur sekitar
@@ -136,7 +249,10 @@ Hasilnya bukan validasi lokalisasi LiDAR–IMU atau keselamatan hardware.
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
-tanggal → masalah → diagnosis → solusi → hasil uji → bukti → status.
+tanggal → kronologi penemuan → masalah → diagnosis → solusi → hasil uji →
+bukti → status. Dalam kronologi, jelaskan apa yang sudah berhasil dilakukan
+drone, apa yang hendak dilakukan berikutnya, gejala yang muncul, dan bagaimana
+audit membedakan gejala itu dari penyebabnya.
 Jika diagnosis belum pasti, tulis sebagai hipotesis. Jika tes belum dijalankan,
 tulis demikian. Jangan menimpa kegagalan lama dengan klaim keberhasilan baru.
 Direktori `reports/` adalah bukti lokal yang umumnya diabaikan Git; jurnal
