@@ -496,6 +496,29 @@ RViz dan kamera ditutup bersama simulasi.
 - **Status:** satu viewpoint, bukan satu pohon lengkap. Dua pohon lalu
   landing belum tercapai; run berikutnya memakai map lama dan dua viewer.
 
+## 11 Oktober 2026 — Pemulihan depth pertama berhasil dalam penerbangan
+
+**Kronologi:** run lanjutan `231335` memakai map lama dan dua viewer.
+Takeoff dan approach berhasil. Ascent mencapai sekitar 3,42 m dengan satu
+pause/resume map. Tiga viewpoint selesai. Saat menuju viewpoint keempat,
+depth terintegrasi tertinggal dan pemulihan preventif benar-benar aktif.
+
+- **Bukti awal pemulihan:** detik 226,05, kecepatan terukur 0,291 m/s,
+  umur depth terintegrasi 0,65 detik dan depth valid 0,25 detik. Koridor
+  pengereman diperiksa aman sebelum `depth_recovering` dimulai.
+- **Respons:** pengereman selesai, state hold tercatat pada 227,85 dengan
+  actual speed sekitar 0,028 m/s. Pada 227,90, depth terintegrasi baru
+  berumur 0,50 detik, actual drone sudah cukup lambat, dan misi kembali
+  `SURVEY` lewat perencanaan ulang. Pemulihan memerlukan sekitar 1,85
+  detik simulasi, masih di bawah batas 2 detik.
+- **Batas klaim:** ini satu pemulihan yang berhasil; tidak membuktikan
+  sensor dropout dapat diabaikan, semua latensi hilang, atau misi selesai.
+  Nama state hold internal masih `HOLD_ABORT`, tetapi failure sementara
+  `depth_recovering` berbeda dari kegagalan terminal; log mencatat keduanya.
+- **Status saat dicatat:** simulasi masih berjalan, tiga viewpoint selesai,
+  drone mendekati viewpoint keempat; dua pohon dan landing belum terbukti.
+- **Bukti lokal:** `reports/inspection_loop_20261011_231335/run_1_watchdog.jsonl`.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
