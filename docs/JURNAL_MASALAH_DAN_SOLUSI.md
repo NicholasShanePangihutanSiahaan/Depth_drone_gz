@@ -519,6 +519,45 @@ depth terintegrasi tertinggal dan pemulihan preventif benar-benar aktif.
   drone mendekati viewpoint keempat; dua pohon dan landing belum terbukti.
 - **Bukti lokal:** `reports/inspection_loop_20261011_231335/run_1_watchdog.jsonl`.
 
+## 12 Oktober 2026 — Pohon pertama selesai, approach pohon kedua terhenti
+
+**Kronologi penemuan:** run `231335` berhasil menyelesaikan enam viewpoint
+pohon pertama dan memilih pohon berikutnya (ID tracker 49). Drone bergerak
+dari ketinggian scanning ke approach rendah. Dua belas pemulihan depth
+berhasil dilanjutkan, sehingga dropout/timeout depth tidak menjadi failure
+terminal run ini; tetapi banyak jeda berarti gerakannya belum mulus.
+Pada detik 406,10 drone hampir diam sekitar 2,98 m, kemudian `blocked_route`
+menghentikan run dan kedua viewer. Landing belum terjadi.
+
+- **Diagnosis:** target antara 2 m ke depan berada dalam margin daun.
+  Log menunjukkan dua occupied voxel sekitar z=3,7 m, tanpa unknown pada
+  koridor nominal. Pemilih detour hanya mencoba ketinggian nominal,
+  ketinggian saat ini dan ketinggian akhir 2 m; semua kandidat ditolak.
+  Guard tidak meminta explore untuk koridor nominal yang hanya occupied,
+  sehingga program tetap menunggu target terhalang sampai timeout.
+- **Solusi:** saat approach, coba juga turun sebagian 0,4/0,8 m, tetap
+  dibatasi panjang target antara 2 m. Detour hanya diterima bila endpoint
+  serta segmen yang dilalui sudah aman. Jika tidak ada alternatif aman,
+  kandidat yang hanya unknown dan tanpa occupied pada koridornya boleh
+  menjadi *hint pengamatan*, bukan perintah terbang. Guard lama tetap
+  memerlukan pengamatan dan planner/collision checking sebelum bergerak.
+  Scanning tetap pada ketinggian sama; perubahan ini hanya untuk approach.
+- **Log tambahan:** jumlah kandidat aman/kandidat pengamatan, penolakan
+  karena tidak maju, endpoint occupied, koridor occupied atau unknown,
+  serta sampel unknown dan penyebab blockage awal.
+- **Uji offline:** rekonstruksi window dari `map.json` saat penghentian
+  menemukan satu kandidat aman sekitar (-8,73; 3,44; 2,57) m, serta 42
+  kandidat pengamatan unknown. Map tersimpan adalah hasil akhir shutdown,
+  bukan salinan identik snapshot tepat sebelum failure. Ini bukti alternatif
+  geometri pada map tersebut, bukan bukti penerbangan berhasil.
+- **Pengujian:** 26 tes target antara/depth/ascent/runner lulus, termasuk
+  partial descent, unknown tetap tidak boleh dilalui, serta fully blocked
+  tetap ditolak. Perubahan detour ini belum diuji dalam penerbangan.
+- **Bukti lokal:** `reports/inspection_loop_20261011_231335/` dan
+  `reports/ros_ground_truth_palm_farm_20261011_231337_101238_mapping/map_3d/`.
+- **Status:** pohon pertama lengkap, pohon kedua belum selesai; dua pohon
+  lalu landing belum tercapai. Loop berikutnya memakai map lama.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

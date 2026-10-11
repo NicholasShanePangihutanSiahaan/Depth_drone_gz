@@ -42,3 +42,33 @@ def test_fully_blocked_still_rejects():
     grid.rebuild(0.)
     p,detail = inspection_hint(grid,[0.,0.,3.],[4.,0.,3.],True)
     assert detail['candidate_count']==0 and not grid.safe(p)
+
+
+def test_occupied_nominal_with_unknown_alternative_requests_observation_not_motion():
+    grid = fixture()
+    grid.state[:] = UNKNOWN
+    grid.state[tuple(grid.indices([2.,0.,3.]))] = OCCUPIED
+    grid.rebuild(0.)
+    p,detail = inspection_hint(grid,[0.,0.,3.],[4.,0.,3.],True)
+    assert detail['policy']=='unknown_alternative_requires_observation'
+    assert not grid.safe(p) and not grid.occupied_goal(p)
+    assert detail['unknown_count']>0 and detail['observation_candidate_count']>0
+    assert not grid.line_safe([0.,0.,3.],p)
+    np.testing.assert_allclose(detail['final_goal'],[4.,0.,3.])
+
+
+def test_approach_checks_partial_descent_instead_of_only_final_height():
+    from types import SimpleNamespace
+    # A narrow observed-free band under leaves; lower final height is unknown.
+    grid = SimpleNamespace(res=.2,
+        occupied_goal=lambda p:p[0]>.2 and p[2]>2.7,
+        safe=lambda p:2.5<=p[2]<=2.7,
+        line_safe=lambda a,b:2.5<=b[2]<=2.7,
+        corridor_blockers=lambda a,b:dict(occupied=[],outside=False,unknown=np.array([[0,0,0]])),
+        centers=lambda ids:np.asarray(ids,dtype=float),
+        indices=lambda p:np.floor(p/.2).astype(int),
+        describe_blockage=lambda ids:dict(causes=['occupied']))
+    p,detail = inspection_hint(grid,[0.,0.,3.],[12.,0.,2.],True)
+    assert detail['policy']=='observed_free_intermediate_detour'
+    assert p[0]>.2 and 2.5<=p[2]<=2.7
+    assert np.linalg.norm(p-[0.,0.,3.])<=2.+1e-8
