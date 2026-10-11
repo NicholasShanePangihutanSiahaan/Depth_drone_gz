@@ -59,7 +59,7 @@ def main():
                     if changed:
                         print(json.dumps({k:status.get(k) for k in ('simulation_time','flight','mission','tree_phase','inspection_tree_id','inspection_view','lidar_tilt_target','altitude_m','ascent_stop_reason','failure','health_reason')}),flush=True)
                 failure = status.get('failure','')
-                if failure and failure not in ('route_changed','terrain_replan_required'):
+                if failure and failure not in ('route_changed','terrain_replan_required','depth_recovering'):
                     fault = failure
                 if time.monotonic()-receipt[0] > 15.:
                     fault = 'navigation_status_missing_wall_15_seconds'

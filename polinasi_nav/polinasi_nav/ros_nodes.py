@@ -735,17 +735,21 @@ class NavigationNode(ConfigNode):
             health_reason = health_reason or 'stale_tree_perception'
         if (self.c.get('depth_camera_enabled') and self.flight_stage=='MISSION'
                 and getattr(self.controller,'camera_navigation_view',lambda:False)()):
-            from .depth_health import DepthHoldGuard
+            from .depth_health import DepthHoldGuard, DepthMotionRecovery
             if not hasattr(self,'depth_hold_guard'):
                 self.depth_hold_guard = DepthHoldGuard()
+                self.depth_motion_recovery = DepthMotionRecovery()
             depth = self.map_statistics.get('depth_mapping',{})
+            recovery = self.depth_motion_recovery.update(now,depth,self.controller,self.pose,self.velocity,
+                self.c['depth_camera_timeout'],self.c.get('depth_integration_hold_timeout',2.))
             stationary_safe = bool(self.controller.state=='SURVEY'
                 and self.controller.trajectory is None
                 and np.linalg.norm(self.velocity)<.04 and np.linalg.norm(self.controller.command_v)<.01
                 and self.grid.safe(self.pose,actual=True) and self.grid.safe(self.controller.command))
-            action = self.depth_hold_guard.assess(now,depth,stationary_safe,
-                self.c['depth_camera_timeout'],self.c.get('depth_integration_hold_timeout',2.))
-            self.controller.depth_navigation_paused = action=='hold_wait_for_integration'
+            action = ('recovering' if self.controller.failure=='depth_recovering' else
+                self.depth_hold_guard.assess(now,depth,stationary_safe,
+                    self.c['depth_camera_timeout'],self.c.get('depth_integration_hold_timeout',2.)))
+            self.controller.depth_navigation_paused = action in ('hold_wait_for_integration','recovering')
             if action=='fail':
                 health_reason = health_reason or 'stale_depth_camera'
         else:
@@ -798,7 +802,7 @@ class NavigationNode(ConfigNode):
                 self.flight_command(now)
         if self.flight_stage == 'MISSION':
             if health_reason and not self.landing_sent:
-                if self.controller.failure == 'mpc_recovering':
+                if self.controller.failure in ('mpc_recovering','depth_recovering'):
                     # A recoverable MPC delay cannot mask stale map/FCU inputs.
                     self.controller.failure = health_reason
                 self.controller.fail(health_reason)
@@ -998,6 +1002,7 @@ class NavigationNode(ConfigNode):
                    'mission': self.controller.state, 'failure': self.controller.failure, 'replans': self.controller.replans,
                    'buzzer_events': self.controller.buzzer_events, 'health_reason': health_reason,
                    'depth_safety': self.depth_hold_guard.status if hasattr(self,'depth_hold_guard') else {},
+                   'depth_motion_recovery': self.depth_motion_recovery.status if hasattr(self,'depth_motion_recovery') else {},
                    'exploration_phase': self.controller.exploration_phase,
                    'exploration_views': self.controller.exploration_views,
                    'exploration_predicted_gain': self.controller.exploration_gain,

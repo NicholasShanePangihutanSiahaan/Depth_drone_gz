@@ -458,6 +458,44 @@ regresi adapter, bukan membuktikan berkurangnya latensi penerbangan.
 - **Batas klaim:** perubahan polling kini lolos tes adapter, tetapi
   keberhasilan scan dua pohon dan landing masih harus dibuktikan.
 
+## 11 Oktober 2026 — Viewpoint pertama selesai, depth tertinggal saat mulai transit
+
+**Kronologi penemuan:** run `225246` berhasil takeoff, approach, tilt 68°,
+naik sampai sekitar 3,42 m, lalu menyelesaikan viewpoint pertama pada scan
+timestamp 123,0. Ascent menjalankan empat pause/resume, dibandingkan 16
+pada run `185204`; ini perbandingan run, bukan eksperimen terkontrol yang
+mengisolasi seluruh beban laptop. Pada detik 127,65 drone baru mulai menuju
+viewpoint kedua ketika `stale_depth_camera` memicu penghentian otomatis.
+RViz dan kamera ditutup bersama simulasi.
+
+- **Bukti:** depth valid terbaru 127,4 (umur 0,25 detik), tetapi depth
+  terintegrasi terakhir 126,6 (umur 1,05 detik). Kecepatan terukur sekitar
+  0,014 m/s. Job LiDAR terakhir tidak membawa depth baru; job berikutnya
+  membawa depth 127,4 tetapi belum selesai. Ini keterlambatan integrasi,
+  bukan bukti kamera kehilangan semua datanya. Kontributor keterlambatan
+  meliputi worker, callback ekspor dan jeda frame; penyebab semua jeda
+  frame kamera belum dipastikan.
+- **Pengukuran pipeline:** median sekitar 944 ms waktu nyata; p95 1774 ms;
+  maksimum sampel 2519 ms. Metrik ini dari ROS mapper menerima scan sampai
+  setpoint pertama memakai map, bukan total respons fisik drone.
+- **Solusi:** tambah pemulihan depth gerak. Pada umur integrasi >60% dari
+  timeout, bila frame valid masih segar dan actual/reference braking aman,
+  hentikan trajectory lewat pengereman yang sudah diperiksa. Tunggu hingga
+  actual drone berhenti serta map depth baru setelah awal pemulihan tersedia,
+  lalu rencanakan ulang ke viewpoint yang sama. Tidak menambah scan berhasil
+  atau melewati viewpoint. Data sensor basi, koridor pengereman tidak aman,
+  atau penantian >2 detik tetap menjadi kegagalan terminal.
+- **Keselamatan:** batas freshness sensor tidak dilonggarkan. Failure lain
+  tetap mengambil alih pemulihan. Watchdog hanya memperbolehkan status
+  sementara `depth_recovering`; timeout/dropout tetap menghentikan run.
+- **Log tambahan:** `depth_motion_recovery` mencatat action, jumlah pemulihan,
+  waktu mulai, umur depth valid/integrasi, threshold dan timeout.
+- **Pengujian:** 21 tes depth/ascent/runner serta 23 tes adapter ROS lulus.
+  Pemulihan belum diuji dalam penerbangan pada saat commit ini.
+- **Bukti lokal:** `reports/inspection_loop_20261011_225246/`.
+- **Status:** satu viewpoint, bukan satu pohon lengkap. Dua pohon lalu
+  landing belum tercapai; run berikutnya memakai map lama dan dua viewer.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

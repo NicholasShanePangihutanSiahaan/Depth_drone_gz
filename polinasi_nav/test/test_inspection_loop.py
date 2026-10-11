@@ -23,6 +23,16 @@ def test_fault_remains_failure_even_after_complete(tmp_path):
     assert result['failures'] == ['stale_lidar']
 
 
+def test_temporary_depth_recovery_is_not_success_or_terminal_failure(tmp_path):
+    path = tmp_path/'events.jsonl'
+    path.write_text(json.dumps({'mission':'BRAKE','failure':'depth_recovering'})+'\n')
+    result = loop.audit(path)
+    assert not result['completed'] and not result['failures']
+    with path.open('a') as stream:
+        stream.write(json.dumps({'mission':'HOLD_ABORT','failure':'stale_depth_camera'})+'\n')
+    assert loop.audit(path)['failures']==['stale_depth_camera']
+
+
 def test_success_is_explicit_and_sampled(tmp_path):
     path = tmp_path / 'events.jsonl'
     path.write_text(json.dumps({'mission': 'COMPLETE', 'flight': 'COMPLETE', 'armed': False,

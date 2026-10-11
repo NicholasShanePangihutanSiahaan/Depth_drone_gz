@@ -49,7 +49,7 @@ def audit(path):
                 continue
             last = status
             count += 1
-            if status.get('failure') and status['failure'] not in ('route_changed', 'terrain_replan_required'):
+            if status.get('failure') and status['failure'] not in ('route_changed', 'terrain_replan_required', 'depth_recovering'):
                 failures.append(status['failure'])
             max_speed = max(max_speed, status.get('measured_speed_mps', 0.0))
             max_tracking = max(max_tracking, status.get('tracking_error_m', 0.0))
