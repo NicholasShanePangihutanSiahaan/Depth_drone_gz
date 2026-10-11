@@ -52,6 +52,16 @@ def test_navigation_initialises_and_publishes_visualisation():
         node.destroy_node()
 
 
+def test_mapping_fast_poll_does_not_publish_unchanged_map():
+    from polinasi_nav.mapping_io import MappingIONode
+    fake = SimpleNamespace(pose=np.zeros(3),map_pending=Mock(),
+        grid=SimpleNamespace(version=7),last_snapshot_version=7,
+        last_integrated_cloud=1.,snapshot_pub=Mock())
+    MappingIONode.update(fake)
+    fake.map_pending.assert_called_once()
+    fake.snapshot_pub.publish.assert_not_called()
+
+
 def test_simulation_ray_gate_preserves_raw_cloud_stamp_and_dropout():
     from polinasi_nav.simulated_rays import directions
     node = SensorGate()

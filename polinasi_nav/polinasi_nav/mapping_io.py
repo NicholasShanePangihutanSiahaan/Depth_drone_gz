@@ -101,7 +101,9 @@ class MappingIONode(ConfigNode):
         self.create_subscription(String, '/navigation/status', self.navigation_status, QoSProfile(depth=1))
         self.create_subscription(String, '/mapping/flight_paths', self.flight_paths, QoSProfile(depth=1))
         self.create_subscription(State, '/mavros/state', self.fcu_state, qos_profile_sensor_data)
-        self.create_timer(.1, self.update)
+        # Poll futures promptly instead of waiting another complete LiDAR period.
+        # Idle updates return immediately; snapshots still require a new version.
+        self.create_timer(.02, self.update)
         self.create_timer(1., self.visualise)
         self.create_timer(3., self.global_visualise)
         if self.map_log:
@@ -211,6 +213,7 @@ class MappingIONode(ConfigNode):
         if self.grid.version == self.last_snapshot_version or not math.isfinite(self.last_integrated_cloud):
             return
         statistics = dict(global_known_voxels=len(self.history.cells),
+            mapping_poll_period_sim_seconds=.02,
             depth_mapping=dict(self.depth_stats,
                 last_integrated_stamp=getattr(self.grid,'depth_integrated_stamp',None),
                 current_job=getattr(self,'depth_job_trace',{}),

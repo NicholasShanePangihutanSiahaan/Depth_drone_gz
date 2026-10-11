@@ -386,6 +386,62 @@ fase, bukan menyelesaikan keterlambatan seluruh pipeline.
   belum mulus. Optimasi ROI belum diuji dalam penerbangan; dua pohon lalu
   landing tetap belum tervalidasi.
 
+## 11 Oktober 2026 — Penjadwalan pemetaan memperbanyak jeda ascent
+
+**Kronologi penemuan:** loop `192122` kembali memakai map lama. Optimasi
+ROI aktif pada approach: contoh 13 segmen menjadi 2 tanpa mengubah trajectory.
+Drone berhasil approach dan mulai ascent, tetapi sudah tercatat 19 jeda map
+dan 18 resume pada detik 102,90, altitude sekitar 2,68 m. Ini bukan abort,
+tetapi belum memenuhi tujuan gerakan mulus. Pada detik 108,15 worker sekitar
+414 ms waktu nyata, sementara receive-to-submit sekitar 659 ms; seluruh
+pipeline sampel sekitar 1590 ms. Drone tetap bisa naik setelah map pulih,
+tetapi biaya menunggu juga perlu dikurangi. Run dihentikan sebelum seluruh
+scanning; fase terakhir pada audit adalah `NORMALIZE`. Ini bukan bukti optimasi ROI gagal pada
+scanning karena tahap itu belum diuji pada run ini.
+
+- **Temuan kode:** mapper hanya memeriksa antrean dan future setiap
+  0,1 detik simulasi. Pada pacing 0,15, satu interval itu sekitar 0,67 detik
+  waktu nyata bila pacing tercapai. Ada biaya worker/transport lain juga;
+  timer bukan satu-satunya penyebab.
+- **Solusi diterapkan:** poll setiap 0,02 detik simulasi. Saat tidak ada
+  pekerjaan selesai/map baru, callback segera kembali dan tidak mengirim
+  snapshot. Frekuensi sensor dan batas umur map tidak diubah.
+- **Pengujian:** ditambahkan tes adapter bahwa polling pada versi map
+  tidak berubah tidak mempublikasikan snapshot baru. Tes ini belum
+  dijalankan karena pengguna meminta penghentian pekerjaan simulasi.
+- **Status:** perubahan disimpan sebagai checkpoint belum diuji, bukan
+  perbaikan yang sudah terbukti. Jika pekerjaan dilanjutkan nanti, perlu
+  menjalankan tes tersebut dan membandingkan jumlah pause/resume, umur
+  map serta waktu pipeline dalam penerbangan.
+
+## 11 Oktober 2026 — Loop dihentikan atas permintaan pengguna
+
+**Kronologi penghentian:** setelah run terakhir memperlihatkan drone bisa
+approach dan melanjutkan ascent setelah beberapa jeda, pengguna meminta
+pekerjaan dihentikan dan jurnal diselesaikan. Tidak dimulai simulasi atau
+pengujian baru. Perubahan polling terakhir disimpan dengan status belum diuji.
+
+- **Bukti penghentian:** sesi
+  `.dependencies/ros_ground_truth_palm_farm_20261011_192124_75825_mapping/session.json`
+  mencatat `stopped: true`. Runner loop telah keluar. Cleanup launcher
+  menutup proses simulasi, RViz dan kamera milik run ini. Penghentian
+  proses bukan bukti bahwa drone menyelesaikan landing.
+- **Catatan audit:** `navigation_status_missing_wall_15_seconds` muncul
+  setelah launcher sengaja dihentikan sementara watchdog masih menunggu.
+  Itu artefak penghentian, bukan bukti kegagalan penerbangan baru.
+- **Hasil yang benar-benar dicapai pada rangkaian terbaru:** run `185204`
+  mencapai sekitar 3,42 m dan menyelesaikan tiga viewpoint pohon pertama,
+  tetapi kemudian gagal karena depth terintegrasi terlambat. Run `192122`
+  mencapai fase `NORMALIZE`; scanning lengkap dan landing tidak terbukti.
+- **Kesimpulan:** target scan dua pohon lalu landing dengan mulus belum
+  tercapai. Semua penerbangan ini memakai ground-truth localisation;
+  hasilnya tidak memvalidasi lokalisasi LiDAR.
+- **Jika dilanjutkan:** uji perubahan polling, gunakan map lama, lalu
+  audit latensi sensor sampai setpoint, jeda ascent dan freshness depth.
+  Keberhasilan harus dibuktikan oleh dua pohon dengan enam viewpoint
+  masing-masing serta landing dan disarm, bukan perkiraan dari awal run.
+- **Bukti lokal:** `reports/inspection_loop_20261011_192122/run_1_audit.json`.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
