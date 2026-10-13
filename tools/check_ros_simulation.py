@@ -90,7 +90,8 @@ def main():
     mode = node.status.get('mode')
     sources_exclusive = (
         mode == 'sensor' and '/simulation/ground_truth/odom' not in localisation_inputs
-        and all(topic in localisation_inputs for topic in ('/livox/lidar', '/livox/imu'))
+        and '/livox/lidar' in localisation_inputs
+        and sum(topic in localisation_inputs for topic in ('/livox/imu','/simulation/body_imu'))==1
     ) or (
         mode == 'ground_truth' and '/simulation/ground_truth/odom' in localisation_inputs
         and all(topic not in localisation_inputs for topic in ('/livox/lidar', '/livox/imu'))

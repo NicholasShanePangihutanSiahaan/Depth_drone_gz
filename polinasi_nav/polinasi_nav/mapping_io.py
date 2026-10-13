@@ -153,7 +153,8 @@ class MappingIONode(ConfigNode):
             tf = self.buffer.lookup_transform('map',msg.header.frame_id,Time.from_msg(msg.header.stamp))
             body_tf = self.buffer.lookup_transform('base_link',msg.header.frame_id,Time.from_msg(msg.header.stamp))
             body = points@rotation(body_tf.transform.rotation).T+vector(body_tf.transform.translation)
-            keep = ~np.all(np.abs(body)<=np.asarray(self.c['drone_dimensions'])/2+self.c['self_filter_padding'],axis=1)
+            from .self_filter import self_mask
+            keep = ~self_mask(body,self.c)
             stats['self_filtered_rays'] = int(np.count_nonzero(~keep))
             points = points[keep]
             if not len(points):

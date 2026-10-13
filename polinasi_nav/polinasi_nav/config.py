@@ -14,6 +14,16 @@ def load_config(path=None):
         c = json.load(stream)
     if not isinstance(c['resolution'], (int, float)) or isinstance(c['resolution'], bool) or not math.isfinite(c['resolution']) or c['resolution'] <= 0:
         raise ValueError('resolution must be finite and positive')
+    if c.get('simulation_continuous_roll'):
+        rate = c.get('simulation_roll_rate')
+        if (not c.get('sensor_gimbals_enabled') or c.get('automatic_tilt_ascent')
+                or (c.get('active_tree_inspection') and not c.get('continuous_tree_scanning')) or isinstance(rate,bool)
+                or not isinstance(rate,(int,float)) or not math.isfinite(rate)
+                or not 0 <= rate <= math.pi):
+            raise ValueError('continuous roll requires opt-in GT simulation, rate in [0,pi] rad/s')
+    if c.get('sensor_rolling_localisation') and not (c.get('simulation_continuous_roll')
+            and c.get('sensor_gimbals_enabled') and c.get('simulation_visual_model')=='polinasi_visual_50cm'):
+        raise ValueError('sensor rolling localisation requires isolated visual50 rolling simulation')
     for key in ('resolution', 'speed', 'acceleration', 'jerk', 'cloud_timeout',
                 'pose_timeout', 'free_ttl', 'orbit_radius', 'orbit_speed'):
         if c[key] <= 0:

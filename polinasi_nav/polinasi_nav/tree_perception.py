@@ -9,6 +9,10 @@ class StemDetector:
         self.cells = {}
         self.tracks = []
         self.next_id = 1
+        # Flat-farm prototype: retain a measured launch-ground reference.
+        # Looking upward must not redefine canopy points as the ground.
+        self.ground_reference = None
+        self.ground_reference_stamp = None
 
     def update(self, points, stamp):
         started = time.perf_counter()
@@ -26,7 +30,20 @@ class StemDetector:
             return dict(stamp=float(stamp), frame='map', source='measured_lidar_geometry',
                         tracks=self.tracks, wall_ms=(time.perf_counter()-started)*1000.,
                         retained_points=len(all_points), stem_points=0, reason='insufficient_points')
-        ground = float(np.percentile(all_points[:,2], 5))
+        recent_ground = float(np.percentile(all_points[:,2], 5))
+        if self.ground_reference is None:
+            low = all_points[np.abs(all_points[:,2]-recent_ground) <= .15]
+            # A compact stem/leaf cluster alone is not ground evidence.
+            if len(low) < 20 or np.max(np.ptp(low[:,:2], axis=0)) < 2.:
+                return dict(stamp=float(stamp), frame='map', source='measured_lidar_geometry',
+                            tracks=[], wall_ms=(time.perf_counter()-started)*1000.,
+                            retained_points=len(all_points), stem_points=0,
+                            reason='waiting_for_launch_ground_reference',
+                            recent_ground_percentile_m=recent_ground,
+                            ground_reference_m=None)
+            self.ground_reference = float(np.median(low[:,2]))
+            self.ground_reference_stamp = float(stamp)
+        ground = self.ground_reference
         # Conservative prototype: fit trunks below the foliage layer.
         p = all_points[(all_points[:,2] > ground+.6) & (all_points[:,2] < ground+2.8)]
         p = p[::max(1,int(np.ceil(len(p)/6000)))]
@@ -77,4 +94,9 @@ class StemDetector:
         self.tracks = [t for t in self.tracks if stamp-t.get('last_seen',stamp) < 60.]
         return dict(stamp=float(stamp), frame='map', source='measured_lidar_geometry',
                     tracks=self.tracks, wall_ms=(time.perf_counter()-started)*1000.,
-                    retained_points=len(all_points), stem_points=len(p), reason='ok')
+                    retained_points=len(all_points), stem_points=len(p), reason='ok',
+                    ground_reference_m=ground, ground_reference_stamp=self.ground_reference_stamp,
+                    recent_ground_percentile_m=recent_ground,
+                    ground_policy='measured_launch_reference_flat_terrain_only',
+                    stem_height_band_m=[ground+.6, ground+2.8],
+                    detections_count=len(detections))

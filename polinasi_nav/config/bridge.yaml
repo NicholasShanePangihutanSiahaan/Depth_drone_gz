@@ -16,6 +16,12 @@
   gz_type_name: gz.msgs.IMU
   direction: GZ_TO_ROS
   qos_profile: SENSOR_DATA
+- ros_topic_name: /simulation/body_imu
+  gz_topic_name: /simulation/body_imu
+  ros_type_name: sensor_msgs/msg/Imu
+  gz_type_name: gz.msgs.IMU
+  direction: GZ_TO_ROS
+  qos_profile: SENSOR_DATA
 - ros_topic_name: /simulation/ground_truth/odom
   gz_topic_name: /simulation/ground_truth/odom
   ros_type_name: nav_msgs/msg/Odometry
@@ -73,3 +79,8 @@
   gz_type_name: gz.msgs.Model
   direction: GZ_TO_ROS
   qos_profile: SENSOR_DATA
+- ros_topic_name: /lidar/roll_rate_cmd
+  gz_topic_name: /lidar/roll_rate_cmd
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: gz.msgs.Double
+  direction: ROS_TO_GZ

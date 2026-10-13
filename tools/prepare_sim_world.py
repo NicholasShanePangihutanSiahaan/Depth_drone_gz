@@ -2,6 +2,7 @@
 import argparse
 import math
 import json
+import copy
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -87,6 +88,93 @@ def exclude_simulation_self_visuals(sensor_tree, model_root, project):
     ET.SubElement(sensor_tree.getroot().find(".//sensor[@name='mid360']/lidar"),'visibility_mask').text = '1'
 
 
+def add_continuous_roll(sensor_tree, mount, rate=.4):
+    """Simulation-only roll velocity controller and measured joint feedback."""
+    model = sensor_tree.getroot().find('model')
+    model.find("link[@name='mid360_link']/pose").text = ' '.join(map(str,mount))
+    joint = model.find("joint[@name='lidar_pitch']")
+    joint.set('name','lidar_roll')
+    joint.find('axis/xyz').text = '1 0 0'
+    joint.find('axis/limit/lower').text = '-1e16'
+    joint.find('axis/limit/upper').text = '1e16'
+    joint.find('axis/limit/velocity').text = str(max(.6,abs(rate)))
+    for plugin in list(model.findall('plugin')):
+        if plugin.findtext('joint_name') == 'lidar_pitch':
+            if 'JointPositionController' in plugin.get('name',''):
+                model.remove(plugin)
+            else:
+                plugin.find('joint_name').text = 'lidar_roll'
+    plugin = ET.SubElement(model,'plugin',filename='gz-sim-joint-controller-system',
+                           name='gz::sim::systems::JointController')
+    ET.SubElement(plugin,'joint_name').text = 'lidar_roll'
+    ET.SubElement(plugin,'topic').text = '/lidar/roll_rate_cmd'
+
+
+def balance_front_payload(sensor_tree, model_root, project, mount):
+    """Run-local chassis mass redistribution; not a validated physical mount."""
+    base_source = project/'.dependencies/ardupilot_gazebo/models/iris_with_standoffs'
+    ap_source = project/'.dependencies/ardupilot_gazebo/models/iris_with_ardupilot'
+    base_dir = model_root/'iris_with_standoffs_roll_balanced'
+    ap_dir = model_root/'iris_with_ardupilot_roll_balanced'
+    base_dir.mkdir(parents=True,exist_ok=True)
+    ap_dir.mkdir(parents=True,exist_ok=True)
+    base = ET.parse(base_source/'model.sdf')
+    inertial = base.getroot().find("model/link[@name='base_link']/inertial")
+    mass = float(inertial.findtext('mass'))
+    pose = list(map(float,inertial.findtext('pose').split()))
+    payload = float(sensor_tree.getroot().findtext("model/link[@name='mid360_link']/inertial/mass"))
+    # Compensate the horizontal first moment introduced relative to old mount.
+    pose[0] -= payload*mount[0]/mass
+    pose[1] -= payload*mount[1]/mass
+    inertial.find('pose').text = ' '.join(map(str,pose))
+    base.write(base_dir/'model.sdf',encoding='utf-8',xml_declaration=True)
+    ET.parse(base_source/'model.config').write(base_dir/'model.config',encoding='utf-8',xml_declaration=True)
+    ap = ET.parse(ap_source/'model.sdf')
+    for uri in ap.getroot().findall('.//include/uri'):
+        if uri.text == 'model://iris_with_standoffs':
+            uri.text = 'model://iris_with_standoffs_roll_balanced'
+    ap.write(ap_dir/'model.sdf',encoding='utf-8',xml_declaration=True)
+    ET.parse(ap_source/'model.config').write(ap_dir/'model.config',encoding='utf-8',xml_declaration=True)
+    sensor_tree.getroot().find('model/include/uri').text = 'model://iris_with_ardupilot_roll_balanced'
+
+
+def integrate_visual_50cm(sensor_tree, model_root, project, config):
+    """Replace only render geometry; retain Iris collisions/motors/inertias."""
+    visual = ET.parse(project/'polinasi_nav/models/polinasi_visual_50cm/model.sdf').getroot().find('model')
+    model = sensor_tree.getroot().find('model')
+    uri = model.findtext('include/uri').replace('model://','')
+    existing = model_root/uri
+    source = existing if (existing/'model.sdf').exists() else project/'.dependencies/ardupilot_gazebo/models'/uri
+    ap = ET.parse(source/'model.sdf')
+    base_uri = ap.getroot().findtext('model/include/uri').replace('model://','')
+    existing_base = model_root/base_uri
+    base_source = existing_base if (existing_base/'model.sdf').exists() else project/'.dependencies/ardupilot_gazebo/models'/base_uri
+    base = ET.parse(base_source/'model.sdf')
+    for tree in (base,ap,sensor_tree):
+        for link in tree.getroot().findall('.//link'):
+            for item in list(link.findall('visual')):
+                link.remove(item)
+    base_link = base.getroot().find("model/link[@name='base_link']")
+    for item in visual.find("link[@name='body']").findall('visual'):
+        base_link.append(copy.deepcopy(item))
+    for src,dst in [('lidar','mid360_link'),('camera','zed_camera_link')]:
+        link = model.find(f"link[@name='{dst}']")
+        for item in visual.find(f"link[@name='{src}']").findall('visual'):
+            link.append(copy.deepcopy(item))
+    for name,tree,original in [('iris_with_standoffs_visual50',base,base_source),('iris_with_ardupilot_visual50',ap,source)]:
+        directory=model_root/name;directory.mkdir(parents=True,exist_ok=True)
+        if name=='iris_with_ardupilot_visual50':
+            tree.getroot().find('model/include/uri').text='model://iris_with_standoffs_visual50'
+        tree.write(directory/'model.sdf',encoding='utf-8',xml_declaration=True)
+        ET.parse(original/'model.config').write(directory/'model.config',encoding='utf-8',xml_declaration=True)
+    model.find('include/uri').text='model://iris_with_ardupilot_visual50'
+    yaw = config.get('camera_mount_yaw',0.)
+    pose = [*config['camera_mount'],0.,0.,yaw]
+    for name in ('camera_yaw_link','zed_camera_link'):
+        model.find(f"link[@name='{name}']/pose").text=' '.join(map(str,pose))
+    model.find("link[@name='rangefinder_link']/pose").text=' '.join(map(str,config['rangefinder_mount']))
+
+
 def prepare(source, output, factor, sensor_config=None):
     if not math.isfinite(factor) or not 0 < factor <= 1:
         raise ValueError('simulation real-time factor must be finite, in (0, 1]')
@@ -121,14 +209,53 @@ def prepare(source, output, factor, sensor_config=None):
         directory = Path(output).parent/'models/iris_lidar_mapping'
         directory.mkdir(parents=True, exist_ok=True)
         sensor_tree = ET.parse(project/'polinasi_nav/models/iris_lidar/model.sdf')
+        mount = config['lidar_mount']
+        if len(mount) != 6 or not all(math.isfinite(v) for v in mount):
+            raise ValueError('LiDAR mount must contain finite XYZ/RPY')
+        if not config.get('sensor_gimbals_enabled'):
+            # Move real simulated geometry AND the IMU, not just ROS labels.
+            sensor_tree.getroot().find("model/link[@name='mid360_link']/pose").text = ' '.join(map(str,mount))
+            sensor_tree.getroot().find('model').set('canonical_link','iris_with_standoffs::base_link')
         if config.get('sensor_gimbals_enabled'):
             if config.get('identification_empty_arena'):
                 raise ValueError('gimbals are not enabled in the identification arena')
-            if config['lidar_mount'] != [0.,0.,.2,0.,0.,0.] or config['camera_mount'] != [.2,0.,.02]:
+            rolling = config.get('simulation_continuous_roll',False)
+            visual50 = config.get('simulation_visual_model')=='polinasi_visual_50cm'
+            if (not rolling and config['lidar_mount'] != [0.,0.,.2,0.,0.,0.]) or (not visual50 and config['camera_mount'] != [.2,0.,.02]):
                 raise ValueError('gimbal SDF currently requires the calibrated default mounting poses')
             add_sensor_gimbals(sensor_tree, config.get('camera_yaw_enabled',True))
+            if rolling:
+                if mount[3:] != [0.,0.,0.]:
+                    raise ValueError('continuous roll requires zero initial RPY')
+                add_continuous_roll(sensor_tree,mount,config['simulation_roll_rate'])
+                if config.get('simulation_balance_front_payload'):
+                    if config.get('simulation_lidar_hide_self'):
+                        raise ValueError('balanced payload fixture must retain visible body')
+                    balance_front_payload(sensor_tree,directory.parent,project,mount)
             if config.get('simulation_lidar_hide_self'):
                 exclude_simulation_self_visuals(sensor_tree, directory.parent, project)
+        if config.get('simulation_visual_model')=='polinasi_visual_50cm':
+            if not config.get('simulation_continuous_roll') or config.get('camera_yaw_enabled',True):
+                raise ValueError('visual50 requires roll and pitch-only camera')
+            integrate_visual_50cm(sensor_tree,directory.parent,project,config)
+        if config.get('sensor_rolling_localisation'):
+            # Separate, timestamped inertial sensor rigidly on the body; no pose
+            # or simulator ground truth feeds the localisation estimator.
+            model=sensor_tree.getroot().find('model')
+            link=ET.SubElement(model,'link',name='body_imu_link')
+            ET.SubElement(link,'pose').text='0 0 0 0 0 0'
+            inertial=ET.SubElement(link,'inertial')
+            ET.SubElement(inertial,'mass').text='0.00001'
+            inertia=ET.SubElement(inertial,'inertia')
+            for axis in ('ixx','iyy','izz'):ET.SubElement(inertia,axis).text='0.00000001'
+            sensor=ET.SubElement(link,'sensor',name='body_imu',type='imu')
+            for key,value in [('topic','/simulation/body_imu'),('gz_frame_id','base_link'),
+                              ('always_on','true'),('update_rate','200')]:
+                ET.SubElement(sensor,key).text=value
+            sensor.append(ET.fromstring(ET.tostring(sensor_tree.getroot().find(".//sensor[@name='mid360_imu']/imu"))))
+            joint=ET.SubElement(model,'joint',name='body_imu_fixed',type='fixed')
+            ET.SubElement(joint,'parent').text='iris_with_standoffs::base_link'
+            ET.SubElement(joint,'child').text='body_imu_link'
         if config.get('depth_camera_enabled'):
             if not config.get('sensor_gimbals_enabled'):
                 raise ValueError('depth fixture requires timestamped gimbal transforms')

@@ -181,6 +181,37 @@ class ContinuousTrajectory:
     def sample(self, elapsed):
         return tuple(self.derivatives(elapsed)[:3])
 
+    def safe_from(self, grid, elapsed):
+        """Certify the remaining curve, not completed knots behind the vehicle.
+
+        Planning still checks the whole curve. At execution time a rolling
+        window may exclude past segments; that must not invalidate the future.
+        Exact de Casteljau subdivision retains the entire active suffix.
+        """
+        whole_safe=self.safe(grid)
+        self.execution_certificate=dict(scope='unexecuted_curve_suffix',elapsed_seconds=float(elapsed),
+            whole_curve_safe=bool(whole_safe),remaining_curve_safe=bool(whole_safe),map_version=int(grid.version))
+        if whole_safe:
+            return True
+        elapsed=float(np.clip(elapsed,0.,self.duration))
+        beginning=0.
+        for controls,duration in zip(self.controls,self.durations):
+            end=beginning+duration
+            if elapsed < end:
+                if elapsed>beginning:
+                    # Arbitrary-u de Casteljau, unlike the .5 safety subdivision.
+                    level=controls.copy();right=[level[-1]]
+                    u=(elapsed-beginning)/duration
+                    while len(level)>1:
+                        level=(1-u)*level[:-1]+u*level[1:]
+                        right.append(level[-1])
+                    controls=np.asarray(right[::-1])
+                if not curve_safe(controls,grid):return False
+            beginning=end
+        safe=bool(grid.safe(self.sample(elapsed)[0]))
+        self.execution_certificate['remaining_curve_safe']=safe
+        return safe
+
     def safe(self, grid):
         key = (grid.res, tuple(grid.lo), tuple(grid.shape))
         if self.c.get('trajectory_geometry_cache', False) and self.certificate is not None:

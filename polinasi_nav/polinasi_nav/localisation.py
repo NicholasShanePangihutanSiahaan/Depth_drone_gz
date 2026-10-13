@@ -18,9 +18,10 @@ def voxel_downsample(points, resolution=0.18):
 
 
 class LidarImuOdometry:
-    def __init__(self, mount, origin=(0., 0., 0.)):
+    def __init__(self, mount, origin=(0., 0., 0.), body_imu=False):
         self.mount_p = np.asarray(mount[:3])
         self.mount_r = Rotation.from_euler('xyz', mount[3:]).as_matrix()
+        self.body_imu = body_imu
         self.p = np.asarray(origin, float).copy()
         self.r = np.eye(3)
         self.v = np.zeros(3)
@@ -37,8 +38,9 @@ class LidarImuOdometry:
         self.covariance = np.eye(6)*1.
 
     def imu(self, gyro_sensor, acceleration_sensor, stamp):
-        gyro = self.mount_r @ np.asarray(gyro_sensor)
-        acceleration = self.mount_r @ np.asarray(acceleration_sensor)
+        imu_r = np.eye(3) if self.body_imu else self.mount_r
+        gyro = imu_r @ np.asarray(gyro_sensor)
+        acceleration = imu_r @ np.asarray(acceleration_sensor)
         if self.last_imu is not None and stamp <= self.last_imu:
             self.ok, self.reason = False, 'imu_timestamp_order'
             return

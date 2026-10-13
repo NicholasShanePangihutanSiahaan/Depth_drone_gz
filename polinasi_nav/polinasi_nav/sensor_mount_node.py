@@ -15,7 +15,8 @@ class SensorMountNode(ConfigNode):
     def __init__(self):
         super().__init__('polinasi_sensor_mounts')
         self.declare_parameter('mode','ground_truth')
-        if not self.c.get('sensor_gimbals_enabled') or self.get_parameter('mode').value != 'ground_truth':
+        if not self.c.get('sensor_gimbals_enabled') or (self.get_parameter('mode').value != 'ground_truth'
+                and not self.c.get('sensor_rolling_localisation')):
             raise ValueError('moving mounts currently require opt-in ground-truth simulation')
         self.tf = TransformBroadcaster(self)
         self.static = StaticTransformBroadcaster(self)
@@ -28,7 +29,15 @@ class SensorMountNode(ConfigNode):
         self.navigation = {}
         self.last_tick = self.now()
         self.outputs = {}
+        self.rolling = self.c.get('simulation_continuous_roll',False)
+        self.roll_rate_command = 0.
+        self.roll_rate_measured = None
+        if self.rolling:
+            self.targets['lidar_roll'] = 0.
+            self.roll_output = self.create_publisher(Float64,'/lidar/roll_rate_cmd',1)
         for joint,topic in [('lidar_pitch','/lidar/pitch_cmd'),('camera_pitch','/camera/pitch_cmd'),('camera_yaw','/camera/yaw_cmd')]:
+            if joint=='lidar_pitch' and self.rolling:
+                continue
             if joint=='camera_yaw' and not self.c.get('camera_yaw_enabled',True):
                 continue
             self.targets[joint] = self.commands[joint] = 0.
@@ -80,6 +89,11 @@ class SensorMountNode(ConfigNode):
                 continue
             if stamp-self.stamps.get(joint,-math.inf)<.019:
                 continue
+            if joint=='lidar_roll':
+                previous_stamp=self.stamps.get(joint)
+                previous_angle=self.measured.get(joint)
+                if previous_stamp is not None and stamp>previous_stamp:
+                    self.roll_rate_measured=(msg.position[index]-previous_angle)/(stamp-previous_stamp)
             self.measured[joint],self.stamps[joint] = msg.position[index],stamp
             updated.append(joint)
         transforms = []
@@ -87,9 +101,13 @@ class SensorMountNode(ConfigNode):
             mount = self.c['lidar_mount']
             matrix = Rotation.from_euler('xyz',mount[3:]).as_matrix()@mount_rotation(pitch=self.measured['lidar_pitch'])
             transforms.append(self.transform('base_link','mid360',msg.header.stamp,mount[:3],matrix))
+        if 'lidar_roll' in updated:
+            mount = self.c['lidar_mount']
+            matrix = Rotation.from_euler('xyz',mount[3:]).as_matrix()@Rotation.from_euler('x',self.measured['lidar_roll']).as_matrix()
+            transforms.append(self.transform('base_link','mid360',msg.header.stamp,mount[:3],matrix))
         if 'camera_pitch' in updated and ('camera_yaw' in updated or not self.c.get('camera_yaw_enabled',True)):
             transforms.extend([
-                self.transform('base_link','camera_yaw_link',msg.header.stamp,self.c['camera_mount'],mount_rotation(yaw=self.measured.get('camera_yaw',0.))),
+                self.transform('base_link','camera_yaw_link',msg.header.stamp,self.c['camera_mount'],mount_rotation(yaw=self.c.get('camera_mount_yaw',0.)+self.measured.get('camera_yaw',0.))),
                 self.transform('camera_yaw_link','zed_camera_link',msg.header.stamp,[0.,0.,0.],mount_rotation(pitch=self.measured['camera_pitch']))])
         if transforms:
             self.tf.sendTransform(transforms)
@@ -100,19 +118,27 @@ class SensorMountNode(ConfigNode):
         self.last_tick = now
         nav = self.navigation
         permission = self.c.get('automatic_tilt_ascent',False) and self.armed is True and now-self.state_stamp<1. and 0<=now-nav.get('simulation_time',-math.inf)<.3 and nav.get('lidar_tilt_fsm_authorized') and nav.get('flight')=='MISSION' and not nav.get('failure')
-        if (self.armed is not False and not permission) or now-self.state_stamp>1.:
+        if not getattr(self,'rolling',False) and ((self.armed is not False and not permission) or now-self.state_stamp>1.):
             self.targets['lidar_pitch'] = 0.
+        if getattr(self,'rolling',False):
+            fresh_nav = 0 <= now-nav.get('simulation_time',-math.inf) < .3
+            allowed = now-self.state_stamp<1. and fresh_nav and not nav.get('failure')
+            self.roll_rate_command = self.c['simulation_roll_rate'] if allowed else 0.
+            self.roll_output.publish(Float64(data=float(self.roll_rate_command)))
         for joint,pub in self.outputs.items():
             rate = .35 if joint=='lidar_pitch' else .5
             delta = max(-rate*dt,min(rate*dt,self.targets[joint]-self.commands[joint]))
             self.commands[joint] += delta
             pub.publish(Float64(data=self.commands[joint]))
         fresh = all(0<=now-self.stamps.get(j,-math.inf)<.3 for j in self.targets)
-        ready = fresh and abs(self.measured.get('lidar_pitch',math.inf))<.02 and abs(self.targets['lidar_pitch'])<1e-6
+        ready = fresh and (getattr(self,'rolling',False) or (abs(self.measured.get('lidar_pitch',math.inf))<.02 and abs(self.targets['lidar_pitch'])<1e-6))
         self.status.publish(String(data=json.dumps(dict(stamp=now,measured=self.measured,
             targets=self.targets,commands=self.commands,feedback_fresh=fresh,navigation_ready=ready,
             rejection=self.rejection,airborne_lidar_tilt_supported=bool(self.c.get('automatic_tilt_ascent')),
-            fsm_authorization_fresh=bool(permission)),allow_nan=False)))
+            fsm_authorization_fresh=bool(permission),
+            continuous_roll_simulation_only=getattr(self,'rolling',False),
+            roll_rate_command_rad_s=getattr(self,'roll_rate_command',0.),
+            roll_rate_measured_rad_s=getattr(self,'roll_rate_measured',None)),allow_nan=False)))
 
 def main(args=None):
     run(SensorMountNode,args)

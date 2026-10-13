@@ -73,6 +73,19 @@ def test_continuous_knots_have_shared_nonzero_velocity_and_acceleration():
     assert tr.safe(grid)
 
 
+def test_execution_suffix_ignores_past_obstacle_but_rejects_future_obstacle():
+    c,grid=setup()
+    tr=ContinuousTrajectory([[0,0,2],[2,0,2],[4,0,2]],c)
+    assert tr.safe(grid)
+    elapsed=tr.ends[0]+.5
+    grid.state[tuple(grid.indices([0.,0.,2.]))]=OCCUPIED
+    grid.rebuild(1.)
+    assert not tr.safe(grid) and tr.safe_from(grid,elapsed)
+    grid.state[tuple(grid.indices([3.,0.,2.]))]=OCCUPIED
+    grid.rebuild(2.)
+    assert not tr.safe_from(grid,elapsed)
+
+
 def test_bezier_derivatives_match_finite_differences_and_global_bounds():
     c, _ = setup()
     tr = ContinuousTrajectory([[0, 0, 2], [1, 0, 2], [2, 1, 2]], c)

@@ -603,6 +603,476 @@ tidak membuktikan drone terbang mundur terhadap yaw aktual sepanjang gerak.
   Tidak menjanjikan semua gerakan menjauh hilang: bila itu satu-satunya
   posisi pengamatan aman yang informatif, fallback tetap dapat dipilih.
 
+## 12 Oktober 2026 — Pencarian target approach memblokir callback kontrol
+
+**Kronologi:** run `003126` menyelesaikan enam viewpoint pohon pertama
+pada sekitar detik 319, tanpa jeda ascent atau pemulihan depth. Beberapa
+transit tetap perlu explore; scorer baru mencatat fallback ketika kandidat
+searah tidak menghasilkan gain yang cukup. Saat memilih kandidat pohon
+berikutnya (ID tracker 40), program gagal dengan `clock_or_scheduler_gap`
+pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
+
+- **Bukti timing:** control callback maksimum 6139,88 ms waktu nyata,
+  trajectory/safety callback 6136,51 ms; gap tick 0,921 detik simulasi.
+  Sampel pipeline terakhir 6725,04 ms, dengan navigation-to-setpoint
+  6243,66 ms. Log callback sebelumnya menyebut callback LiDAR pendek;
+  maksimum callback kontrol mengungkap pekerjaan berat yang sebenarnya.
+- **Penyebab kode:** penyiapan kamera memanggil `_mission_hint`, yang
+  mencari ratusan kandidat partial descent/detour saat target nominal
+  occupied. Pencarian ini masih berjalan di kontrol live walaupun rute
+  utama direncanakan pada worker terpisah.
+- **Solusi:** petunjuk kamera live menjadi perhitungan geometris ringan
+  saja, tidak menjadi izin terbang. Clone worker membuang goal geometris
+  tersebut dan menghitung ulang kandidat detour, A*, trajectory serta
+  safety certification. Hasil tetap diperiksa terhadap map live sebelum
+  digunakan. Diagnostik pemilihan subgoal worker disalin kembali ke status.
+  Batas timing 0,2 detik tidak diubah.
+- **Pengujian:** 64 tes exploration/route-guard/local-subgoal/depth/ascent/
+  runner/survey dan 23 tes adapter ROS lulus. Tes baru memastikan callback
+  live tidak memanggil pencarian detour dan worker menghitung ulang goal.
+- **Batas klaim:** run mencapai satu pohon dengan enam scan, belum dua
+  pohon dan landing. ID tracker berikutnya adalah kandidat geometri,
+  bukan bukti independen bahwa objek itu benar-benar batang pohon.
+  Pemisahan pencarian ini belum diuji dalam penerbangan saat dicatat.
+- **Bukti lokal:** `reports/inspection_loop_20261012_003126/`.
+- **Penyimpanan:** pengguna meminta penghentian commit/push mulai sekarang;
+  perubahan berikut dan jurnal disimpan lokal tanpa commit atau push.
+
+## 12 Oktober 2026 — Kontrol tidak lagi tertahan, tetapi kandidat pohon kedua berasal dari daerah daun
+
+- **Kronologi:** run `inspection_loop_20261012_011144` berhasil takeoff,
+  approach pohon di sekitar (9, 0), tilt LiDAR, naik, lalu menyelesaikan
+  keenam viewpoint. Saat mencari pohon berikutnya, drone memilih ID 29
+  dengan pusat (-0,829, 10,004). Audit posisi model dunia lama menemukan
+  pusat kandidat ini berjarak 3,806 m dari batang terdekat. Simulasi dan
+  viewer dihentikan secara sengaja sebelum menganggap kandidat itu sebagai
+  pohon kedua yang berhasil diinspeksi. Posisi model hanya dipakai untuk
+  audit, tidak dimasukkan sebagai input detektor/navigasi.
+- **Hasil perbaikan sebelumnya:** pencarian worker sekitar 7,98 detik
+  waktu nyata tidak lagi menahan kontrol; callback kontrol maksimum
+  sekitar 39,15 ms pada transisi tersebut. Belum ada abort timing sebelum
+  penghentian manual. Dua pemulihan depth sementara terjadi dan pulih.
+  Run belum memenuhi dua pohon dan landing. Pesan watchdog
+  `navigation_status_missing_wall_15_seconds` setelah stop adalah akibat
+  penghentian manual, bukan kegagalan terbang baru.
+- **Bukti objek palsu:** point cloud akhir memuat 871 titik dalam radius
+  0,8 m dari kandidat; terdapat titik tanah, tetapi tidak ada titik batang
+  antara 0,5 dan 3,5 m. Kelompok atas mulai sekitar 4 m. Kandidat sebelumnya
+  hanya didukung 15 titik, residual 0,093 m, dan empat observasi.
+- **Diagnosis:** kode lama menghitung ulang persentil tanah dari buffer
+  30 detik. Setelah melihat ke atas dan titik tanah lama kedaluwarsa,
+  persentil bisa naik ke daun sehingga daun diperlakukan sebagai batang
+  rendah. Ini mekanisme yang direproduksi tes; buffer detektor persis pada
+  saat pemilihan tidak direkam, sehingga pergeseran persentil pada run
+  tersebut belum diukur langsung. Diagnostik baru ditambahkan untuk itu.
+- **Solusi:** referensi tanah diukur sekali dari kelompok titik rendah
+  yang cukup tersebar pada awal deteksi, lalu dipertahankan saat LiDAR
+  melihat ke atas. Kelompok kompak tanpa bukti tanah tidak boleh
+  menginisialisasi referensi. Status memuat referensi tanah, persentil
+  terkini, rentang tinggi pencarian batang, dan jumlah deteksi.
+- **Pengujian:** 46 tes tree-inspection/ascent/local-subgoal/exploration/
+  runner lulus. Regresi menguji daun atas setelah titik awal kedaluwarsa,
+  penolakan inisialisasi dari kelompok kompak, serta batang rendah baru
+  yang tetap terdeteksi setelah titik awal kedaluwarsa.
+- **Batas solusi:** ini detektor geometri untuk kebun datar, bukan
+  segmentasi pohon semantik ataupun estimasi tanah mengikuti lereng.
+  Referensi awal yang keliru masih merupakan risiko. Jangan mengklaim
+  validasi medan bergelombang atau lokalisasi LiDAR. Perbaikan referensi
+  tanah belum diuji dalam penerbangan pada saat entri dibuat.
+- **Bukti:** `reports/inspection_loop_20261012_011144/` dan
+  `reports/ros_ground_truth_palm_farm_20261012_011146_117463_mapping/map_3d/`.
+- **Penyimpanan:** perubahan dan jurnal hanya lokal; tidak commit/push.
+
+## 13 Oktober 2026 — Uji MID-360 di depan dengan roll tetap 90 derajat
+
+- **Permintaan:** pengguna memberikan video Exyn Nexys/X500 dan meminta
+  konfigurasi pembanding beserta simulasi dengan RViz. Frame video lokal
+  menunjukkan orientasi sensor berubah; sumbu mekanis/sudut persis belum
+  dapat dipastikan. Uji ini bukan salinan hardware Exyn, melainkan kandidat
+  MID-360 dengan roll tetap 90 derajat yang telah dibahas. Mekanisme roll
+  kontinu belum dibuat maupun diuji.
+- **Implementasi:** launcher `tools/start_front_roll_test.sh` membuat
+  fixture terpisah dari dunia identification, mempertahankan tanah dan
+  menambah empat kotak kalibrasi. Sensor ditempatkan pada XYZ
+  (0,65; 0; 0,45) relatif badan dan roll pi/2. Persiapan model mengubah
+  pose link LiDAR/IMU di SDF sesuai TF, bukan mengganti nama frame saja.
+  Canonical link tetap badan drone. Model sensor asli dan kebun lama
+  tidak diubah. Konfigurasi yang dihasilkan ada di
+  `reports/front_roll_fixture/config.json`.
+- **Prosedur:** simulator Gazebo/SITL tetap digunakan, ground-truth untuk
+  transform badan; tidak ada mission-start, arming, takeoff, atau perintah
+  aktuator. RViz saja dibuka; kamera dan Gazebo GUI tidak dibuka. Depth ZED
+  tidak diintegrasikan pada tes ini agar cakupan dapat diatribusikan ke
+  LiDAR. Pantulan badan tidak disembunyikan oleh visibility mask.
+- **Hasil uji:** 13 tes front-roll/tree-inspection lulus. Audit pasif 45
+  detik waktu nyata menerima 88 cloud yang berhasil ditransformasi, dua
+  kegagalan lookup TF, FCU terbaca dan selalu tidak armed. Hit kumulatif:
+  depan 3960, depan-atas 1848, depan-bawah 6536, atas 3960, tanah tepat di
+  bawah sensor 133312. Hit kumulatif bukan jumlah titik unik atau ukuran
+  clearance. Audit coverage `passed=true`.
+- **Peta:** snapshot peta waktu simulasi 10 detik menyimpan masing-masing
+  9/6/25/9 voxel occupied pada empat kotak dan 28 voxel tanah di bawah
+  sensor. Point cloud dan voxel tersimpan di HTML/JSON, terlihat di RViz.
+  Ini membuktikan keberadaan objek uji pada peta, bukan kualitas peta
+  keseluruhan atau tidak adanya self-return palsu.
+- **Batas:** lima arah yang diuji teramati saat diam; ini tidak berarti
+  seluruh ruang bola terlihat atau jalur terbang sudah aman. Belum uji
+  terbang kebun, occlusion seluruh badan, putaran mekanis, deskew,
+  lokalisasi sensor, atau hardware. Pola LiDAR Gazebo berupa scan grid
+  ideal, bukan pola non-repetitif/timing per titik MID-360 asli. Posisi
+  pemasangan merupakan kandidat simulasi, bukan rekomendasi mekanik final.
+- **Bukti:** `reports/front_roll_fixture/coverage.json` dan
+  `reports/ros_ground_truth_identification_20261013_162539_12649_mapping/map_3d/`.
+- **Cara ulang:** `bash tools/start_front_roll_test.sh`. Di terminal kedua:
+  `source tools/ros_environment.sh`, lalu
+  `python3 tools/check_front_roll_test.py --config reports/front_roll_fixture/config.json --output reports/front_roll_fixture/coverage.json --seconds 45`.
+  Jangan menjalankan `start_mission.py` untuk tes pasif ini. Stop run
+  dengan `tools/stop_simulation.py --run` dan direktori run yang tepat.
+- **Penyimpanan:** tanpa commit/push sesuai instruksi pengguna.
+
+## 13 Oktober 2026 — Takeoff dan hover dengan LiDAR rolling kontinu: dua penyebab berbeda
+
+- **Kronologi awal:** pengguna meminta takeoff-hover di kebun lama,
+  dengan roll LiDAR kontinu dan Gazebo/RViz. Joint velocity controller
+  roll ditambahkan pada model privat, kecepatan 0,4 rad/s (satu putaran
+  sekitar 15,7 detik simulasi), dan TF mengikuti sudut joint yang terukur.
+  IMU LiDAR ikut sensor; IMU badan tetap milik ArduPilot. GT digunakan
+  untuk posisi badan; tidak ada klaim lokalisasi LiDAR.
+- **Kegagalan pertama:** run `20261013_163321_14252` menerima takeoff,
+  tetapi baru terangkat sedikit lalu terjadi mismatch ExternalNav dan
+  laporan crash ArduPilot dengan AngErr=175. Model memindahkan massa
+  LiDAR 0,265 kg sejauh 0,65 m di depan tanpa kompensasi. Audit plugin
+  menunjukkan input ArduPilot berasal dari IMU badan; dugaan sebelumnya
+  bahwa sensor roll langsung menjadi IMU FCU tidak terbukti.
+- **Perbaikan mekanik simulasi:** model privat chassis dibuat untuk
+  menggeser pusat massa inertial base 1,5 kg sebesar -0,11483 m pada X,
+  sehingga perubahan momen massa horizontal LiDAR dikompensasi. Massa
+  total tidak dikurangi. Ini pendekatan redistribusi payload/baterai pada
+  simulasi, bukan rancangan hardware yang telah divalidasi. Visual chassis
+  tidak ikut bergeser; inersia/mount/gimbal belum model mekanik lengkap.
+  Semua aset dependency asli dipertahankan; tes memastikan hal itu.
+- **Baseline terpisah:** run `20261013_164004_15807`, rate roll nol,
+  berhasil takeoff dan masuk hover sekitar 2 m tanpa mismatch/crash.
+  Body/FCU/sensor direkam terpisah dalam
+  `reports/rolling_hover/balanced_static.jsonl`.
+- **Kegagalan kedua:** run `20261013_164336_16921` dengan massa seimbang
+  dan rolling berhasil hover sekitar 10,5 detik simulasi, tetapi gagal
+  `stale_integrated_map` pada t=30,801. Cloud age 0,101 s sedangkan map
+  age 1,201 s; map worker sekitar 1,25 detik wall, handoff/snapshot dan
+  logging juga mahal. Setup pada t=28,3 sempat lulus seluruh pemeriksaan
+  publisher/sensor/FCU, tetapi itu bukan jaminan bebas kegagalan sesudahnya.
+  Run beserta kedua viewer dihentikan untuk audit, tidak retry buta.
+- **Perbaikan komputasi:** konfigurasi khusus hover mengaktifkan ROI
+  dekat 6 m dengan koridor 3 m, memakai surface stride 6 dan no-return
+  stride 18. Point cloud hit tetap disimpan di luar ROI; voxel navigasi
+  hanya diproses di wilayah relevan dan halo yang ditambahkan mekanisme
+  ROI. Luar wilayah yang belum diproses tetap unknown, bukan dianggap
+  bebas. Timeout map 1 s tidak dilonggarkan. Konfigurasi misi inspeksi lama
+  tidak diganti dengan konfigurasi eksperimen hover ini.
+- **Hasil run berikutnya:** `20261013_164841_19160` berhasil takeoff,
+  lalu hover pada sampel t=19,8 sampai setidaknya t=55,3. Pada audit
+  t=53,3: durasi hover 33,5 detik, 2,133 putaran roll saat hover, tanpa
+  failure. Altitude sampel hover 1,999676–2,001219 m; max tracking error
+  0,10458 m saat transisi hover dan terakhir 0,00334 m. Ini extrema sampel
+  audit sekitar 0,5 s, bukan semua pengukuran atau jaminan terus-menerus.
+  Audit akhir 108 sampel, 72 sampel hover, daftar failure kosong.
+- **Timing terakhir:** map age 0,4 s; callback kontrol maksimum 94,43 ms
+  wall. Pipeline mapping-to-first-setpoint p50 1788,94 ms, p95 2421,67 ms,
+  max 3159,83 ms wall. Simulasi diperlambat; angka ini bukan bukti bahwa
+  hardware real-time akan sanggup pada laju sama. CPU masih perlu optimasi.
+- **Tes:** 23 tes front-roll/mount/survey dan lima tes adapter mount ROS
+  lulus. Termasuk TF dari sudut roll aktual, joint velocity controller,
+  preservasi FOV, massa seimbang, dan dependency asli tidak dimodifikasi.
+- **Bukti:** `reports/rolling_hover/balanced_rolling_roi.jsonl`,
+  `balanced_rolling_roi.summary.json`, `balanced_rolling.jsonl`,
+  `rolling_setup.json` serta direktori run/peta terkait. `rolling_setup`
+  milik run sebelum ROI, bukan pemeriksaan runtime run terakhir.
+- **Handoff:** proses pengamatan read-only dihentikan setelah bukti
+  dua putaran hover; simulator, Gazebo, RViz tetap menyala untuk pengguna.
+  Hover dikonfigurasi 600 detik simulasi sebelum return/landing; rangkaian
+  landing tersebut belum divalidasi pada pengujian ini.
+- **Cara ulang:** `bash tools/start_rolling_hover_test.sh 0.4`, lalu
+  `source tools/ros_environment.sh`,
+  `.venv/bin/python tools/set_origin.py --timeout 180`, dan
+  `python3 tools/start_mission.py --timeout 180`. Audit opsional:
+  `python3 tools/audit_rolling_hover.py --output reports/rolling_hover/new_run.jsonl --seconds 300`.
+  Stop hanya run aktif menggunakan `tools/stop_simulation.py --run` dan
+  direktori yang dicetak launcher, agar kedua viewer ikut ditutup.
+- **Batas:** belum uji lintasan kebun, lokalisasi sensor, putaran kabel,
+  occlusion lengkap, atau dinamika mount hardware. Scan Gazebo ideal pada
+  timestamp sensor, bukan scan MID-360 nyata yang membutuhkan deskew per
+  titik saat berputar. Tidak ada commit atau push.
+
+## 13 Oktober 2026 — Konsep visual drone span 50 cm dan viewer web lokal
+
+- **Permintaan:** pengguna memilih perubahan visual, memberi sketsa,
+  mengubah span menjadi 50 cm antara motor berseberangan, mengarahkan ZED
+  ke kiri dengan pitch atas/bawah, dan LiDAR di depan dengan roll X.
+- **Implementasi:** model terpisah `polinasi_visual_50cm` mencakup badan,
+  lengan X, motor/propeller statis, baterai bawah dengan strap, skid/kaki,
+  ZED dan dudukan, LiDAR serta sumbu roll. Diagonal pusat motor tepat 0,5 m.
+  LiDAR pivot pada (0,205; 0; -0,035) m relatif badan dan kamera pada
+  (0; 0; 0,098) m dengan yaw +90 derajat. Ukuran lainnya perkiraan, bukan
+  hasil pengukuran hardware. Tidak memakai posisi sensor jauh 0,65 m
+  pada eksperimen hover sebelumnya.
+- **Aset:** generator menghasilkan scene JSON dan SDF visual dari geometri
+  yang sama. Viewer WebGL tanpa library/CDN menyediakan orbit/zoom, roll
+  sensor manual atau animasi, pitch kamera, dan sumbu referensi. Endpoint
+  hanya melayani HTML dan scene JSON, bind 127.0.0.1:8766; repository dan
+  API kontrol penerbangan tidak diekspos. Tidak dipublikasikan remote.
+- **Tes:** dua tes geometri lulus: diagonal motor, arah kiri kamera,
+  pitch positif melihat atas, sumbu roll, serta kesesuaian primitive/pose
+  SDF dengan scene browser. Sintaks JavaScript diperiksa dengan Node.
+  Endpoint JSON lokal berhasil diakses. Browser runtime melaporkan tidak
+  ada browser tersambung; inspeksi screenshot/interaksi browser belum
+  dilakukan dan tidak diklaim lulus.
+- **Batas:** model static visual preview, bukan pengganti model fisik
+  penerbangan aktif. SDF belum memiliki sensor aktif, motor/controller,
+  collision dan inertial baru. Visual dapat menjadi permukaan pantulan
+  jika dimasukkan ke dunia Gazebo, tetapi self-return/occlusion model ini
+  belum diuji. Self-filter harus disesuaikan saat integrasi, bukan menghapus
+  pantulan objek nyata dekat drone. Kamera pada simulasi lama belum diubah
+  menjadi menghadap kiri melalui pekerjaan preview ini.
+- **Cara lihat:** `http://127.0.0.1:8766/`. Jika server berhenti, jalankan
+  `python3 tools/serve_drone_viewer.py --port 8766`. Untuk membangun ulang
+  aset: `python3 tools/generate_drone_visual.py`.
+- **Penyimpanan:** tanpa commit/push; perubahan agen pembuat kebun dijaga.
+
+## 13 Oktober 2026 — Integrasi branch rotating-lidar, model visual 50 cm, dan koreksi sensor
+
+- **Lingkup:** model visual baru diintegrasikan ke model run-local Iris;
+  motor, collision dan inertia lama dipertahankan. Visual asli dependency
+  tidak dimodifikasi; salinan privat memakai komponen yang sama dengan
+  viewer web. Konfigurasi lama tetap ada. Span visual tidak menjadi
+  validasi span/thrust/propeller fisik. Propeller visual masih statis.
+- **Sensor:** LiDAR di depan X=0,205 m, roll sumbu X, kamera ZED di atas
+  menghadap kiri yaw=pi/2 dan pitch lokal. TF memakai sudut joint aktual.
+  Filter endpoint berubah dari kotak besar menjadi primitive badan dan
+  envelope sensor bergerak; luar ROI tetap unknown. Model penerbangan
+  menyeimbangkan momen massa horizontal payload pada salinan chassis.
+- **Masalah startup:** launcher pertama memakai path relatif yang ditolak
+  pemeriksaan ownership; diubah ke absolut. Satu restart ditolak karena
+  port SITL belum selesai ditutup; tidak membunuh proses sembarang dan
+  menunggu cleanup sebelum mengulang.
+- **Masalah self-return:** run `20261013_174426_28369` berhasil naik tetapi
+  tidak lolos safety handoff: voxel pantulan sendiri menyebabkan clearance
+  negatif. Toleransi primitive 8 mm lebih kecil daripada noise jarak
+  simulator 10 mm. Toleransi menjadi 50 mm; tes tetap memastikan objek
+  eksternal dekat badan di ruang tidak terisi tidak ikut dihapus. Toleransi
+  ini khusus simulasi, bukan kalibrasi MID-360 hardware.
+- **Hasil berikutnya:** run `20261013_175016_30048` masuk hover rolling dan
+  kamera merespons target pitch 0,4 rad dengan feedback sekitar 0,397 rad.
+  Tetapi setup menunjukkan rangefinder tidak valid karena visual baterai
+  baru berada pada arah pandang pemasangan lama.
+- **Rangefinder:** dipindahkan ke (0,115; 0; -0,07) m, di luar tray/baterai.
+  Koreksi tinggi memakai proyeksi XYZ mount dan sikap badan, bukan offset
+  tetap 5 cm. Rumah visual sensor kemudian diposisikan di belakang optical
+  origin, tidak pada jalur sinar bawah. Pemeriksaan langsung mengonfirmasi
+  range tersedia. Error daemon `ros2 topic echo` dipisahkan dari kegagalan
+  sensor; checker rclpy langsung tetap dapat membaca sensor.
+- **TF statis:** saat menambah rangefinder, dua pemanggilan broadcaster
+  membuat subscriber yang terlambat bergabung kehilangan map→odom.
+  Run `20261013_181249_34139` punya range valid tetapi map_version=0.
+  Kode Python broadcaster Humble hanya melatch TFMessage terakhir.
+  Semua transform kini dipublikasikan sekaligus; tes regresi ditambahkan.
+- **Baseline berhasil:** run `20261013_181657_35513` lulus semua setup
+  checks, takeoff READY, hover rolling >34 s simulasi dan >2 putaran tanpa
+  failure. Altitude settled sekitar 1,950–1,958 m terhadap target 2 m;
+  error sekitar 5 cm tetap merupakan keterbatasan estimasi/alignment,
+  bukan dihapus dengan mengganti label frame. Audit dihentikan pada t=77,5
+  dengan 95 sampel hover; simulator kemudian ditutup untuk perubahan baru.
+- **Perubahan tinggi:** pengguna meminta LiDAR lebih tinggi agar lebih
+  mudah melihat atas. Pivot dinaikkan dari Z=-0,035 ke Z=0,085 m (+12 cm),
+  beserta bracket/sumbu pada model, TF dan konfigurasi. Viewer web memakai
+  scene yang sama. Cakupan atas masih bergantung sudut roll, bukan selalu
+  seluruh bola terlihat. Run `20261013_182902_37801` hover >37 s dan
+  >2,35 putaran tanpa failure; setup lulus. Itu belum mengesahkan mutu
+  penghalangan sensor.
+- **Temuan audit gambar:** pengguna mempertanyakan point cloud/voxel di
+  belakang drone. Peta gabungan sepanjang putaran memang dapat mencakup
+  belakang melalui sinar yang lolos atas/samping/bawah. Tetapi audit
+  perpotongan sinar inti badan menemukan masalah tambahan: pada 41 scan
+  raw, 32277 finite return melampaui exit inti badan dan 29355 valid return
+  tidak tersaring sebagai self. Pemeriksaan awal hanya no-return terlalu
+  lemah (tidak ada +inf menembus badan) dan diperketat; hasil strict FAIL.
+  Kemungkinan terkait rendering/near clipping; penyebab internal renderer
+  belum dikonfirmasi, sehingga tidak diklaim sudah diketahui persis.
+- **Solusi persepsi:** sensor gate khusus model baru memakai perpotongan
+  ray terhadap geometri badan sebelum publikasi /livox/lidar dan sinar
+  mapper. Ray terhalang dijadikan invalid, tidak menjadi ruang bebas di
+  belakang badan dan tidak menjadi titik obstacle eksternal. Box exact,
+  cylinder memakai box pembungkus konservatif, camera memakai swept
+  envelope. Envelope LiDAR pada optical origin tidak dipakai menghalangi
+  dirinya. Batang dudukan diperpendek agar tidak melintasi optical origin.
+  Scan menunggu TF timestamped singkat dan gagal tertutup jika tidak dapat
+  diverifikasi. Konfigurasi lama tidak mengaktifkan guard baru ini.
+- **Tes sebelum rerun:** sembilan tes visual/roll dan 27 tes adapter ROS
+  lulus; regresi sinar rear terhalang meskipun endpoint jauh, upward ray
+  tetap lolos, batching TF dan proyeksi rangefinder. Ini tidak berarti
+  seluruh occlusion arm/leg/model telah divalidasi empiris.
+- **Bukti:** `reports/visual50_hover/flight_audit*.jsonl`, setup JSON terkait,
+  `raised_body_occlusion_strict.json`, serta folder run yang tercatat.
+  Run baru `20261013_184111_40095` sedang diuji dengan guard shadow ketika
+  entri ini ditulis; hasilnya belum diklaim berhasil.
+- **Cara menjalankan:** `bash tools/start_visual50_hover.sh`; terminal lain
+  `source tools/ros_environment.sh`, `.venv/bin/python tools/set_origin.py --timeout 180`,
+  lalu `python3 tools/start_mission.py --timeout 180`. Untuk audit:
+  `python3 tools/audit_rolling_hover.py --output reports/visual50_hover/new_audit.jsonl --seconds 400`.
+  Audit penghalangan pada input mapper:
+  `python3 tools/audit_body_occlusion.py --topic /livox/lidar --output reports/visual50_hover/new_shadow_audit.json --seconds 90`.
+- **Batas misi:** konfigurasi ini khusus takeoff-hover-return-land eksperimen;
+  inspeksi pohon penuh dengan kamera kiri dan lokalisasi sensor belum
+  diaktifkan/tervalidasi. Terrain-following dan depth navigation dinonaktifkan
+  pada uji hover. Konfigurasi/launcher inspeksi lama tetap tersedia.
+  Semua posisi GT; belum hardware. Tidak commit/push.
+
+## 13 Oktober 2026 — Hasil akhir raised-LiDAR dengan guard penghalangan badan
+
+- **Run:** `20261013_184111_40095`. Pada sampel t=58,5, drone berada di
+  MISSION/SURVEY, armed, tanpa failure; durasi setelah handoff hover
+  33,55 detik simulasi dan 2,136 putaran roll. Altitude terakhir 1,95733 m,
+  tracking error 0,04349 m terhadap target sekitar 2 m. Galat sekitar
+  4–5 cm belum dihilangkan. Ini keberhasilan hover eksperimen, bukan
+  validasi misi inspeksi lengkap atau lokalisasi LiDAR.
+- **Setup:** `setup_shadow_fixed.json` lulus seluruh pemeriksaan termasuk
+  rangefinder, map freshness, alignment FCU, serta publisher kontrol tunggal.
+- **Audit occlusion sesudah guard:** pada /livox/lidar, 134 scan, 138047 ray
+  terhalang inti badan, semuanya invalid; tidak ada positive no-return,
+  finite return menembus exit badan, atau self-return valid lolos filter.
+  TF failures nol pada audit ini. `body_occlusion_shadow_fixed.json` PASS.
+  Raw /simulation/lidar tetap menggambarkan keterbatasan backend renderer;
+  mapper/perception mengonsumsi /livox/lidar yang telah melewati guard.
+  Pemeriksaan inti badan tidak membuktikan seluruh arm/leg/moving mount
+  sudah divalidasi empiris. Cylinder memakai bounding box konservatif dan
+  camera memakai envelope, sehingga sebagian ray bebas dapat ikut ditahan
+  secara aman. Guard ini hanya untuk model simulasi khusus, bukan untuk
+  driver hardware yang belum diuji.
+- **Ruang atas:** snapshot map t=40,008 memuat 128 cell observed-free
+  dengan radius XY <0,6 m dari origin dan Z=3,3–4,1 m, di atas prior
+  launch-pad yang berhenti pada Z<3,2 m. Ini bukti pengamatan simulasi ke
+  atas; tidak menggantikan pemeriksaan footprint/braking lintasan naik.
+- **Penjelasan gambar:** occupied oranye mencakup tanah dan objek, bukan
+  seluruhnya pantulan drone. Peta adalah akumulasi sepanjang roll. Badan
+  hanya menutup subset ray; belakang dapat teramati dari atas/samping/bawah.
+  Pada snapshot ini fraction volume teramati hanya 0,012757 dari bounds
+  global, sehingga gambar tidak berarti seluruh kebun telah dipetakan.
+- **Handoff:** pengamat read-only dihentikan setelah bukti tercapai;
+  Gazebo/RViz dan simulator tetap menyala. Hover config 300 s simulasi
+  sebelum return/land; landing dan navigasi antar pohon tidak divalidasi
+  dalam run ini. Tidak commit atau push.
+
+## 2026-10-13 — Scanning kontinu dan perubahan roll menjadi 180°/detik
+
+- **Kronologi:** setelah hover model baru berhasil, pengguna meminta scanning
+  tanpa berhenti di setiap viewpoint. Dibuat controller terpisah yang memakai
+  jalur melingkar CCW, 24 anchor dan 6 sektor inspeksi; kamera kiri diarahkan
+  ke pohon. Controller lama tetap tersedia. Jalur menggunakan map terukur,
+  pengecekan collision dan braking, bukan layout pohon sebagai collision map.
+- **Batas implementasi:** chunk tetap berakhir diam jika lookahead belum aman;
+  smoothing bisa memperlambat/berhenti pada knot jika diperlukan. Ini bukan
+  jaminan orbit tanpa berhenti pada semua kondisi. Konfigurasi percobaan ini
+  approach dan orbit pada sekitar 2 m; prosedur naik ke pucuk batang versi
+  pitch-LiDAR lama belum dipindahkan ke mode rolling ini.
+- **Uji kode:** 48 tes continuous/tree/survey lolos. Setelah perubahan roll,
+  14 tes model/front-roll/continuous-tree dan 8 tes mount ROS lolos.
+- **Perubahan berikutnya:** pengguna meminta roll 180°/detik. Run
+  `ros_ground_truth_palm_farm_20261013_191150_44293_mapping` dihentikan ketika
+  masih fase takeoff (belum ada kegagalan tercatat). Generator visual50 kini
+  memakai pi rad/s; limit joint mengikuti rate yang diminta. Config menerima
+  maksimal pi rad/s hanya untuk mode simulasi opt-in. Ditambahkan pengukuran
+  angular rate dari selisih sudut joint bertimestamp, selain commanded rate.
+- **Bukti sementara:** pada run
+  `ros_ground_truth_palm_farm_20261013_191507_45540_mapping`, t=7,3 s,
+  commanded rate=3,14159265359 dan measured rate=3,14159265359 rad/s.
+  Log `reports/continuous_inspection/flight_audit_02_roll180.jsonl`.
+  Putaran aktual simulator sudah sesuai; keberhasilan dua pohon dan landing
+  masih diuji. Simulasi GT, bukan validasi lokalisasi LiDAR atau hardware.
+- **Audit ray setelah perubahan rate:** 44 scan pada `/livox/lidar`, 47.970
+  ray yang arah geometrinya memotong core badan semuanya invalid, bukan free
+  atau occupied. Tidak ada finite hit di belakang badan yang lolos guard.
+  Satu scan TF belum tersedia; audit ini hanya core badan, bukan keseluruhan
+  geometri. Bukti `reports/continuous_inspection/body_shadow_roll180.json`.
+- **Hasil penerbangan sementara:** pada t=155,75 s, pohon ID 4 telah selesai
+  (6 sektor). Lima sektor interior tercatat pada speed sekitar 0,125–0,291
+  m/s; sektor terakhir di ujung orbit berhenti sebelum pergantian pohon.
+  Orbit terbagi dua chunk (anchor 0–8 lalu 9–23); ada jeda aman antar chunk,
+  bukan satu putaran tanpa jeda. Drone sudah approach ke pohon terukur ID 5,
+  target `[5.032165,7.063950,2.0]`. Snapshot saat itu tidak menunjukkan failure;
+  **audit riwayat lengkap berikutnya menemukan failure sementara sebelumnya**.
+  `inspection_valid` memeriksa heading, pitch feedback dan fresh map;
+  bukan validasi kualitas gambar atau identifikasi bunga. Kamera dibuka
+  atas permintaan pengguna, GUI Gazebo ditutup tanpa menghentikan server.
+  Dua pohon plus landing masih belum selesai. Tidak commit/push.
+
+### Koreksi audit lengkap dan penambahan naik sebelum orbit
+
+- **Kronologi:** drone selesai scanning ID 4 lalu ID 5 dan masuk RETURN.
+  Namun pengamat yang sebelumnya berhenti pada failure pertama ternyata
+  mencatat `route_changed` pada t=141,8 s. Navigation debug memuat delapan
+  snapshot BRAKE mulai t=141,65 s; kemudian controller memulihkan diri dan
+  melanjutkan. Laporan snapshot “tanpa abort” tidak mencakup riwayat ini.
+- **Tindakan:** run dihentikan saat RETURN, terakhir t=286,95 s; RViz dan
+  kamera ditutup. Landing tidak selesai diuji. Dua scan berhasil, tetapi run
+  tidak boleh dilabelkan bebas kegagalan.
+- **Hipotesis yang diperiksa:** pemeriksaan seluruh orbit dapat menolak bagian
+  yang sudah dilewati ketika rolling window bergeser. Pada kejadian pertama
+  window X=[1,8;11,8] sedangkan sisi timur orbit sebelumnya sekitar X=11,0,
+  dekat border yang diinflasi. Penyebab asli belum direplay dengan map exact
+  saat kejadian; jangan menyatakannya sebagai diagnosis final.
+- **Perbaikan:** eksekusi continuous trajectory kini menguji seluruh **sisa**
+  kurva dengan subdivision de Casteljau exact, bukan membatalkan lintasan
+  karena bagian lampau. Perencanaan/acceptance tetap menguji seluruh rute;
+  body clearance dan brake aktual tetap diperiksa setiap tick. Ditambahkan
+  log whole-curve vs remaining-curve. Tes memastikan blocker di masa depan
+  tetap ditolak, sedangkan blocker pada bagian lampau tidak membatalkan sisa.
+- **Masukan pengguna:** approach di bawah tajuk, naik vertikal sebelum orbit.
+  Mode rolling kini mengaktifkan ContinuousAscent yang sudah tersedia,
+  tanpa tilt/normalization LiDAR. Speed naik 0,12 m/s, reaction reserve 0,7 s,
+  map max-age 0,4 s. Gap nominal atas envelope ke obstacle 0,6 m; sebagian
+  sudah tercakup clearance/tracking margin, sisanya menjadi observation guard.
+  Quantisation voxel dan pengereman dapat menghentikan lebih jauh. Referensi
+  XY tetap, map/braking tetap aktif; unknown atau cap tinggi bukan bukti sudah
+  mencapai daun. Kamera pitch kiri dan orbit kontinu baru dimulai setelah naik
+  selesai. Ini bukan mengimplementasikan penuh paper FASTER, hanya memakai
+  prinsip stopping fallback pada ruang known-free.
+- **Uji:** 36 tes continuous/tree/ascent lolos. Flight dengan ascent belum
+  dijalankan pada saat entri ini. Pengamat sekarang mempunyai opsi `--stop-run`
+  agar failure sementara tidak terlewat; stop hanya registered private run.
+  Launch berikut membuka RViz dan kamera, bukan GUI Gazebo sesuai permintaan.
+
+## 2026-10-13 — Baseline lokalisasi sensor untuk LiDAR rolling
+
+- **Permintaan:** hentikan simulasi GT, implementasikan lokalisasi sensor dan
+  lanjutkan loop. Run GT `ros_ground_truth_palm_farm_20261013_195357_52149_mapping`
+  dihentikan beserta RViz/kamera. Tidak mengklaim hasil GT sebagai LIO.
+- **Masalah:** estimator lama fixed-extrinsic tidak mendukung LiDAR rolling.
+  IMU pada MID ikut berputar; rotasinya tidak boleh dianggap rotasi badan.
+- **Implementasi:** sensor IMU terpisah rigid di body origin (simulasi IMU
+  Pixhawk), topic `/simulation/body_imu`, serta measured dynamic transform
+  base_link→mid360 pada timestamp scan. Estimator ICP–IMU memakai body IMU;
+  rotasi mount hanya mengubah point cloud, bukan gravitasi/gyro body.
+  Sensor internal MID tetap diterbitkan tetapi bukan input estimator rolling.
+- **Eksklusivitas:** sensor-mode localisation tidak subscribe ground-truth.
+  Peta/navigation/ExternalNav menerima odometry sensor. Ground truth hanya
+  dipakai observer read-only untuk pasangan timestamp dan error; bukan koreksi.
+  Posisi awal konfigurasi adalah prior surveyed launch gauge, bukan oracle
+  posisi bergerak. Frame ENU/FLU dan konversi MAVROS yang ada dipertahankan.
+- **Batas:** ini ICP–IMU eksperimental, bukan FAST-LIO/SLAM ber-loop-closure.
+  Gazebo menghasilkan scan instant raster, bukan MID-360 nonrepetitive sweep
+  dengan per-point timing. Kalibrasi/noise IMU hardware belum divalidasi.
+- **Tes:** 30 navigation/tree/front-roll, 28 ROS adapter/mount, dan 3 tes
+  rolling-localisation lolos. Tes badan diam/LiDAR berputar tidak menghasilkan
+  gerak badan; body gravity tidak ikut diputar extrinsic LiDAR.
+- **Loop bertahap:** fixture terpisah `hover` (takeoff/hover 20 s/landing)
+  terlebih dahulu; `inspection` tetap tersedia untuk tahap berikut. Dua mode
+  GT/sensor terpisah; estimator mengeluarkan `/localisation/debug` (RMSE,
+  reason, scan/IMU stamp, reference count, mount transform readiness).
+  Script audit sensor menulis error posisi/orientasi pada measurement-time.
+  Uji penerbangan baru dimulai; belum dinyatakan lolos.
+- **Git:** mulai paket perubahan ini commit/push kembali diaktifkan atas
+  permintaan pengguna ke remote `depth_drone_gz`, branch `rotating-lidar`.
+  File kredensial dan asset map milik agen lain tidak dimasukkan.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

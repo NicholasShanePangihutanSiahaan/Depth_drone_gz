@@ -247,7 +247,8 @@ class SurveyController(MissionController):
             setattr(self, key, getattr(clone, key))
         for key in ('tree_phase','active_tree','view_target','inspection_view','search_started',
                     'finish_reason','tree_angle','rejected_views','mount_phase_started',
-                    'mount_settled_since','mount_angle_index','inspection_altitude','ascent_stop_reason'):
+                    'mount_settled_since','mount_angle_index','inspection_altitude','ascent_stop_reason',
+                    'subgoal_diagnostics'):
             if hasattr(clone,key):
                 setattr(self,key,getattr(clone,key))
         return ready

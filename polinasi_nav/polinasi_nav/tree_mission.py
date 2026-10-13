@@ -234,7 +234,10 @@ class TreeInspectionController(SurveyController):
         if data['stamp'] <= self.catalog_stamp:
             return
         self.catalog_stamp = data['stamp']
-        self.perception_statistics = {k:data.get(k) for k in ('wall_ms','retained_points','stem_points','reason')}
+        self.perception_statistics = {k:data.get(k) for k in (
+            'wall_ms','retained_points','stem_points','reason','ground_reference_m',
+            'ground_reference_stamp','recent_ground_percentile_m','ground_policy',
+            'stem_height_band_m','detections_count')}
         self.catalog = [t for t in data['tracks'] if t.get('confirmed')]
 
     def candidates(self):
@@ -254,11 +257,22 @@ class TreeInspectionController(SurveyController):
 
     def _mission_hint(self,current):
         if self.state == 'SURVEY' and self.view_target is not None:
-            from .local_subgoal import inspection_hint
+            from .local_subgoal import inspection_hint, geometric_hint
+            if self.executor is not None:
+                # Camera preparation needs a direction, not a costly detour search.
+                # This hint never authorizes flight; the detached planner certifies it.
+                return geometric_hint(current,self.view_target)
             hint,self.subgoal_diagnostics = inspection_hint(self.grid,current,self.view_target,
                 allow_vertical=self.tree_phase=='APPROACH')
             return hint
         return super()._mission_hint(current)
+
+    def _planning_clone(self):
+        clone = super()._planning_clone()
+        if clone.state=='SURVEY' and clone.view_target is not None:
+            # Do not reuse an unexamined live-camera hint as a planner goal.
+            clone.goal = None
+        return clone
 
     def _choose_goal(self,current):
         if self.state != 'SURVEY':
@@ -298,7 +312,7 @@ class TreeInspectionController(SurveyController):
         if self.view_target is None or not self.grid.safe(self.view_target):
             angle = self.tree_angle+(self.inspection_view*2*math.pi/self.c['tree_view_count'] if self.tree_phase=='SCAN' else 0.)
             top = float(np.clip(tree['observed_stem_top']-.4,2.,5.5))
-            if self.auto_mounts() and self.tree_phase=='APPROACH':
+            if (self.auto_mounts() or self.c.get('continuous_tree_scanning')) and self.tree_phase=='APPROACH':
                 top = self.c.get('tree_approach_altitude',self.c['takeoff_altitude'])
             elif self.auto_mounts() and self.inspection_altitude is not None:
                 top = self.inspection_altitude

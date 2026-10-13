@@ -108,7 +108,7 @@ class LocalisationNode(ConfigNode):
         self.declare_parameter('mode', 'ground_truth')
         self.declare_parameter('world_to_odom', [0., 0., 0., 0., 0., 0.])
         self.mode = self.get_parameter('mode').value
-        if self.c.get('sensor_gimbals_enabled') and self.mode != 'ground_truth':
+        if self.c.get('sensor_gimbals_enabled') and self.mode != 'ground_truth' and not self.c.get('sensor_rolling_localisation'):
             raise ValueError('LiDAR–IMU estimator does not support moving sensor extrinsics')
         if self.mode not in ('ground_truth', 'sensor'):
             raise ValueError('mode must be ground_truth or sensor')
@@ -122,14 +122,22 @@ class LocalisationNode(ConfigNode):
         self.last_stamp = -math.inf
         self.last_imu = -math.inf
         self.pending_imu = deque(maxlen=500)
-        self.estimator = LidarImuOdometry(self.c['lidar_mount'], self.c['initial_pose'])
+        self.rolling_sensor=bool(self.mode=='sensor' and self.c.get('sensor_rolling_localisation'))
+        self.estimator = LidarImuOdometry(self.c['lidar_mount'], self.c['initial_pose'],body_imu=self.rolling_sensor)
+        self.pending_scan=deque(maxlen=1)
+        self.localisation_diagnostics=self.create_publisher(String,'/localisation/debug',10)
+        self.mount_rejection=''
+        if self.rolling_sensor:
+            self.mount_buffer=Buffer()
+            self.mount_listener=TransformListener(self.mount_buffer,self)
+            self.create_timer(.01,self.rolling_scan)
         self.send_static()
         if self.mode == 'ground_truth':
             self.create_subscription(Odometry, '/simulation/ground_truth/odom', self.truth, qos_profile_sensor_data)
             self.get_logger().warning('GROUND-TRUTH LOCALISATION: planner isolation only')
         else:
-            self.create_subscription(Imu, '/livox/imu', self.imu, qos_profile_sensor_data)
-            self.create_subscription(PointCloud2, '/livox/lidar', self.scan, qos_profile_sensor_data)
+            self.create_subscription(Imu, '/simulation/body_imu' if self.rolling_sensor else '/livox/imu', self.imu, qos_profile_sensor_data)
+            self.create_subscription(PointCloud2, '/livox/lidar',self.pending_scan.append if self.rolling_sensor else self.scan, qos_profile_sensor_data)
             self.get_logger().warning('SENSOR LOCALISATION: experimental IMU-predicted ICP')
         self.create_timer(0.1, self.health)
 
@@ -146,6 +154,15 @@ class LocalisationNode(ConfigNode):
             set_vector(t.transform.translation, xyz)
             set_quaternion(t.transform.rotation, Rotation.from_euler('xyz', rpy).as_matrix())
             transforms.append(t)
+        if self.c.get('rangefinder_mount'):
+            mount=self.c['rangefinder_mount']
+            t=TransformStamped()
+            t.header.stamp=self.get_clock().now().to_msg()
+            t.header.frame_id,t.child_frame_id='base_link','rangefinder'
+            set_vector(t.transform.translation,mount[:3])
+            set_quaternion(t.transform.rotation,Rotation.from_euler('xyz',mount[3:]).as_matrix())
+            transforms.append(t)
+        # Humble Python broadcaster retains one TFMessage, not earlier calls.
         self.static.sendTransform(transforms)
 
     def valid_time(self, stamp):
@@ -188,12 +205,30 @@ class LocalisationNode(ConfigNode):
 
     def imu(self, msg):
         stamp = seconds(msg.header.stamp)
-        if msg.header.frame_id != 'mid360_imu' or not 0 <= self.now()-stamp <= 0.1 or stamp <= self.last_imu:
+        if msg.header.frame_id != ('base_link' if self.rolling_sensor else 'mid360_imu') or not 0 <= self.now()-stamp <= 0.1 or stamp <= self.last_imu:
             return
         # Clouds can arrive after newer IMU packets. Integrate only through a
         # scan's measurement time, never stamp a future-predicted pose as old.
         self.pending_imu.append((stamp, vector(msg.angular_velocity), vector(msg.linear_acceleration)))
         self.last_imu = stamp
+
+    def rolling_scan(self):
+        if not self.pending_scan:return
+        msg=self.pending_scan[-1]
+        if not self.valid_time(msg.header.stamp):
+            self.pending_scan.clear()
+            self.mount_rejection='scan_too_old_or_out_of_order'
+            return
+        try:
+            transform=self.mount_buffer.lookup_transform('base_link','mid360',Time.from_msg(msg.header.stamp))
+        except TransformException:
+            self.mount_rejection='waiting_for_timestamped_encoder_transform'
+            return
+        self.estimator.mount_r=rotation(transform.transform.rotation)
+        self.estimator.mount_p=vector(transform.transform.translation)
+        self.mount_rejection=''
+        self.pending_scan.clear()
+        self.scan(msg)
 
     def scan(self, msg):
         if msg.header.frame_id != 'mid360' or not self.valid_time(msg.header.stamp):
@@ -207,7 +242,8 @@ class LocalisationNode(ConfigNode):
         points = points[(ranges >= self.c['lidar_min_range']) & (ranges < self.c['lidar_range']-0.05)]
         e = self.estimator
         body = points@e.mount_r.T+e.mount_p
-        keep = ~np.all(np.abs(body) <= np.asarray(self.c['drone_dimensions'])/2+self.c['self_filter_padding'], axis=1)
+        from .self_filter import self_mask
+        keep = ~self_mask(body,self.c)
         if e.scan(points[keep], seconds(msg.header.stamp)):
             self.publish(msg.header.stamp, e.p, e.r, e.v, [0., 0., 0.], e.covariance)
 
@@ -216,6 +252,15 @@ class LocalisationNode(ConfigNode):
         if self.mode == 'sensor':
             fresh = fresh and self.estimator.ok and 0 <= self.now()-self.last_imu < 0.1
         self.status.publish(Bool(data=bool(fresh)))
+        if self.mode=='sensor':
+            e=self.estimator
+            self.localisation_diagnostics.publish(String(data=json.dumps(dict(
+                stamp=self.now(),mode='sensor',algorithm='experimental_scan_to_map_ICP_body_IMU' if self.rolling_sensor else 'experimental_scan_to_map_ICP',
+                healthy=bool(fresh),reason=self.mount_rejection or e.reason,
+                position=e.p.tolist(),imu_stamp=e.last_imu,scan_stamp=e.last_scan,
+                registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
+                reference_points=0 if e.reference is None else len(e.reference),
+                dynamic_extrinsics=self.rolling_sensor,ground_truth_input=False),allow_nan=False)))
 
 
 class ExternalNavNode(ConfigNode):
@@ -296,6 +341,9 @@ class NavigationNode(ConfigNode):
                 raise ValueError('Active inspection requires the isolated mapping flight stack')
             from .tree_mission import TreeInspectionController
             controller_type = TreeInspectionController
+            if self.c.get('continuous_tree_scanning'):
+                from .continuous_tree import ContinuousTreeInspectionController
+                controller_type=ContinuousTreeInspectionController
         self.controller = controller_type(self.c, self.grid, self.get_parameter('mode').value == 'sensor')
         if self.c.get('active_tree_inspection'):
             self.create_subscription(String,'/perception/trees',
@@ -499,8 +547,10 @@ class NavigationNode(ConfigNode):
             except (TransformException, ValueError):
                 return
             if cosine > 0.7:
-                # Sensor is 5 cm below the base; project slant beam to vertical.
-                self.range_value, self.range_stamp = (msg.range+0.05)*cosine, seconds(msg.header.stamp)
+                # Project slant range and measured mounting offset to vertical.
+                mount=self.c.get('rangefinder_mount',[0.,0.,-.05,0.,math.pi/2,0.])
+                offset=rotation(transform.transform.rotation)@np.asarray(mount[:3])
+                self.range_value, self.range_stamp = msg.range*cosine-offset[2], seconds(msg.header.stamp)
 
     @measured('lidar_receive')
     def cloud(self, msg):
@@ -586,7 +636,8 @@ class NavigationNode(ConfigNode):
         mr = rotation(body_tf.transform.rotation) if self.c.get('sensor_gimbals_enabled') else Rotation.from_euler('xyz', mount[3:]).as_matrix()
         translation = vector(body_tf.transform.translation) if self.c.get('sensor_gimbals_enabled') else mount[:3]
         body = points@mr.T+translation
-        keep = ~np.all(np.abs(body) <= np.asarray(self.c['drone_dimensions'])/2+self.c['self_filter_padding'], axis=1)
+        from .self_filter import self_mask
+        keep = ~self_mask(body,self.c)
         ranges = np.linalg.norm(points, axis=1)
         keep &= np.all(np.isfinite(points), axis=1) & (ranges >= self.c['lidar_min_range']) & (ranges <= self.c['lidar_range']+0.01)
         points, ranges = points[keep], ranges[keep]
@@ -1231,6 +1282,11 @@ class SensorGate(ConfigNode):
         self.pub = self.create_publisher(PointCloud2, '/livox/lidar', qos_profile_sensor_data)
         self.rays_pub = self.create_publisher(PointCloud2, '/mapping/lidar_rays', qos_profile_sensor_data)
         self.ray_status_pub = self.create_publisher(String, '/simulation/lidar_ray_status', 1)
+        if self.c.get('simulation_visual_model')=='polinasi_visual_50cm':
+            self.shadow_buffer=Buffer()
+            self.shadow_listener=TransformListener(self.shadow_buffer,self)
+            self.shadow_pending=None
+            self.create_timer(.01,self.retry_shadow)
         self.create_subscription(PointCloud2, '/simulation/lidar', self.cloud, qos_profile_sensor_data)
         self.create_subscription(Bool, '/mission/start', self.start, 10)
 
@@ -1238,22 +1294,60 @@ class SensorGate(ConfigNode):
         if msg.data and self.started_at is None:
             self.started_at = self.now()
 
+    def retry_shadow(self):
+        msg=self.shadow_pending
+        if msg is None:return
+        if not 0<=self.now()-seconds(msg.header.stamp)<self.c['cloud_timeout']:
+            self.shadow_pending=None
+            return
+        self.cloud(msg)
+
     def cloud(self, msg):
         drop = self.get_parameter('drop_after').value
         if drop >= 0 and self.started_at is not None and self.now()-self.started_at > drop:
             return
-        self.pub.publish(msg)
+        shadow_count=0
+        if self.c.get('simulation_visual_model')=='polinasi_visual_50cm':
+            try:
+                if msg.width!=360 or msg.height!=32:
+                    raise ValueError('unexpected organized Gazebo shadow scan dimensions')
+                from .simulated_rays import directions
+                from .self_filter import body_shadow
+                tf=self.shadow_buffer.lookup_transform('base_link','mid360',Time.from_msg(msg.header.stamp))
+                rows=np.array([tuple(r) for r in point_cloud2.read_points(msg,
+                    field_names=('x','y','z','ring'),skip_nans=False)],dtype=float)
+                shadow=body_shadow(vector(tf.transform.translation),
+                    directions()@rotation(tf.transform.rotation).T,self.c)
+                rows[shadow,:3]=np.nan
+                shadow_count=int(shadow.sum())
+                filtered=point_cloud2.create_cloud_xyz32(msg.header,rows[:,:3])
+                filtered.height,filtered.width=msg.height,msg.width
+                filtered.row_step=filtered.width*filtered.point_step
+                self.pub.publish(filtered)
+                self.shadow_pending=None
+            except TransformException:
+                self.shadow_pending=msg  # Retry newest scan after timestamped TF arrives.
+                return
+            except ValueError as exc:
+                # Fail closed: never forward unverified rays behind the body.
+                self.ray_status_pub.publish(String(data=json.dumps(dict(error=str(exc),
+                    body_shadow_policy='no_unverified_cloud_forwarded'))))
+                return
+        else:
+            self.pub.publish(msg)
         if self.c.get('simulation_no_return_rays', False):
             from .simulated_rays import normalize
             try:
                 if msg.width != 360 or msg.height != 32:
                     raise ValueError('unexpected Gazebo scan dimensions')
-                rows = np.array([tuple(r) for r in point_cloud2.read_points(msg,
-                    field_names=('x', 'y', 'z', 'ring'), skip_nans=False)], dtype=float)
+                if not shadow_count and self.c.get('simulation_visual_model')!='polinasi_visual_50cm':
+                    rows = np.array([tuple(r) for r in point_cloud2.read_points(msg,
+                        field_names=('x', 'y', 'z', 'ring'), skip_nans=False)], dtype=float)
                 points, stats = normalize(rows[:, :3], rows[:, 3], self.c['lidar_range'])
                 rays = point_cloud2.create_cloud_xyz32(msg.header, points)
                 self.rays_pub.publish(rays)
                 stats['measurement_stamp'] = seconds(msg.header.stamp)
+                stats['body_shadow_rays_dropped']=shadow_count
                 self.ray_status_pub.publish(String(data=json.dumps(stats)))
             except (ValueError, AssertionError, KeyError) as exc:
                 # Failed schema/geometry verification supplies no invented rays.

@@ -3,10 +3,16 @@ import math
 import numpy as np
 
 
+def geometric_hint(current,target,step=2.):
+    current,target = np.asarray(current,float),np.asarray(target,float)
+    delta = target-current
+    return current+delta*min(1.,step/max(np.linalg.norm(delta),1e-8))
+
+
 def inspection_hint(grid, current, target, allow_vertical=False, step=2.):
     current,target = np.asarray(current,float),np.asarray(target,float)
     delta = target-current
-    nominal = current+delta*min(1.,step/max(np.linalg.norm(delta),1e-8))
+    nominal = geometric_hint(current,target,step)
     detail = dict(policy='nominal',nominal=nominal.tolist(),final_goal=target.tolist())
     # Unknown needs observation, not arbitrary relabelling/projection.
     if not grid.occupied_goal(nominal):

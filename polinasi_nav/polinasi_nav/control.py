@@ -275,7 +275,9 @@ class MissionController:
             # Safety gates above still run; nominal trajectory/planner time is
             # frozen only after the MPC recovery brake has completed.
             return self.command.copy(), self.command_v.copy()
-        if self.trajectory is not None and self.checked_map_version != self.grid.version and not self.trajectory.safe(self.grid):
+        if self.trajectory is not None and self.checked_map_version != self.grid.version and not (
+                self.trajectory.safe_from(self.grid,self.elapsed) if hasattr(self.trajectory,'safe_from')
+                else self.trajectory.safe(self.grid)):
             # Brake FIRST; replanning is allowed only after the vehicle settles.
             self.fail('route_changed')
             return self._braking(dt)

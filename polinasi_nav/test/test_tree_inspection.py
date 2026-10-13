@@ -30,6 +30,39 @@ def test_ground_alone_not_a_tree():
     assert not detector.update(cylinder(3,2)[-100:],1.)['tracks']
 
 
+def test_upward_views_cannot_reclassify_canopy_as_low_stem():
+    detector = StemDetector()
+    detector.update(cylinder(3,2), 0.)
+    # Old launch points have expired; only a cylindrical-looking upper
+    # foliage cluster remains. Re-estimating ground here would invent a stem.
+    upper = cylinder(-1,10)[:-100] + [0.,0.,4.]
+    for stamp in (31., 32., 33., 34.):
+        result = detector.update(upper, stamp)
+    assert result['ground_reference_m'] == 0.
+    assert result['recent_ground_percentile_m'] > 4.
+    assert result['stem_points'] == 0
+    assert result['detections_count'] == 0
+    assert not any(t['xy'][1] > 9. for t in result['tracks'])
+    json.dumps(result, allow_nan=False)
+
+
+def test_compact_cluster_without_ground_does_not_initialize_reference():
+    detector = StemDetector()
+    result = detector.update(cylinder(3,2)[:-100], 1.)
+    assert result['reason'] == 'waiting_for_launch_ground_reference'
+    assert not result['tracks']
+
+
+def test_real_low_stem_remains_detectable_after_launch_cloud_expires():
+    detector = StemDetector()
+    detector.update(cylinder(3,2), 0.)
+    for stamp in (31., 32., 33.):
+        result = detector.update(cylinder(-4,9)[:-100], stamp)
+    found = [t for t in result['tracks'] if t['confirmed'] and t['last_seen'] == 33.]
+    assert len(found) == 1
+    np.testing.assert_allclose(found[0]['xy'], [-4,9], atol=.1)
+
+
 def test_close_approach_config_uses_two_metre_radius_and_68_degree_tilt():
     c = load_config(Path(__file__).resolve().parents[1]/'config/tilt_inspection.json')
     assert c['tree_view_distances'] == [2.]

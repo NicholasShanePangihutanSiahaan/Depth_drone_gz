@@ -19,6 +19,24 @@ def fixture():
     return c,grid
 
 
+def test_live_camera_hint_does_not_search_detours_and_worker_recomputes_goal():
+    from unittest.mock import patch
+    c,grid = fixture()
+    ctl = TreeInspectionController(c,grid,asynchronous=False)
+    ctl.state,ctl.tree_phase = 'SURVEY','APPROACH'
+    ctl.view_target = np.array([4.,0.,2.])
+    ctl.goal = np.array([2.,0.,2.])
+    ctl.executor = object()  # Simulate live async control without launching a process.
+    with patch('polinasi_nav.local_subgoal.inspection_hint',side_effect=AssertionError('live search')):
+        np.testing.assert_allclose(ctl._mission_hint([0.,0.,2.]),[2.,0.,2.])
+    clone = ctl._planning_clone()
+    assert clone.executor is None and clone.goal is None
+    with patch('polinasi_nav.local_subgoal.inspection_hint',return_value=(np.array([1.,1.,2.]),{'policy':'worker_detour'})) as search:
+        np.testing.assert_allclose(clone._mission_hint([0.,0.,2.]),[1.,1.,2.])
+        search.assert_called_once()
+    assert clone.subgoal_diagnostics['policy']=='worker_detour'
+
+
 def run_ascent(c,grid,height):
     ref = ContinuousAscent(height,c)
     p,v,a = np.array([0.,0.,2.]),np.zeros(3),np.zeros(3)
