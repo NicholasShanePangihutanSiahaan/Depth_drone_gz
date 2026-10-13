@@ -53,6 +53,7 @@ class LidarImuOdometry:
         self.accepted_position=None
         self.imu_shock_until=-np.inf
         self.imu_shock_peak=0.
+        self.velocity_disagreement_scans=0
         self.covariance = np.eye(6)*1.
 
     def freeze_keyframe(self,points):
@@ -231,13 +232,21 @@ class LidarImuOdometry:
         if self.body_imu and self.last_good is not None:
             interval=stamp-self.last_good
             if 0<interval<=.5:
+                measured_velocity=(p-self.accepted_position)/interval if self.accepted_position is not None else self.v.copy()
+                disagreement=float(np.linalg.norm(measured_velocity-self.v))
+                self.velocity_disagreement_scans=(self.velocity_disagreement_scans+1 if disagreement>.3 else 0)
+                # A contact impulse may fall entirely between IMU samples.
+                # Two independently accepted scan displacements can expose it.
+                if self.velocity_disagreement_scans>=2:
+                    self.imu_shock_until=stamp+.5
+                self.last_registration.update(scan_velocity_mps=measured_velocity.tolist(),
+                    velocity_disagreement_mps=disagreement,velocity_disagreement_scans=self.velocity_disagreement_scans)
                 if stamp<=self.imu_shock_until and self.accepted_position is not None:
                     # Contact impulses can alias at the IMU sample rate. Use
                     # independent accepted scan displacement to recover velocity;
                     # never assume ground contact or read simulator velocity.
-                    measured_velocity=(p-self.accepted_position)/interval
                     self.v=.2*self.v+.8*measured_velocity
-                    self.last_registration['velocity_update']='accepted_scan_after_imu_shock'
+                    self.last_registration['velocity_update']='accepted_scan_after_inertial_disagreement'
                 else:
                     self.v+=.2*(p-predicted_p)/interval
                     self.last_registration['velocity_update']='scan_prediction_innovation'

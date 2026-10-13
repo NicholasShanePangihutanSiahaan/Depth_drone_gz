@@ -103,4 +103,22 @@ def test_contact_impulse_velocity_recovers_from_accepted_scans():
         assert e.scan(points,stamp)
         assert np.linalg.norm(e.p)<.03
         if k>=2:assert np.linalg.norm(e.v)<.15
-    assert e.last_registration['velocity_update']=='accepted_scan_after_imu_shock'
+    assert e.last_registration['velocity_update']=='accepted_scan_after_inertial_disagreement'
+
+
+def test_missed_contact_impulse_recovers_without_large_imu_sample():
+    e=LidarImuOdometry([0,0,0,0,0,0],body_imu=True)
+    for i in range(50):e.imu([0,0,0],[0,0,9.81],i*.005)
+    x,y=np.meshgrid(np.linspace(-4,4,25),np.linspace(-4,4,25));x,y=x.ravel(),y.ravel()
+    points=np.vstack((np.column_stack((x,y,np.zeros_like(x))),
+                      np.column_stack((np.full_like(x,5.),x,y+5)),
+                      np.column_stack((x,np.full_like(x,5.),y+5))))
+    assert e.scan(points,.245)
+    e.v=np.array([0.,0.,-.5])  # Previous descent; contact impulse is not sampled.
+    for k in range(1,5):
+        stamp=.245+k*.1
+        for j in range(20):e.imu([0,0,0],[0,0,9.81],stamp-.095+j*.005)
+        assert e.scan(points,stamp)
+        if k>=2:assert np.linalg.norm(e.v)<.15
+    assert e.imu_shock_peak==0.
+    assert e.last_registration['velocity_update']=='accepted_scan_after_inertial_disagreement'

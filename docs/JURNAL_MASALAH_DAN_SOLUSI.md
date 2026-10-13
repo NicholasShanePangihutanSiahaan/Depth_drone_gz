@@ -1207,6 +1207,23 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
   sengaja alias dan recovery velocity <.15 m/s mulai scan kedua.
   Tes flight ulang masih diperlukan; baseline berikutnya tanpa GUI.
 
+### 2026-10-13 — Loop sensor 07: impuls kontak terlewat sampel IMU
+
+- **Kronologi:** takeoff, hover, RETURN, dan LAND kembali berjalan. Saat kaki
+  menyentuh tanah t=89,5 s, posisi tetap akurat tetapi velocity masih turun
+  sekitar .45 m/s. Lima error velocity berturut-turut memicu watcher.
+  Run berhenti sebelum disarm, belum COMPLETE.
+- **Bukti:** `audit_07_hover.summary.json`: 845 pasangan, RMSE posisi .013955 m,
+  max .036963 m. `imu_shock_peak_mps2=0` dan recovery khusus tidak aktif;
+  impuls fisika tidak selalu muncul pada sampel sensor 200 Hz.
+- **Perbaikan:** dua scan accepted berturut-turut dengan selisih velocity
+  scan-displacement terhadap IMU >.3 m/s juga mengaktifkan recovery .5 s.
+  Tidak menganggap drone di tanah dan tidak membaca GT; seluruh scan harus
+  lolos overlap/residual/information gates. Displacement, disagreement,
+  jumlah scan, dan sumber update velocity dilog. Batas audit tetap sama.
+- **Uji:** 8 tes estimator lulus, termasuk kontak tanpa sampel IMU besar.
+  Landing/disarm harus diuji ulang sebelum melanjutkan dua pohon.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
