@@ -1,6 +1,17 @@
 import numpy as np
+import math
 from scipy.spatial.transform import Rotation
 from polinasi_nav.frames import FCULocalAlignment
+
+
+def test_pose_pairing_interpolates_measurement_time_and_yaw_wrap_without_extrapolation():
+    from polinasi_nav.frames import pose_at
+    samples=[(1.,np.array([0.,0.,0.]),math.radians(179)),
+             (1.1,np.array([.1,0.,0.]),math.radians(-179))]
+    p,yaw=pose_at(samples,1.05)
+    np.testing.assert_allclose(p,[.05,0,0])
+    assert abs(abs(yaw)-math.pi)<1e-9
+    assert pose_at(samples,.9) is None and pose_at(samples,1.11) is None
 
 
 def test_fcu_height_reset_is_numerically_transformed_not_relabelled():

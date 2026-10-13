@@ -7,6 +7,19 @@ import math
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+
+def pose_at(samples,stamp):
+    """Interpolate measured position/yaw; never extrapolate a stale FCU pose."""
+    if not samples or stamp<samples[0][0] or stamp>samples[-1][0]:return None
+    for i,(t,p,yaw) in enumerate(samples):
+        if t>=stamp:
+            if t==stamp:return np.asarray(p).copy(),float(yaw)
+            previous,q,before=samples[i-1]
+            fraction=(stamp-previous)/(t-previous)
+            angle=math.atan2(math.sin(yaw-before),math.cos(yaw-before))
+            return np.asarray(q)+(np.asarray(p)-q)*fraction,before+angle*fraction
+    return None
+
 ENU_TO_NED = np.array([[0., 1., 0.], [1., 0., 0.], [0., 0., -1.]])
 FLU_TO_FRD = np.diag([1., -1., -1.])
 

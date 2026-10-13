@@ -1111,6 +1111,24 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
   masih prototype stationary, bukan estimator bias EKF FAST-LIO penuh.
   Commit sebelumnya `dd10c0f` sudah dipush. Uji ulang setelah koreksi diperlukan.
 
+### Loop lokalisasi 03 — Estimator sehat, preflight tertahan beda timestamp
+
+- **Run:** `ros_sensor_palm_farm_20261013_204702_60922_mapping`.
+  T=23,6 s, pose error 0,005803 m, orientation error 0,000850 rad,
+  velocity error 0,009456 m/s. Gravity hasil init 9,799425 m/s².
+  Healthy/source-exclusive/fresh/ownership/ExternalNav checks lolos.
+- **Penghambat:** fixed FCU alignment belum tersedia. Capture lama mensyaratkan
+  FCU latest stamp dengan sensor stamp berbeda <0,05 s, sementara ICP pose
+  mempunyai processing age sekitar 0,15 s. Ini bukan alasan mengubah label
+  frame atau memakai posisi truth.
+- **Perbaikan:** simpan history pose FCU; interpolasikan position dan wrapped
+  yaw pada measurement time estimator sebelum numerical FCULocalAlignment.
+  Tidak extrapolate, tidak mengubah batas pose age atau discrepancy .35 m.
+  Capture tetap disarmed dan stationary. Tes yaw ±179° dan missing history
+  memastikan pairing tidak menciptakan pose masa depan.
+- **Tindakan:** run dihentikan sebelum arm, ulangi setelah commit/push.
+  Commit sebelumnya `a5cba0b` sudah dipush. Landing sensor belum diuji.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

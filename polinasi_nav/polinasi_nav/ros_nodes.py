@@ -29,7 +29,7 @@ from .localisation import LidarImuOdometry
 from .mapping import VoxelMap, FREE, OCCUPIED, integrate_snapshot
 from .map_log import MapLog, write_snapshot
 from .survey import SurveyController
-from .frames import FCULocalAlignment
+from .frames import FCULocalAlignment,pose_at
 from .takeoff import TakeoffSequence
 from .runtime import CallbackTiming, measured, timed_job, PipelineTiming
 from .visual_worker import build_visual_snapshot
@@ -328,6 +328,7 @@ class NavigationNode(ConfigNode):
         self.predictive = None
         self.pid = None
         self.alignment_samples = deque(maxlen=100)
+        self.fcu_pose_history=deque(maxlen=400)
         if identification_empty_arena and not (mission_kind == 'mapping'
                 and self.c.get('identification_simulation_only')
                 and self.c.get('identification_empty_arena')
@@ -527,6 +528,8 @@ class NavigationNode(ConfigNode):
         try:
             matrix = rotation(msg.pose.orientation)
             self.fc_yaw = math.atan2(matrix[1, 0], matrix[0, 0])
+            if not self.fcu_pose_history or self.fc_stamp>self.fcu_pose_history[-1][0]:
+                self.fcu_pose_history.append((self.fc_stamp,self.fc_pose.copy(),self.fc_yaw))
         except ValueError:
             self.fc_stamp = -math.inf
 
@@ -819,15 +822,16 @@ class NavigationNode(ConfigNode):
             self.controller.depth_navigation_paused = False
         if self.rolling_map and self.flight_stage == 'MISSION' and now-self.last_integrated_cloud > self.c.get('map_timeout', 1.):
             health_reason = health_reason or 'stale_integrated_map'
+        aligned_fcu=pose_at(self.fcu_pose_history,self.controller.health.pose_stamp)
         if (self.mission_kind == 'mapping' and self.fcu_alignment is None
                 and self.flight_stage == 'WAIT_EXTERNALNAV' and not self.state.armed
                 and self.fc_pose is not None and not health_reason
-                and abs(self.fc_stamp-self.controller.health.pose_stamp) < .05
+                and aligned_fcu is not None
                 and np.linalg.norm(self.velocity) < .05
-                and np.linalg.norm(self.fc_pose-self.pose) <= .35
-                and abs(math.atan2(math.sin(self.fc_yaw-self.estimated_yaw), math.cos(self.fc_yaw-self.estimated_yaw))) < .2
+                and np.linalg.norm(aligned_fcu[0]-self.pose) <= .35
+                and abs(math.atan2(math.sin(aligned_fcu[1]-self.estimated_yaw), math.cos(aligned_fcu[1]-self.estimated_yaw))) < .2
                 and self.alignment_settled(now)):
-            self.fcu_alignment = FCULocalAlignment(self.pose, self.estimated_yaw, self.fc_pose, self.fc_yaw)
+            self.fcu_alignment = FCULocalAlignment(self.pose, self.estimated_yaw, *aligned_fcu)
             transform = TransformStamped()
             transform.header.stamp, transform.header.frame_id, transform.child_frame_id = self.get_clock().now().to_msg(), 'map', 'fcu_local'
             set_vector(transform.transform.translation, self.fcu_alignment.fcu_origin_in_map)
