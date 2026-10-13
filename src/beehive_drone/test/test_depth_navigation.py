@@ -80,3 +80,13 @@ def test_target_trunk_remains_an_obstacle():
     grid = LocalGrid((0, 0), points, clearance=0.8)
     assert not grid.free(grid.cell((2.6, 0)))
     assert not grid.segment_free((0, 0), (5, 0))
+
+
+def test_thin_branch_between_stride_samples_and_probe_rays_is_preserved():
+    depth = np.full((80, 100), 5.0)
+    depth[37, 53] = 0.9  # Neither pixel coordinate is divisible by four.
+    camera = view(depth)
+    assert np.any(np.isclose(camera.points()[:, 0], 0.9))
+    assert not camera.corridor_seen([0, 0, 1.5], [0.6, 0, 1.5], 0.4, 0.3)
+    depth[37, 53] = np.nan
+    assert not view(depth).corridor_seen([0, 0, 1.5], [0.6, 0, 1.5], 0.4, 0.3)

@@ -55,9 +55,20 @@ class DepthView:
         self.inf_is_clear = inf_is_clear
 
     def points(self, stride=4):
-        v, u = np.mgrid[0:self.depth.shape[0]:stride,
-                        0:self.depth.shape[1]:stride]
-        d = self.depth[::stride, ::stride]
+        # Minimum pooling, not every Nth pixel: preserve a one-pixel branch
+        # between sample columns, using its actual pixel for back-projection.
+        height, width = self.depth.shape
+        rows, cols = math.ceil(height/stride), math.ceil(width/stride)
+        padded = np.full((rows*stride, cols*stride), np.inf)
+        valid = (np.isfinite(self.depth) & (self.depth >= self.min_range)
+                 & (self.depth <= self.max_range))
+        padded[:height, :width] = np.where(valid, self.depth, np.inf)
+        tiles = padded.reshape(rows, stride, cols, stride).transpose(0, 2, 1, 3)
+        tiles = tiles.reshape(rows, cols, stride*stride)
+        index = np.argmin(tiles, axis=2)
+        d = np.take_along_axis(tiles, index[..., None], axis=2)[..., 0]
+        v, u = np.mgrid[:rows, :cols]
+        v, u = v*stride+index//stride, u*stride+index%stride
         good = np.isfinite(d) & (d >= self.min_range) & (d <= self.max_range)
         # Image: right/down/forward; FLU: forward/left/up.
         local = np.column_stack((d[good], -(u[good]-self.cx)*d[good]/self.fx,
@@ -98,13 +109,37 @@ class DepthView:
         # At very short distance the footprint is outside a front camera's
         # FOV; its prior observations are protected by the obstacle memory.
         length = max(distance+radius+extra, 1.4)
-        probes = np.array([
+        corners = np.array([
             [*(start[:2] + direction*length + side*offset), start[2]+height]
-            for offset in np.linspace(-radius, radius, 7)
-            for height in (-half_height, 0.0, half_height)
+            for offset in (-radius, radius)
+            for height in (-half_height, half_height)
         ])
-        forward, measured = self.ranges_at(probes)
-        return bool(np.all(np.isfinite(measured) & (measured > forward)))
+        local = (corners-self.origin) @ self.rotation
+        if np.any(local[:, 0] <= self.min_range):
+            return False
+        us = self.cx-self.fx*local[:, 1]/local[:, 0]
+        vs = self.cy-self.fy*local[:, 2]/local[:, 0]
+        h, w = self.depth.shape
+        if min(us) < 1 or max(us) >= w-1 or min(vs) < 1 or max(vs) >= h-1:
+            return False
+        v, u = np.mgrid[math.floor(min(vs)):math.ceil(max(vs))+1,
+                        math.floor(min(us)):math.ceil(max(us))+1]
+        rays = np.column_stack((np.ones(u.size), -(u.ravel()-self.cx)/self.fx,
+                                -(v.ravel()-self.cy)/self.fy)) @ self.rotation.T
+        normal = np.array([*direction, 0.0])
+        centre = np.array([*(start[:2]+direction*length), start[2]])
+        denom = rays @ normal
+        t = np.dot(centre-self.origin, normal)/np.maximum(denom, 1e-9)
+        intersections = self.origin+rays*t[:, None]
+        inside = ((abs((intersections[:, :2]-centre[:2]) @ side) <= radius)
+                  & (abs(intersections[:, 2]-centre[2]) <= half_height)
+                  & (denom > 0))
+        measured = self.depth[v.ravel()[inside], u.ravel()[inside]]
+        if self.inf_is_clear:
+            measured = np.where(np.isposinf(measured), self.max_range, measured)
+        # Check every pixel in the projected envelope, not sparse probe rays.
+        return bool(measured.size and np.all(np.isfinite(measured)
+                                            & (measured > t[inside])))
 
 
 class ObstacleMemory:

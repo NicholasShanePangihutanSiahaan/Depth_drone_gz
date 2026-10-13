@@ -96,6 +96,8 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--timeout', type=float, default=1000.0)
     parser.add_argument('--trees', type=int, default=3)
+    parser.add_argument('--spawn-x', type=float, default=2.2)
+    parser.add_argument('--spawn-y', type=float, default=-4.1)
     parser.add_argument('--workspace', default='/home/shane/ProjekAtaka/gazebo_sim')
     parser.add_argument('--ardupilot', default='/home/shane/ardupilot')
     args = parser.parse_args()
@@ -120,6 +122,7 @@ def main():
     try:
         start('gazebo', ['ros2', 'launch', 'uav_plantation_sim', 'plantation_sim.launch.py',
                         'world:=plantation_737c519.sdf', 'avoidance_fixture:=true',
+                        f'spawn_x:={args.spawn_x}', f'spawn_y:={args.spawn_y}',
                         'gz_args:=-s -r -v 1'])
         defaults = ','.join(map(str, [ardupilot/'Tools/autotest/default_params/copter.parm',
                                       ardupilot/'Tools/autotest/default_params/gazebo-iris.parm',
@@ -151,7 +154,11 @@ def main():
                 last_print = now
             if node.state in ('DONE', 'ABORT', 'MANUAL_OVERRIDE'):
                 break
+    except KeyboardInterrupt:
+        pass
+    finally:
         result = {'state': node.state, 'states': node.states,
+                  'spawn_xy': [args.spawn_x, args.spawn_y],
                   'trees_inspected': sorted(node.inspected),
                   'minimum_fixture_surface_distance_m': node.min_fixture_surface,
                   'minimum_trunk_surface_distance_m': node.min_trunk_surface,
@@ -161,7 +168,6 @@ def main():
                              and node.min_trunk_surface > 0.4)}
         (folder/'result.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result), flush=True)
-    finally:
         node.csv_file.close()
         for process in reversed(processes):
             if process.poll() is None:
@@ -174,7 +180,8 @@ def main():
         for handle in handles:
             handle.close()
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

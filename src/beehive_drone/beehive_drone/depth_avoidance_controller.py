@@ -267,14 +267,22 @@ class DepthAvoidanceController(Node):
         clearance = self.p['vehicle_radius']+self.p['clearance_margin']
         grid = LocalGrid(start, obstacles, self.p['grid_resolution'],
                          self.p['planning_radius'], clearance)
+        centre = self.orbit_centre if orbit else None
+        if self.state == 'APPROACH_TREE':
+            # The FSM publishes a braking point on the approach circle and
+            # its yaw toward the frozen trunk. Recover that same trunk; do
+            # not invent a landmark or edit the perception map.
+            yaw = self.yaw(goal.pose.orientation)
+            centre = desired+self.p['orbit_radius']*np.array([
+                math.cos(yaw), math.sin(yaw)])
         # Preserve the nominal orbit's inner boundary; a shortcut through the
         # selected trunk never constitutes a successful avoidance manoeuvre.
-        if orbit and self.orbit_centre is not None:
+        if centre is not None:
             xs = grid.origin[0]+np.arange(grid.size)*grid.resolution
             ys = grid.origin[1]+np.arange(grid.size)*grid.resolution
             inner = self.p['orbit_radius']-0.45
-            grid.blocked |= ((xs[:, None]-self.orbit_centre[0])**2
-                             + (ys[None, :]-self.orbit_centre[1])**2 < inner**2)
+            grid.blocked |= ((xs[:, None]-centre[0])**2
+                             + (ys[None, :]-centre[1])**2 < inner**2)
         if not grid.free(grid.cell(start)):
             self.output(goal, 'CLEARANCE_HOLD', True, True)
             return
@@ -295,11 +303,12 @@ class DepthAvoidanceController(Node):
         path = grid.plan(start, desired)
         # A nominal orbital point can itself be occupied by a frond. Rejoin
         # the circle farther CCW, after planning every leg around the obstacle.
-        if not path and orbit and self.orbit_centre is not None:
-            angle = math.atan2(*(start-self.orbit_centre)[::-1])
-            for advance in (30, 50, 70, 90):
+        if not path and centre is not None:
+            angle = math.atan2(*(start-centre)[::-1])
+            advances = (30, 50, 70, 90) if orbit else (25, -25, 45, -45, 70, -70, 90, -90)
+            for advance in advances:
                 theta = angle+math.radians(advance)
-                candidate = self.orbit_centre+self.p['orbit_radius']*np.array([
+                candidate = centre+self.p['orbit_radius']*np.array([
                     math.cos(theta), math.sin(theta)])
                 path = grid.plan(start, candidate)
                 if path:
