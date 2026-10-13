@@ -87,6 +87,29 @@ def test_mapping_fast_poll_does_not_publish_unchanged_map():
     fake.snapshot_pub.publish.assert_not_called()
 
 
+def test_mapping_io_owns_shared_range_queue_and_retry(monkeypatch):
+    from polinasi_nav.mapping_io import MappingIONode
+    from polinasi_nav.ros_nodes import ConfigNode
+    from sensor_msgs.msg import Range
+    from tf2_ros import TransformException
+    original_init=ConfigNode.__init__
+    def mapping_config(self,*args,**kwargs):
+        original_init(self,*args,**kwargs)
+        self.c.update(navigation_window_size=[10.,10.,8.],survey_waypoints=[[0.,0.,2.]])
+    monkeypatch.setattr(ConfigNode,'__init__',mapping_config)
+    node=MappingIONode()
+    try:
+        node.buffer=Mock()
+        node.buffer.lookup_transform.side_effect=TransformException('waiting for localisation TF')
+        node.range_cb(Range(min_range=.05,max_range=8.,range=.13))
+        assert len(node.pending_ranges)==1
+        assert node.range_tf_waits==1
+        node.range_pending()
+        assert node.range_tf_waits==2
+    finally:
+        node.destroy_node()
+
+
 def test_simulation_ray_gate_preserves_raw_cloud_stamp_and_dropout():
     from polinasi_nav.simulated_rays import directions
     node = SensorGate()

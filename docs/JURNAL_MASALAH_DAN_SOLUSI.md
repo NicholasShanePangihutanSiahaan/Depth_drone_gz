@@ -1245,6 +1245,23 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
 - **Berikutnya:** langsung uji dua pohon sensor tanpa GUI; juga memverifikasi
   range freshness dan COMPLETE setelah landing. Belum klaim full flight lolos.
 
+### 2026-10-13 — Loop sensor 09: setup menahan start karena shared callback mapping
+
+- **Kronologi:** run inspeksi dua pohon dibuka headless. Sebelum start/arm,
+  check setup mendeteksi mapping_io mati dan snapshot tidak tersedia.
+  Tidak diteruskan terbang; run dihentikan.
+- **Penyebab:** MappingIONode meminjam range_cb dari NavigationNode tetapi
+  belum menginisialisasi pending_ranges / retry range_pending yang baru.
+  ROS log menunjukkan AttributeError pending_ranges, bukan kegagalan LIO.
+- **Perbaikan:** kedua pemakai callback memiliki antrean dan retry timestamp
+  yang sama; mapping update memproses pending range sebelum snapshot.
+  Tes regresi membangun instance MappingIONode dan mencoba callback + retry.
+- **Bukti tambahan:** range navigasi run 09 valid .194 m, umur .05 s. Ini
+  memverifikasi perbaikan timestamp range, bukan bypass landing.
+- **Baseline 08:** 1141 pasangan, RMSE posisi .012574 m, max .038877 m,
+  LAND dan disarm tanpa failure; COMPLETE sebelumnya tertahan range callback.
+- **Status:** inspeksi dua pohon belum terbang pada run 09; ulang setup penuh.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

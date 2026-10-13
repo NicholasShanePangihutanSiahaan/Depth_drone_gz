@@ -31,6 +31,7 @@ class MappingIONode(ConfigNode):
     map_pending = NavigationNode.map_pending
     odom = NavigationNode.odom
     range_cb = NavigationNode.range_cb
+    range_pending = NavigationNode.range_pending
     save_map_log = NavigationNode.save_map_log
     global_visualise = NavigationNode.global_visualise
     _visual_job = NavigationNode._visual_job
@@ -47,6 +48,8 @@ class MappingIONode(ConfigNode):
             nominal=[], exploration_points=[], waypoints=np.asarray(self.c['survey_waypoints']), trajectory=None)
         self.pose, self.velocity, self.estimated_yaw = None, np.zeros(3), 0.
         self.flight_stage, self.range_value, self.range_stamp = 'WAIT_EXTERNALNAV', None, -math.inf
+        self.pending_ranges=deque(maxlen=12)
+        self.range_tf_waits=0
         self.state = State()
         self.pending, self.executed = deque(maxlen=1), deque(maxlen=6000)
         self.last_map = self.last_integrated_cloud = -math.inf
@@ -208,6 +211,7 @@ class MappingIONode(ConfigNode):
 
     @measured('mapping_io_update')
     def update(self):
+        NavigationNode.range_pending(self)
         if self.pose is None:
             return
         self.map_pending()
