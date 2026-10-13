@@ -38,6 +38,31 @@ def test_held_reference_does_not_recycle_pid_acceleration_and_braking_is_preserv
     np.testing.assert_allclose(controller.command_a,[.2,0.,0.])
 
 
+def test_range_waits_for_measurement_time_tf_without_restamping():
+    from collections import deque
+    from sensor_msgs.msg import Range
+    from geometry_msgs.msg import TransformStamped
+    from tf2_ros import TransformException
+    fake=SimpleNamespace(pending_ranges=deque(maxlen=12),range_tf_waits=0,
+        range_value=None,range_stamp=-np.inf,c={'range_timeout':.3,'rangefinder_mount':[0,0,-.07,0,0,0]},
+        now=lambda:1.1,buffer=Mock())
+    fake.range_pending=lambda:NavigationNode.range_pending(fake)
+    fake.buffer.lookup_transform.side_effect=TransformException('future TF not available yet')
+    msg=Range();msg.header.stamp.sec=1;msg.min_range=.05;msg.max_range=8.;msg.range=.13
+    NavigationNode.range_cb(fake,msg)
+    assert fake.range_value is None and len(fake.pending_ranges)==1
+    transform=TransformStamped();transform.transform.rotation.w=1.
+    fake.buffer.lookup_transform.side_effect=None;fake.buffer.lookup_transform.return_value=transform
+    NavigationNode.range_pending(fake)
+    assert fake.range_stamp==1. and fake.range_value==pytest.approx(.2)
+    assert len(fake.pending_ranges)==0
+    # An old queued range never becomes a fresh measurement after TF arrives.
+    fake.now=lambda:2.
+    fake.pending_ranges.append(msg)
+    NavigationNode.range_pending(fake)
+    assert fake.range_stamp==1. and len(fake.pending_ranges)==0
+
+
 def test_navigation_initialises_and_publishes_visualisation():
     node = NavigationNode()
     try:

@@ -124,8 +124,11 @@ def test_relocated_rangefinder_corrects_forward_and_downward_mount_offset():
     r=Rotation.from_euler('y',.2)
     q=r.as_quat()
     tf.transform.rotation.x,tf.transform.rotation.y,tf.transform.rotation.z,tf.transform.rotation.w=q
-    fake=SimpleNamespace(c={'rangefinder_mount':[.115,0.,-.07,0.,math.pi/2,0.]},
-                         buffer=Mock(),range_value=None,range_stamp=None)
+    from collections import deque
+    fake=SimpleNamespace(c={'rangefinder_mount':[.115,0.,-.07,0.,math.pi/2,0.],'range_timeout':.3},
+                         buffer=Mock(),range_value=None,range_stamp=None,
+                         pending_ranges=deque(maxlen=12),range_tf_waits=0,now=lambda:.1)
+    fake.range_pending=lambda:NavigationNode.range_pending(fake)
     fake.buffer.lookup_transform.return_value=tf
     msg=Range(min_range=.05,max_range=8.,range=2.)
     NavigationNode.range_cb(fake,msg)

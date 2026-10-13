@@ -391,6 +391,8 @@ class NavigationNode(ConfigNode):
         self.last_flight_cmd = -math.inf
         self.stage_started = self.now()
         self.range_value, self.range_stamp = None, -math.inf
+        self.pending_ranges=deque(maxlen=12)
+        self.range_tf_waits=0
         self.camera_pitch_measured, self.camera_stamp = 0., -math.inf
         self.fc_pose, self.fc_stamp, self.fc_yaw = None, -math.inf, 0.
         self.estimated_yaw = 0.
@@ -564,16 +566,33 @@ class NavigationNode(ConfigNode):
 
     def range_cb(self, msg):
         if math.isfinite(msg.range) and msg.min_range <= msg.range <= msg.max_range:
+            self.pending_ranges.append(msg)
+            self.range_pending()
+
+    def range_pending(self):
+        pending=getattr(self,'pending_ranges',None)
+        if not pending:return
+        now=self.now()
+        for msg in reversed(list(pending)):
+            stamp=seconds(msg.header.stamp)
+            if not 0<=now-stamp<self.c['range_timeout']:
+                pending.remove(msg)
+                continue
             try:
                 transform = self.buffer.lookup_transform('map', 'base_link', Time.from_msg(msg.header.stamp))
                 cosine = rotation(transform.transform.rotation)[2, 2]
             except (TransformException, ValueError):
-                return
+                self.range_tf_waits+=1
+                continue
             if cosine > 0.7:
                 # Project slant range and measured mounting offset to vertical.
                 mount=self.c.get('rangefinder_mount',[0.,0.,-.05,0.,math.pi/2,0.])
                 offset=rotation(transform.transform.rotation)@np.asarray(mount[:3])
-                self.range_value, self.range_stamp = msg.range*cosine-offset[2], seconds(msg.header.stamp)
+                self.range_value, self.range_stamp = msg.range*cosine-offset[2], stamp
+                # Keep newer measurements waiting for a time-bracketed TF;
+                # discard consumed/older ones without changing their stamps.
+                self.pending_ranges=deque((m for m in pending if seconds(m.header.stamp)>stamp),maxlen=12)
+                return
 
     @measured('lidar_receive')
     def cloud(self, msg):
@@ -775,6 +794,7 @@ class NavigationNode(ConfigNode):
             return
         if not self.separate_mapping:
             self.map_pending()
+        NavigationNode.range_pending(self)
         if self.mission_kind == 'mapping':
             self.grid.expire(now)
         elif now-self.last_map > 0.5:
@@ -1062,6 +1082,10 @@ class NavigationNode(ConfigNode):
                    'takeoff_result': self.takeoff_sequence.result if self.takeoff_sequence else None,
                    'armed': self.state.armed, 'fcu_mode': self.state.mode,
                    'altitude_m': float(self.pose[2]) if self.pose is not None else None,
+                   'rangefinder': dict(vertical_distance_m=self.range_value,
+                       measurement_age_seconds=now-self.range_stamp if np.isfinite(self.range_stamp) else None,
+                       pending_measurements=len(getattr(self,'pending_ranges',())),
+                       transform_waits=getattr(self,'range_tf_waits',0)),
                    'last_timing_gap_seconds': self.last_timing_gap,
                    'fcu_frame_aligned': self.fcu_alignment is not None if self.mission_kind == 'mapping' else None,
                    'mavros_parameters_ready': self.mavros_ready,

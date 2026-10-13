@@ -1224,6 +1224,27 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
 - **Uji:** 8 tes estimator lulus, termasuk kontak tanpa sampel IMU besar.
   Landing/disarm harus diuji ulang sebelum melanjutkan dua pohon.
 
+### 2026-10-13 — Loop sensor 08: landing/disarm berhasil, konfirmasi range tertinggal
+
+- **Kronologi:** drone takeoff, hover, RETURN, LAND, menyentuh tanah, lalu
+  disarm tanpa failure. Error velocity setelah kontak ~.007 m/s; recovery
+  berhasil. Namun FSM tetap LAND, bukan COMPLETE. Run dihentikan saat motor
+  sudah disarm untuk audit konfirmasi, bukan dianggap misi COMPLETE.
+- **Bukti:** run `ros_sensor_palm_farm_20261013_225830_80585_mapping`,
+  `audit_08_hover.jsonl` dan summary. Range aktual di ROS .125 m valid.
+- **Diagnosis:** range_cb meminta TF pada waktu pengukuran range; estimator
+  LiDAR menerbitkan TF 10 Hz dengan delay, sehingga callback dapat meminta
+  waktu yang lebih baru dari TF terakhir dan membuang pengukuran. Ini berbeda
+  dari sensor range gagal atau drone belum landing.
+- **Perbaikan:** antrekan 12 range valid, retry dari tick saat TF pengukuran
+  tersedia. Tidak memakai TF latest atau mengganti timestamp. Range melewati
+  range_timeout dibuang; transform mount/attitude tetap dihitung numerik.
+  Log range vertical, umur pengukuran, jumlah antrean dan TF waits ditambah.
+- **Uji:** 30 tes ROS lulus, termasuk TF terlambat, timestamp tidak berubah,
+  range stale tidak dihidupkan kembali, serta proyeksi mount terelokasi.
+- **Berikutnya:** langsung uji dua pohon sensor tanpa GUI; juga memverifikasi
+  range freshness dan COMPLETE setelah landing. Belum klaim full flight lolos.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
