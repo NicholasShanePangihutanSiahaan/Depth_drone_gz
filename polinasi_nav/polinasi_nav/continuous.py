@@ -33,10 +33,13 @@ def derivative_bound(controls, depth=4):
     return max(derivative_bound(left, depth-1), derivative_bound(right, depth-1))
 
 
-def curve_safe(controls, grid, depth=0, certificate=None):
+def curve_safe(controls, grid, depth=0, certificate=None, diagnostics=None):
     lower = grid.indices(np.min(controls, axis=0)-1e-9)
     upper = grid.indices(np.max(controls, axis=0)+1e-9)
     if not grid.inside(lower) or not grid.inside(upper):
+        if diagnostics is not None:
+            diagnostics.update(reason='outside_window',lower=lower.tolist(),upper=upper.tolist(),
+                               controls=controls.tolist())
         return False
     region = tuple(slice(int(a), int(b)+1) for a, b in zip(lower, upper))
     if not np.any(grid.blocked[region]):
@@ -44,10 +47,14 @@ def curve_safe(controls, grid, depth=0, certificate=None):
             certificate.append((lower.copy(), upper.copy()))
         return True  # The entire curve lies inside this observed-free box.
     if depth >= 12:
+        if diagnostics is not None:
+            index=lower+np.argwhere(grid.blocked[region])[0]
+            diagnostics.update(reason='blocked_curve_box',depth=depth,controls=controls.tolist(),
+                               blockage=grid.describe_blockage(index))
         return False  # Unresolved contact is rejected, not sampled away.
     left, right = split_bezier(controls)
-    return (curve_safe(left, grid, depth+1, certificate) and
-            curve_safe(right, grid, depth+1, certificate))
+    return (curve_safe(left, grid, depth+1, certificate, diagnostics) and
+            curve_safe(right, grid, depth+1, certificate, diagnostics))
 
 
 class ContinuousTrajectory:
@@ -195,7 +202,7 @@ class ContinuousTrajectory:
             return True
         elapsed=float(np.clip(elapsed,0.,self.duration))
         beginning=0.
-        for controls,duration in zip(self.controls,self.durations):
+        for segment,(controls,duration) in enumerate(zip(self.controls,self.durations)):
             end=beginning+duration
             if elapsed < end:
                 if elapsed>beginning:
@@ -206,7 +213,11 @@ class ContinuousTrajectory:
                         level=(1-u)*level[:-1]+u*level[1:]
                         right.append(level[-1])
                     controls=np.asarray(right[::-1])
-                if not curve_safe(controls,grid):return False
+                diagnostics={}
+                if not curve_safe(controls,grid,diagnostics=diagnostics):
+                    self.execution_certificate.update(remaining_curve_safe=False,
+                        failed_segment=segment,blockage=diagnostics)
+                    return False
             beginning=end
         safe=bool(grid.safe(self.sample(elapsed)[0]))
         self.execution_certificate['remaining_curve_safe']=safe

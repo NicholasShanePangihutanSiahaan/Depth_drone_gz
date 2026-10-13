@@ -110,6 +110,25 @@ def test_mapping_io_owns_shared_range_queue_and_retry(monkeypatch):
         node.destroy_node()
 
 
+def test_sensor_auditor_only_allows_bounded_existing_map_brake_recovery():
+    import importlib.util
+    from pathlib import Path
+    path=Path(__file__).resolve().parents[2]/'tools/audit_sensor_localisation.py'
+    spec=importlib.util.spec_from_file_location('sensor_audit',path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    w=module.RecoveryWatch()
+    nav=dict(failure='route_changed',mission='BRAKE',simulation_time=1.,health_reason='')
+    assert w.check(nav,10.)==''
+    assert w.check(dict(nav,simulation_time=2.),11.)==''
+    assert w.check(dict(nav,failure='',mission='SURVEY',simulation_time=3.),12.)==''
+    assert len(w.events)==2
+    assert w.check(dict(nav,failure='localisation_loss'),13.)=='localisation_loss'
+    assert w.check(dict(nav,failure='emergency_unavoidable:route_changed'),14.).startswith('emergency_unavoidable')
+    assert w.check(dict(nav,mission='HOLD_ABORT'),15.)=='route_changed'
+    assert w.check(dict(nav,simulation_time=6.),16.)==''
+    assert w.check(dict(nav,simulation_time=12.),22.)=='map_change_recovery_timeout'
+
+
 def test_simulation_ray_gate_preserves_raw_cloud_stamp_and_dropout():
     from polinasi_nav.simulated_rays import directions
     node = SensorGate()

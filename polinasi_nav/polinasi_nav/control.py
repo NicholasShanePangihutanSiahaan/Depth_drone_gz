@@ -58,6 +58,7 @@ class MissionController:
         self.route_wait_scans = 0
         self.route_blockage = {}
         self.route_planner_reason = ''
+        self.route_failure_diagnostics={}
 
     def flower_event(self, confirmed):
         # An event only counts while settled at an inspection view with visibility.
@@ -66,6 +67,13 @@ class MissionController:
 
     def fail(self, reason):
         if not self.failure:
+            if reason=='route_changed' and self.trajectory is not None:
+                self.route_failure_diagnostics=dict(
+                    certificate=getattr(self.trajectory,'execution_certificate',{}),
+                    command=self.command.tolist(),elapsed_seconds=float(self.elapsed),
+                    current_nominal_safe=bool(self.grid.safe(self.command)),
+                    current_actual_safe=bool(self.grid.safe(self.command,actual=True)),
+                    current_blockage=self.grid.describe_blockage(self.grid.indices(self.command)))
             self.buzzer_remaining = 0.
             if self.state == 'EXPLORE':
                 self.exploration_phase = 'BRAKE'

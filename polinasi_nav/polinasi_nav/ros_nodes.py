@@ -1099,6 +1099,7 @@ class NavigationNode(ConfigNode):
                    'global_map_origin': self.history.lo.tolist() if self.history else self.grid.lo.tolist(),
                    'global_map_shape': list(map(int, self.history.shape)) if self.history else list(map(int, self.grid.shape)),
                    'mission': self.controller.state, 'failure': self.controller.failure, 'replans': self.controller.replans,
+                   'route_failure_diagnostics':getattr(self.controller,'route_failure_diagnostics',{}),
                    'buzzer_events': self.controller.buzzer_events, 'health_reason': health_reason,
                    'depth_safety': self.depth_hold_guard.status if hasattr(self,'depth_hold_guard') else {},
                    'depth_motion_recovery': self.depth_motion_recovery.status if hasattr(self,'depth_motion_recovery') else {},

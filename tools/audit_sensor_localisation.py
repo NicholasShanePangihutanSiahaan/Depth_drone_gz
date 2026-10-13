@@ -11,6 +11,34 @@ from std_msgs.msg import String
 from scipy.spatial.transform import Rotation
 
 
+class RecoveryWatch:
+    """Observe the existing brake/replan state; never send flight commands."""
+    def __init__(self):
+        self.started=None
+        self.wall_started=None
+        self.recent=[]
+        self.events=[]
+
+    def check(self,nav,wall):
+        failure=nav.get('failure','')
+        stamp=nav.get('simulation_time',0.)
+        if failure!='route_changed':
+            if self.started is not None:
+                self.events.append(dict(event='recovery_ended',stamp=stamp,failure=failure))
+                self.started=self.wall_started=None
+            return failure
+        if nav.get('mission')!='BRAKE' or nav.get('health_reason'):
+            return failure
+        if self.started is None:
+            self.started,self.wall_started=stamp,wall
+            self.recent=[t for t in self.recent if stamp-t<20.]+[stamp]
+            self.events.append(dict(event='map_change_brake',stamp=stamp,
+                diagnostics=nav.get('route_failure_diagnostics',{})))
+        if len(self.recent)>3:return 'repeated_map_change_recovery'
+        if stamp-self.started>5. or wall-self.wall_started>60.:return 'map_change_recovery_timeout'
+        return ''
+
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True)
     p.add_argument('--seconds',type=float,default=1800.)
@@ -18,6 +46,7 @@ def main():
     args=p.parse_args()
     rclpy.init();node=Node('sensor_localisation_readonly_audit')
     truths=deque(maxlen=1000);latest={};samples=[]
+    recovery=RecoveryWatch();events_written=0
     def stamp(msg):return msg.header.stamp.sec+msg.header.stamp.nanosec*1e-9
     def values(msg):
         pos=msg.pose.pose.position;q=msg.pose.pose.orientation
@@ -56,7 +85,12 @@ def main():
                     print(json.dumps(dict(pairs=len(samples),latest=samples[-1] if samples else latest.get('debug',{}))),flush=True)
                     last_print=time.monotonic()
                 nav=latest.get('nav',{})
-                if nav.get('failure'):latest['stop_reason']=nav['failure']
+                fault=recovery.check(nav,time.monotonic())
+                if fault:latest['stop_reason']=fault
+                if len(recovery.events)>events_written:
+                    with args.output.with_suffix('.events.jsonl').open('a') as event_stream:
+                        for event in recovery.events[events_written:]:event_stream.write(json.dumps(event)+'\n')
+                    events_written=len(recovery.events)
                 if latest.get('stop_reason'):
                     if args.stop_run and latest['stop_reason']!='simulator_clock_reset':
                         subprocess.run([sys.executable,str(Path(__file__).resolve().parent/'stop_simulation.py'),
@@ -72,6 +106,7 @@ def main():
         position_rmse_m=float(np.sqrt(np.mean(np.square(errors)))) if errors else None,
         position_max_error_m=max(errors) if errors else None,last_navigation=latest.get('nav',{}),
         stop_reason=latest.get('stop_reason',''),
+        recovery_events=recovery.events,
         ground_truth_used_by_estimator=False)
     args.output.with_suffix('.summary.json').write_text(json.dumps(summary,indent=2)+'\n')
     print(json.dumps({k:v for k,v in summary.items() if k!='last_navigation'}),flush=True)

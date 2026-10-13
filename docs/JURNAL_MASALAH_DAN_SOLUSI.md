@@ -1262,6 +1262,34 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
   LAND dan disarm tanpa failure; COMPLETE sebelumnya tertahan range callback.
 - **Status:** inspeksi dua pohon belum terbang pada run 09; ulang setup penuh.
 
+### 2026-10-13 — Loop sensor 10: satu pohon lengkap, perubahan peta pada orbit kedua
+
+- **Kronologi:** setup penuh lolos. Drone takeoff, approach pohon id4, naik
+  sampai guard ruang atas membatasi z~3.32 m, scan 6/6 sektor valid, memilih
+  pohon id2, approach, naik z~2.72 m, dan scan 3/6 sektor. Pada t=261.2 s
+  controller memulai BRAKE karena route_changed; watcher langsung menutup run
+  sebelum jalur brake/replan yang sudah tersedia sempat selesai. RViz/kamera
+  yang diminta di tengah run ikut ditutup. Tidak klaim misi COMPLETE.
+- **Bukti:** `audit_10_inspection.summary.json`: 2558 pasangan, RMSE posisi
+  .012087 m, maksimum .038191 m. Health reason kosong; bukan kegagalan LIO.
+  Map clearance ~.552 m. Penyebab voxel tepat belum dilog pada run ini.
+- **Diagnosis pasti:** control._braking sudah memiliki recovery route_changed
+  setelah braking selesai. Watcher sebelumnya memperlakukan setiap failure
+  sementara ini sebagai terminal, sehingga tidak bisa menguji replanning.
+  Tidak disimpulkan bahwa obstruction palsu atau boleh diabaikan.
+- **Perbaikan:** audit mengizinkan hanya BRAKE route_changed tanpa health
+  fault, maksimal 5 s sim / 60 s wall, maksimal 3 onset dalam 20 s sim.
+  Terminal HOLD_ABORT, emergency, stale/localisation fault dan error akurasi
+  tetap menghentikan run. Watcher read-only, tidak mengirim flight command.
+- **Log:** sertifikat suffix gagal menyimpan segmen, bounding box, voxel
+  penghambat, penyebab occupied/unknown/outside; controller menyimpan diagnosis
+  sebelum trajectory dihapus. Event brake/recovery juga disimpan auditor.
+- **Uji:** 26 tes continuous trajectory/tree dan 32 tes ROS/auditor lulus.
+  Run ulang headless diperlukan untuk memeriksa replan dan sisa misi.
+- **Koreksi laporan:** nilai t=261.1 yang tidak berubah sempat disebut lebih
+  lambat setelah GUI dibuka; audit summary kemudian membuktikan run sudah
+  auto-stop route_changed, bukan bukti slowdown GUI pada run tersebut.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

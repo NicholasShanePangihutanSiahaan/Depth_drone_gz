@@ -84,6 +84,10 @@ def test_execution_suffix_ignores_past_obstacle_but_rejects_future_obstacle():
     grid.state[tuple(grid.indices([3.,0.,2.]))]=OCCUPIED
     grid.rebuild(2.)
     assert not tr.safe_from(grid,elapsed)
+    certificate=tr.execution_certificate
+    assert not certificate['remaining_curve_safe']
+    assert certificate['blockage']['reason']=='blocked_curve_box'
+    assert 'occupied' in certificate['blockage']['blockage']['causes']
 
 
 def test_bezier_derivatives_match_finite_differences_and_global_bounds():
