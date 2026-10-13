@@ -132,6 +132,27 @@ def test_directional_braking_rejects_unknown_in_front():
     assert ctl.failure == 'no_directional_stopping_corridor'
 
 
+def test_directional_braking_does_not_double_apply_tracking_margin_to_actual_pose():
+    c,_,_=fixture()
+    c.update(bounds_min=[-3.,-3.,-.6],bounds_max=[6.,3.,5.],
+        drone_dimensions=[.6,.6,.5],clearance=.2,tracking_margin=.2,tracking_limit=.2,
+        home=[0.,0.,3.319],survey_waypoints=[[0.,1.,3.319]])
+    g=VoxelMap(c);g.state[:]=FREE;g.seen[:]=1.
+    g.state[tuple(g.indices([.9,0.,4.3]))]=OCCUPIED;g.rebuild(1.)
+    ctl=SurveyController(c,g,asynchronous=False);ctl.state='SURVEY'
+    ctl.trajectory=ContinuousTrajectory([[0.,0.,3.319],[0.,1.,3.319]],c)
+    ctl.elapsed=ctl.trajectory.duration*.3
+    p,v,a=ctl.trajectory.sample(ctl.elapsed)
+    ctl.command=p.copy();ctl.command_v=v.copy();ctl.command_a=a.copy()
+    actual=p+[0.,0.,.09]
+    assert not g.safe(actual) and g.safe(actual,actual=True) and g.safe(p)
+    ctl.health=Health(1.,1.,1.,True);g.last_observation_stamp=1.
+    ctl.tick(1.,.05,actual,v)
+    assert not ctl.failure
+    assert ctl.speed_diagnostics['braking_scale']==1.
+    assert ctl.speed_diagnostics['stopping_checks'][0]['basis']=='reference_with_tracking_margin'
+
+
 def test_debug_trace_is_throttled_but_preserves_decision_changes(tmp_path):
     log = MapLog(tmp_path)
     d = dict(simulation_time=0., mission='SURVEY', failure='', route_blockage={})

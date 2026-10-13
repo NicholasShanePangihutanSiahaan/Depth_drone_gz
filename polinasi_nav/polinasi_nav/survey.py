@@ -290,7 +290,7 @@ class SurveyController(MissionController):
     def _sample_next(self, dt, position, velocity):
         if not isinstance(self.trajectory, ContinuousTrajectory):
             return super()._sample_next(dt, position, velocity)
-        _, nominal_v, nominal_a, _ = self.trajectory.derivatives(self.elapsed)
+        nominal_p, nominal_v, nominal_a, _ = self.trajectory.derivatives(self.elapsed)
         error = float(np.linalg.norm(position-self.command))
         soft, hard = .25*self.c['tracking_limit'], .8*self.c['tracking_limit']
         tracking = np.clip(1-(error-soft)/max(hard-soft, 1e-8), self.phase.minimum, 1.)
@@ -308,8 +308,12 @@ class SurveyController(MissionController):
             # Full body/margin inflation and jerk-limited Brake remain intact.
             space = 0.
             for factor in (1., .75, .5, self.phase.minimum):
-                detail = dict(speed_factor=float(factor))
-                if brake_safe(self.grid, position, nominal_v*factor, self.c,
+                detail = dict(speed_factor=float(factor),basis='reference_with_tracking_margin')
+                # The reference reserve covers tracking error. Actual pose was
+                # already checked with the actual-body margin in tick(), and
+                # PID checks it again with the final acceleration. Applying
+                # the reference reserve to measured pose double-counts error.
+                if brake_safe(self.grid, nominal_p, nominal_v*factor, self.c,
                               nominal_a*factor**2, diagnostics=detail):
                     stopping_checks.append(detail)
                     space = factor
@@ -321,6 +325,7 @@ class SurveyController(MissionController):
                     occupied_clearance_m=float(occupied), inflated_free_clearance_m=float(free),
                     braking_scale=0., target_scale=0., nominal_speed_mps=float(np.linalg.norm(nominal_v)),
                     measured_velocity=np.asarray(velocity).tolist(),
+                    reference_position=nominal_p.tolist(),measured_position=np.asarray(position).tolist(),
                     commanded_velocity=self.command_v.tolist(),
                     commanded_acceleration=self.command_a.tolist(),
                     trajectory_elapsed_seconds=float(self.elapsed),
@@ -335,6 +340,8 @@ class SurveyController(MissionController):
         if self.adaptive_reason == 'clearance' and self.c.get('adaptive_directional_clearance', False):
             self.adaptive_reason = 'directional_braking'
         self.speed_diagnostics = dict(occupied_clearance_m=float(occupied),
+            reference_position=nominal_p.tolist(),measured_position=np.asarray(position).tolist(),
+            stopping_check_basis='reference_with_tracking_margin; actual_body_checked_separately',
             stopping_checks=stopping_checks,
             inflated_free_clearance_m=float(free), legacy_space_scale=legacy_space,
             braking_scale=float(space), tracking_scale=float(tracking), turn_scale=float(turn),

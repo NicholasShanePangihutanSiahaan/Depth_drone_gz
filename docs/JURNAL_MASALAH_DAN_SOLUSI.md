@@ -1328,6 +1328,30 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
 - **Uji:** regression overshoot 3.44 m tidak boleh mengganti reference 3.32 m;
   handoff menahan orbit sebelum tinggi stabil. Run ulang diperlukan.
 
+### 2026-10-14 — Loop sensor 13: margin tracking dihitung lagi pada posisi aktual
+
+- **Kronologi:** pohon id4 berhasil 6/6 sektor tanpa failure pengereman lama.
+  Drone approach pohon id5, ASCEND berhenti pada reference z=3.319387 dan
+  handoff mempertahankannya. Awal scan kedua t=246.5 s, adaptive speed
+  melaporkan no_directional_stopping_corridor; run dihentikan.
+- **Bukti:** RMSE posisi .011893 m, max .038651 m. Directional check memakai
+  posisi z=3.400319, sementara inspection_altitude 3.319387 tetap benar.
+  Voxel occupied [6.5,6.7,4.3] masuk mask nominal pada posisi measured yang
+  hanya ~.081 m di atas reference. Tidak ada unknown pada footprint blocker.
+- **Penyebab tambahan:** SurveyController._sample_next memakai measured pose
+  untuk brake_safe dengan actual=False (full tracking reserve). Controller
+  sebelumnya sudah memeriksa measured body dengan actual=True; nominal reserve
+  seharusnya diterapkan pada reference, bukan dihitung lagi pada measured pose.
+- **Perbaikan:** directional scaling mengecek posisi reference trajectory
+  dengan tracking margin penuh. Actual pose/velocity tetap diperiksa pada
+  MissionController.tick dan PID final acceleration. Tidak mengurangi dimensi,
+  clearance, tracking_limit, occupied voxel, atau menganggap unknown kosong.
+  Log memisahkan reference_position, measured_position, dan basis safety check.
+- **Uji:** 15 tes route guard/braking lulus. Regresi memakai deviasi tinggi
+  .09 m: actual-body dan reference aman, sedangkan full reserve pada actual
+  tidak aman; tick tidak false-abort. Unknown di depan tetap ditolak.
+- **Status:** full dua pohon + landing belum selesai; ulang headless.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
