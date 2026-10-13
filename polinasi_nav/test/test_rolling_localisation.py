@@ -7,7 +7,11 @@ from polinasi_nav.localisation import LidarImuOdometry
 def test_stationary_body_remains_stationary_when_lidar_rolls():
     e=LidarImuOdometry([.205,0,.085,0,0,0],body_imu=True)
     for i in range(50):e.imu([0,0,0],[0,0,9.81],i*.005)
-    world=np.random.default_rng(1).uniform([-5,-5,-1],[5,5,6],(3000,3))
+    x,y=np.meshgrid(np.linspace(-5,5,25),np.linspace(-5,5,25))
+    x,y=x.ravel(),y.ravel()
+    world=np.vstack((np.column_stack((x,y,np.full_like(x,-1.))),
+                     np.column_stack((np.full_like(x,5.),x,y+3.)),
+                     np.column_stack((x,np.full_like(x,5.),y+3.))))
     assert e.scan((world-e.mount_p)@e.mount_r,.245)
     for k in range(1,10):
         stamp=.245+k*.1
@@ -40,3 +44,17 @@ def test_body_imu_fixture_is_physical_sensor_not_odometry(tmp_path):
     sensor=model.find("link[@name='body_imu_link']/sensor")
     assert sensor.get('type')=='imu' and sensor.findtext('gz_frame_id')=='base_link'
     assert model.findtext("joint[@name='body_imu_fixed']/parent").endswith('base_link')
+
+
+def test_full_roll_bootstrap_requires_stationary_disarmed_prior():
+    e=LidarImuOdometry([0,0,0,0,0,0],body_imu=True,bootstrap_duration=.2)
+    for i in range(50):e.imu([0,0,0],[0,0,9.81],i*.005)
+    points=np.random.default_rng(2).uniform(-3,3,(500,3))
+    assert not e.scan(points,.245)
+    assert e.reason=='bootstrap_requires_disarmed_stationary_launch'
+    e.bootstrap_stationary=True
+    for k in range(3):
+        t=.345+.1*k
+        for j in range(20):e.imu([0,0,0],[0,0,9.81],t-.095+j*.005)
+        result=e.scan(points,t)
+    assert result and e.reason=='full_roll_bootstrap'

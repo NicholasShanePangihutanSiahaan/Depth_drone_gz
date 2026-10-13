@@ -123,11 +123,15 @@ class LocalisationNode(ConfigNode):
         self.last_imu = -math.inf
         self.pending_imu = deque(maxlen=500)
         self.rolling_sensor=bool(self.mode=='sensor' and self.c.get('sensor_rolling_localisation'))
-        self.estimator = LidarImuOdometry(self.c['lidar_mount'], self.c['initial_pose'],body_imu=self.rolling_sensor)
+        self.estimator = LidarImuOdometry(self.c['lidar_mount'], self.c['initial_pose'],body_imu=self.rolling_sensor,
+            bootstrap_duration=2.2 if self.rolling_sensor else 0.)
         self.pending_scan=deque(maxlen=1)
         self.localisation_diagnostics=self.create_publisher(String,'/localisation/debug',10)
         self.mount_rejection=''
         if self.rolling_sensor:
+            self.localisation_fcu_state=None
+            self.localisation_fcu_stamp=-math.inf
+            self.create_subscription(State,'/mavros/state',self.localisation_state,qos_profile_sensor_data)
             self.mount_buffer=Buffer()
             self.mount_listener=TransformListener(self.mount_buffer,self)
             self.create_timer(.01,self.rolling_scan)
@@ -212,6 +216,10 @@ class LocalisationNode(ConfigNode):
         self.pending_imu.append((stamp, vector(msg.angular_velocity), vector(msg.linear_acceleration)))
         self.last_imu = stamp
 
+    def localisation_state(self,msg):
+        self.localisation_fcu_state=msg
+        self.localisation_fcu_stamp=self.now()
+
     def rolling_scan(self):
         if not self.pending_scan:return
         msg=self.pending_scan[-1]
@@ -226,6 +234,8 @@ class LocalisationNode(ConfigNode):
             return
         self.estimator.mount_r=rotation(transform.transform.rotation)
         self.estimator.mount_p=vector(transform.transform.translation)
+        self.estimator.bootstrap_stationary=bool(self.localisation_fcu_state is not None
+            and not self.localisation_fcu_state.armed and self.now()-self.localisation_fcu_stamp<1.)
         self.mount_rejection=''
         self.pending_scan.clear()
         self.scan(msg)
@@ -258,6 +268,7 @@ class LocalisationNode(ConfigNode):
                 stamp=self.now(),mode='sensor',algorithm='experimental_scan_to_map_ICP_body_IMU' if self.rolling_sensor else 'experimental_scan_to_map_ICP',
                 healthy=bool(fresh),reason=self.mount_rejection or e.reason,
                 position=e.p.tolist(),imu_stamp=e.last_imu,scan_stamp=e.last_scan,
+                orientation_rpy=Rotation.from_matrix(e.r).as_euler('xyz').tolist(),velocity=e.v.tolist(),
                 registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
                 reference_points=0 if e.reference is None else len(e.reference),
                 dynamic_extrinsics=self.rolling_sensor,ground_truth_input=False),allow_nan=False)))

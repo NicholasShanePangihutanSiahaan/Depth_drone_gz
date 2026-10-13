@@ -18,10 +18,16 @@ def voxel_downsample(points, resolution=0.18):
 
 
 class LidarImuOdometry:
-    def __init__(self, mount, origin=(0., 0., 0.), body_imu=False):
+    def __init__(self, mount, origin=(0., 0., 0.), body_imu=False, bootstrap_duration=0.):
         self.mount_p = np.asarray(mount[:3])
         self.mount_r = Rotation.from_euler('xyz', mount[3:]).as_matrix()
         self.body_imu = body_imu
+        self.bootstrap_duration=bootstrap_duration
+        self.bootstrap_started=None
+        self.bootstrap_complete=bootstrap_duration==0.
+        self.bootstrap_stationary=False
+        self.normals=None
+        self.normal_valid=None
         self.p = np.asarray(origin, float).copy()
         self.r = np.eye(3)
         self.v = np.zeros(3)
@@ -36,6 +42,16 @@ class LidarImuOdometry:
         self.reason = 'initialising'
         self.rmse = np.inf
         self.covariance = np.eye(6)*1.
+
+    def rebuild_reference(self):
+        self.tree=cKDTree(self.reference)
+        if not self.body_imu:return
+        _,ids=self.tree.query(self.reference,k=12)
+        neighbours=self.reference[ids]
+        centred=neighbours-neighbours.mean(axis=1,keepdims=True)
+        values,vectors=np.linalg.eigh(np.einsum('nki,nkj->nij',centred,centred))
+        self.normals=vectors[:,:,0]
+        self.normal_valid=(values[:,1]>1e-5)&(values[:,0]<.15*np.maximum(values[:,1],1e-9))
 
     def imu(self, gyro_sensor, acceleration_sensor, stamp):
         imu_r = np.eye(3) if self.body_imu else self.mount_r
@@ -87,9 +103,25 @@ class LidarImuOdometry:
         if singular[-1]/max(singular[0], 1e-9) < 0.04:
             self.ok, self.reason = False, 'planar_degeneracy'
             return False
+        if not self.bootstrap_complete:
+            if not self.bootstrap_stationary:
+                self.ok,self.reason=False,'bootstrap_requires_disarmed_stationary_launch'
+                return False
+            self.bootstrap_started=stamp if self.bootstrap_started is None else self.bootstrap_started
+            transformed=body@self.r.T+self.p
+            self.reference=voxel_downsample(transformed if self.reference is None else np.vstack((self.reference,transformed)))[-40000:]
+            self.v[:]=0.
+            if stamp-self.bootstrap_started<self.bootstrap_duration-1e-9:
+                self.ok,self.reason=False,'collecting_stationary_full_roll_reference'
+                return False
+            self.bootstrap_complete=True
+            self.rebuild_reference()
+            self.ok,self.reason,self.last_good=True,'full_roll_bootstrap',stamp
+            self.covariance=np.eye(6)*.02
+            return True
         if self.reference is None:
             self.reference = body@self.r.T+self.p
-            self.tree = cKDTree(self.reference)
+            self.rebuild_reference()
             self.ok, self.reason = True, 'bootstrap'
             self.last_good = stamp
             self.covariance = np.eye(6)*0.02
@@ -104,6 +136,26 @@ class LidarImuOdometry:
                 self.ok, self.reason = False, 'poor_overlap'
                 return False
             a, b = transformed[inliers], self.reference[ids[inliers]]
+            if self.body_imu:
+                normals=self.normals[ids[inliers]]
+                good=self.normal_valid[ids[inliers]]
+                a,b,normals=a[good],b[good],normals[good]
+                if len(a)<80:
+                    self.ok,self.reason=False,'insufficient_plane_constraints'
+                    return False
+                residual=np.einsum('ij,ij->i',normals,a-b)
+                jac=np.column_stack((np.cross(a-p,normals),normals))
+                weights=np.minimum(1.,.08/np.maximum(np.abs(residual),1e-9))
+                # IMU orientation prior prevents sparse raster correspondences
+                # from tilting gravity and manufacturing translational drift.
+                prior=np.eye(6)*np.array([20.,20.,5.,.2,.2,.2])
+                orientation=Rotation.from_matrix(r@predicted_r.T).as_rotvec()
+                delta=np.linalg.lstsq(np.vstack((jac*weights[:,None],prior)),
+                    np.r_[-residual*weights,-prior@np.r_[orientation,p-predicted_p]],rcond=None)[0]
+                r=Rotation.from_rotvec(delta[:3]).as_matrix()@r
+                p+=delta[3:]
+                if np.linalg.norm(delta)<1e-4:break
+                continue
             ca, cb = a.mean(axis=0), b.mean(axis=0)
             u, _, vt = np.linalg.svd((a-ca).T@(b-cb))
             correction = vt.T@u.T
@@ -128,6 +180,6 @@ class LidarImuOdometry:
         combined = np.vstack((self.reference, transformed))
         combined = combined[np.linalg.norm(combined-p, axis=1) < 15.]
         self.reference = voxel_downsample(combined)[-40000:]
-        self.tree = cKDTree(self.reference)
+        self.rebuild_reference()
         self.ok, self.reason, self.last_good = True, 'tracking', stamp
         return True

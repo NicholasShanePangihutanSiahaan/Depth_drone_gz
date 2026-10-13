@@ -1073,6 +1073,27 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
   permintaan pengguna ke remote `depth_drone_gz`, branch `rotating-lidar`.
   File kredensial dan asset map milik agen lain tidak dimasukkan.
 
+### Loop lokalisasi 01 — Gagal sebelum takeoff
+
+- **Run:** `ros_sensor_palm_farm_20261013_203210_57758_mapping`.
+  Setup menunjukkan sumber lokalisasi eksklusif benar (LiDAR + body IMU,
+  tanpa subscription ground truth), tetapi healthy=false dan pose/ExternalNav
+  berhenti. Misi tidak di-arm atau dimulai; run dan jendela dihentikan.
+- **Gejala:** bootstrap memakai satu scan dengan 2.805 titik; setelah FOV
+  berubah saat roll, `registration_rejected` lalu `poor_overlap`. Pada t=18 s
+  p estimator `[0.746,-0.041,-1.274]` meskipun drone masih di pad.
+- **Audit:** sampel body IMU frame base_link, gyro sekitar 0,001 rad/s dan
+  gravitasi Z=9,8066; IMU quaternion orientation tidak dipakai estimator.
+  Hipotesis utama: sparse raster correspondence/partial FOV pada reference
+  satu scan memiringkan estimasi dan kemudian integrasi gravitasi membuat
+  drift. Belum dinyatakan terbukti hanya dari satu sampel IMU.
+- **Perbaikan:** stationary-disarmed bootstrap mengumpulkan 2,2 s (lebih
+  satu putaran) sebelum healthy. Rolling estimator memakai point-to-plane
+  robust residual dengan IMU orientation prior; fixed-mount mode lama tetap
+  point-to-point. Ground truth tidak dipakai untuk bootstrap/correction.
+  Debug ditambah orientation_rpy dan velocity. Uji ulang masih diperlukan.
+- **Git:** paket awal sudah commit/push `03bc194` pada rotating-lidar.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
