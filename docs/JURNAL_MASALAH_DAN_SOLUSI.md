@@ -1176,6 +1176,17 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
 - **Status:** flight ulang diperlukan; landing belum lolos. Commit sebelumnya
   `eb32e43` telah dipush. Ini bukan melonggarkan error pembanding agar test lolos.
 
+### 2026-10-13 — Loop sensor tanpa jendela GUI
+
+- **Permintaan:** simulasi berikutnya tidak membuka window apa pun.
+- **Perubahan:** launcher sensor mematikan RViz, Gazebo GUI, dan camera viewer;
+  server fisika, sensor, navigasi, serta audit tetap berjalan.
+- **Uji:** konfigurasi launcher diperiksa dengan `bash -n`.
+  Run hover 06 yang sudah berjalan tetap diaudit; run berikutnya headless.
+- **Uji perbaikan Loop 05:** 25 tes estimator/navigasi dan 29 tes adapter ROS
+  lulus. Tes ROS memerlukan jaringan lokal di luar sandbox; kegagalan init
+  sandbox bukan kegagalan algoritma.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
