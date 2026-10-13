@@ -187,6 +187,22 @@ def test_real_pointcloud2_decode():
     np.testing.assert_allclose(cloud_points(cloud), points)
 
 
+def test_rejected_scan_keeps_only_fresh_previous_pose_and_never_extends_timeout():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from polinasi_nav.localisation import LidarImuOdometry
+    e=LidarImuOdometry([0,0,0,0,0,0],body_imu=True)
+    e.ok=False;e.last_good=1.9;e.reason='registration_rejected'
+    fake=SimpleNamespace(now=lambda:2.,last_stamp=1.9,last_imu=1.99,
+        c={'pose_timeout':.3},mode='sensor',estimator=e,status=Mock(),
+        localisation_diagnostics=Mock(),rolling_sensor=True,mount_rejection='')
+    LocalisationNode.health(fake)
+    assert fake.status.publish.call_args.args[0].data
+    fake.now=lambda:2.31
+    LocalisationNode.health(fake)
+    assert not fake.status.publish.call_args.args[0].data
+
+
 def test_imu_prediction_never_advances_past_scan_timestamp():
     node = LocalisationNode()
     try:

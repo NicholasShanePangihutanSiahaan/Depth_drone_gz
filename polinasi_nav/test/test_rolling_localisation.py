@@ -69,3 +69,19 @@ def test_full_roll_bootstrap_requires_stationary_disarmed_prior():
         for j in range(20):e.imu([0,0,0],[0,0,9.81],t-.095+j*.005)
         result=e.scan(points,t)
     assert result and e.reason=='full_roll_bootstrap'
+
+
+def test_resampled_same_surfaces_use_plane_residual_not_point_spacing():
+    e=LidarImuOdometry([0,0,0,0,0,0],body_imu=True)
+    for i in range(50):e.imu([0,0,0],[0,0,9.81],i*.005)
+    x,y=np.meshgrid(np.linspace(-4,4,25),np.linspace(-4,4,25));x,y=x.ravel(),y.ravel()
+    def cloud(offset):
+        return np.vstack((np.column_stack((x+offset,y+offset,np.zeros_like(x))),
+                          np.column_stack((np.full_like(x,5.),x+offset,y+5+offset)),
+                          np.column_stack((x+offset,np.full_like(x,5.),y+5+offset))))
+    assert e.scan(cloud(0.),.245)
+    for j in range(20):e.imu([0,0,0],[0,0,9.81],.25+j*.005)
+    assert e.scan(cloud(.14),.345)
+    assert e.last_registration['metric']=='point_to_plane'
+    assert e.rmse<e.point_rmse
+    assert np.linalg.norm(e.p)<.03

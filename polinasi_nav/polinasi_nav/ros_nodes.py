@@ -211,6 +211,8 @@ class LocalisationNode(ConfigNode):
         stamp = seconds(msg.header.stamp)
         if msg.header.frame_id != ('base_link' if self.rolling_sensor else 'mid360_imu') or not 0 <= self.now()-stamp <= 0.1 or stamp <= self.last_imu:
             return
+        if not np.all(np.isfinite(np.r_[vector(msg.angular_velocity),vector(msg.linear_acceleration)])):
+            return
         # Clouds can arrive after newer IMU packets. Integrate only through a
         # scan's measurement time, never stamp a future-predicted pose as old.
         self.pending_imu.append((stamp, vector(msg.angular_velocity), vector(msg.linear_acceleration)))
@@ -260,7 +262,10 @@ class LocalisationNode(ConfigNode):
     def health(self):
         fresh = 0 <= self.now()-self.last_stamp < self.c['pose_timeout']
         if self.mode == 'sensor':
-            fresh = fresh and self.estimator.ok and 0 <= self.now()-self.last_imu < 0.1
+            # One rejected scan is not a valid new pose; keep only the previous
+            # accepted measurement within the existing pose-age bound. No
+            # rejected result or restamped prediction enters ExternalNav.
+            fresh = fresh and self.estimator.last_good is not None and 0 <= self.now()-self.last_imu < 0.1
         self.status.publish(Bool(data=bool(fresh)))
         if self.mode=='sensor':
             e=self.estimator
@@ -271,6 +276,7 @@ class LocalisationNode(ConfigNode):
                 orientation_rpy=Rotation.from_matrix(e.r).as_euler('xyz').tolist(),velocity=e.v.tolist(),
                 calibrated_gravity_mps2=e.gravity_magnitude,gyro_bias=e.gyro_bias.tolist(),
                 keyframes=len(e.keyframes),translation_information=e.translation_information,
+                registration=e.last_registration,
                 registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
                 reference_points=0 if e.reference is None else len(e.reference),
                 dynamic_extrinsics=self.rolling_sensor,ground_truth_input=False),allow_nan=False)))

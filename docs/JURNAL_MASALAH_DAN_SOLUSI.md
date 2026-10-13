@@ -1152,6 +1152,30 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
   membekukan/correct map; tidak menambah toleransi error agar test lolos.
   Commit sebelumnya `47dbcbb` sudah dipush.
 
+### Loop lokalisasi 05 — Drift berkurang, reject memakai metrik yang salah
+
+- **Run:** `ros_sensor_palm_farm_20261013_221409_70014_mapping`.
+  629 pasangan timestamp, RMSE posisi 0,012115 m, max 0,041641 m.
+  Takeoff dan transisi menuju hover tercapai; pada t=77,3 s registration
+  ditolak dan navigasi melaporkan localisation_loss. Watcher menghentikan run.
+- **Audit:** error pose terakhir 0,008676 m dan error velocity 0,037722 m/s,
+  tetapi Euclidean nearest-point RMSE=0,182531 melewati threshold .18.
+  Estimator sudah memakai point-to-plane untuk solve, namun acceptance masih
+  memakai jarak ke titik sampel terdekat. Raster roll mengubah lokasi sampel
+  pada permukaan yang sama; jarak tersebut bukan residual permukaan.
+- **Perbaikan:** body-IMU mode memakai point-to-plane residual RMSE .08,
+  dengan overlap, minimal 80 plane constraints, information eigenvalue .003,
+  translation/rotation innovation gates tetap berlaku. Euclidean RMSE tetap
+  dilog, tidak dihilangkan. Tes resampling permukaan sama menguji perbedaan
+  jarak sampel dan error permukaan.
+- **Freshness:** rejected scan tidak diterbitkan. Healthy hanya dapat memakai
+  pose accepted sebelumnya dalam batas pose_timeout yang sudah ada (.3 s)
+  serta IMU live .1 s; tidak menerbitkan prediction dengan timestamp palsu.
+  Satu rejected scan tidak langsung membatalkan accepted pose yang masih fresh.
+  Dropout berlanjut tetap membuat pose stale dan menghentikan navigasi.
+- **Status:** flight ulang diperlukan; landing belum lolos. Commit sebelumnya
+  `eb32e43` telah dipush. Ini bukan melonggarkan error pembanding agar test lolos.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

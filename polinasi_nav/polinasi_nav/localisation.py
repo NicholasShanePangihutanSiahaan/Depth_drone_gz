@@ -48,6 +48,8 @@ class LidarImuOdometry:
         self.ok = False
         self.reason = 'initialising'
         self.rmse = np.inf
+        self.point_rmse=np.inf
+        self.last_registration={}
         self.covariance = np.eye(6)*1.
 
     def freeze_keyframe(self,points):
@@ -193,11 +195,29 @@ class LidarImuOdometry:
             if np.linalg.norm(shift) < 1e-4 and np.linalg.norm(Rotation.from_matrix(correction).as_rotvec()) < 1e-4:
                 break
         transformed = body@r.T+p
-        distances, _ = self.tree.query(transformed)
+        distances, ids = self.tree.query(transformed)
         inliers = distances < 0.5
-        self.rmse = float(np.sqrt(np.mean(distances[inliers]**2)))
+        self.point_rmse = float(np.sqrt(np.mean(distances[inliers]**2)))
+        self.rmse=self.point_rmse
+        plane_count=0
+        if self.body_imu:
+            good=inliers & self.normal_valid[ids]
+            plane_count=int(np.count_nonzero(good))
+            if plane_count<80:
+                self.ok,self.reason=False,'insufficient_plane_constraints'
+                return False
+            errors=np.einsum('ij,ij->i',self.normals[ids[good]],transformed[good]-self.reference[ids[good]])
+            self.rmse=float(np.sqrt(np.mean(errors**2)))
         angle_error = np.linalg.norm(Rotation.from_matrix(predicted_r.T@r).as_rotvec())
-        if self.rmse > 0.18 or np.linalg.norm(p-predicted_p) > 0.5 or angle_error > 0.35:
+        shift_error=float(np.linalg.norm(p-predicted_p))
+        self.last_registration=dict(point_rmse_m=self.point_rmse,residual_rmse_m=self.rmse,
+            metric='point_to_plane' if self.body_imu else 'point_to_point',
+            plane_count=plane_count,inlier_fraction=float(np.mean(inliers)),
+            translation_correction_m=shift_error,rotation_correction_rad=float(angle_error))
+        if (self.body_imu and min(self.translation_information,default=0.)<.003):
+            self.ok,self.reason=False,'translation_degeneracy'
+            return False
+        if self.rmse > (.08 if self.body_imu else .18) or shift_error > 0.5 or angle_error > 0.35:
             self.ok, self.reason = False, 'registration_rejected'
             return False
         if self.body_imu and self.last_good is not None:
