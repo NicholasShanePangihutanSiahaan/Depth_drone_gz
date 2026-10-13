@@ -30,6 +30,22 @@ def test_circle_is_constant_height_ccw_and_left_camera_faces_tree():
     np.testing.assert_allclose(ctl.waypoints[-1],[2.,0.,2.],atol=1e-10)
 
 
+def test_scan_does_not_promote_ascent_overshoot_to_new_altitude():
+    ctl=controller();ctl.inspection_altitude=3.32
+    ctl.command=np.array([2.,0.,3.32])
+    ctl._begin_continuous_scan(np.array([2.,0.,3.44]))
+    np.testing.assert_allclose(ctl.waypoints[:,2],3.32)
+    assert ctl.scan_handoff['measured_start_height_m']==pytest.approx(3.44)
+    assert ctl.scan_handoff['reference_height_m']==pytest.approx(3.32)
+    ctl.mount_feedback=dict(feedback_fresh=True,measured={'camera_pitch':.5},targets={'camera_pitch':.5})
+    ctl.body_yaw_measured=ctl._camera_heading(ctl.command)
+    ctl.vehicle_speed=.02;ctl.mount_phase_started=1.
+    assert not ctl._prepare_scan(2.,np.array([2.,0.,3.44]))
+    assert ctl.scan_settled_since is None and not ctl.scan_start_aligned
+    assert not ctl._prepare_scan(2.1,ctl.command)
+    assert ctl.scan_settled_since==pytest.approx(2.1)
+
+
 def test_pass_requires_new_map_but_does_not_stop_at_sector():
     ctl=controller();ctl.waypoint_index=3;ctl.batch_end_index=23
     ctl.mount_feedback=dict(feedback_fresh=True,measured={'camera_pitch':.5},targets={'camera_pitch':.5})

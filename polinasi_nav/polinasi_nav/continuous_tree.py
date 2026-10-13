@@ -16,6 +16,8 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.scan_orbit_ready=False
         self.scan_start_aligned=False
         self.scan_sector_records=[]
+        self.scan_settled_since=None
+        self.scan_handoff={}
         self.scan_anchor_count=int(self.c.get('tree_scan_anchors',24))
         if self.scan_anchor_count<12 or self.scan_anchor_count%self.c['tree_view_count']:
             raise ValueError('scan anchors must be >=12 and divisible by sector count')
@@ -41,6 +43,14 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         return self._prepare_scan(now,position,range_value,range_stamp)
 
     def _begin_continuous_scan(self,position):
+        measured=np.asarray(position).copy()
+        position=measured.copy()
+        if self.inspection_altitude is not None:
+            # Never promote ascent overshoot to a higher, uncertified target.
+            position[2]=self.inspection_altitude
+        self.scan_handoff=dict(policy='retain_certified_ascent_stop_height',
+            measured_start_height_m=float(measured[2]),reference_height_m=float(position[2]))
+        self.scan_settled_since=None
         centre=np.asarray(self.active_tree['xy'])
         delta=np.asarray(position)[:2]-centre
         radius=float(np.linalg.norm(delta))
@@ -106,6 +116,15 @@ class ContinuousTreeInspectionController(TreeInspectionController):
             error=math.atan2(math.sin(target-self.body_yaw_measured),math.cos(target-self.body_yaw_measured))
             measured=self.mount_feedback.get('measured',{})
             targets=self.mount_feedback.get('targets',{})
+            if self.inspection_altitude is not None:
+                settled=(abs(position[2]-self.inspection_altitude)<.08 and self.vehicle_speed<.08)
+                self.scan_settled_since=(now if self.scan_settled_since is None else self.scan_settled_since) if settled else None
+                self.scan_handoff.update(height_error_m=float(position[2]-self.inspection_altitude),
+                    measured_speed_mps=float(self.vehicle_speed),settled=bool(settled))
+                if self.scan_settled_since is None or now-self.scan_settled_since<.3:
+                    if now-self.mount_phase_started>self.c.get('tree_mount_timeout',20.):
+                        self.fail('scan_height_settling_timeout')
+                    return False
             if (abs(error)>.08 or not self.mount_feedback.get('feedback_fresh')
                     or abs(measured.get('camera_pitch',99)-targets.get('camera_pitch',0))>.08):
                 return False
@@ -149,6 +168,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
                       scan_sector_records=self.scan_sector_records,
                       scan_start_aligned=self.scan_start_aligned,
                       continuous_scan=True,
+                      scan_handoff=self.scan_handoff,
                       canopy_ascent_enabled=bool(self.c.get('rolling_canopy_ascent')),
                       observed_overhead_surface_z_m=ceiling,
                       observed_top_envelope_gap_m=None if ceiling is None else ceiling-self.command[2]-self.c['drone_dimensions'][2]/2,

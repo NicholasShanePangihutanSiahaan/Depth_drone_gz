@@ -1308,6 +1308,26 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
   jitter bolak-balik pada translasi .3 m/s tanpa false fast-recovery.
   Batas overspeed dan watcher tetap sama. Misi harus diuji ulang headless.
 
+### 2026-10-14 — Loop sensor 12: scan memakai overshoot, bukan tinggi berhenti aman
+
+- **Kronologi:** setup, takeoff, approach, ASCEND dan 5/6 sektor pohon pertama
+  berhasil. Menjelang akhir orbit t=143.15 s, no_directional_stopping_corridor
+  menghentikan run. Lokalisasi tidak gagal (1361 pasangan, RMSE .010634 m,
+  max .031623 m); recovery velocity tidak lagi false-trigger overspeed.
+- **Bukti:** stop ASCEND menyimpan command z=3.319387 dan inspection_altitude
+  sama, tetapi stopping check orbit memakai command z=3.435014. Voxel daun
+  [5.9,-.3,4.3] masuk margin inflasi pada lapisan reference lebih tinggi.
+- **Penyebab kode:** _begin_continuous_scan memakai z posisi measured saat
+  transisi, sehingga overshoot aktual ~.12 m menjadi reference tinggi baru,
+  membatalkan margin yang sudah dijaga ASCEND. Ini bukan noise LIO atau
+  alasan untuk mengabaikan occupied voxel / mengurangi clearance.
+- **Perbaikan:** orbit mempertahankan inspection_altitude dari stopped ascent.
+  Handoff menunggu error tinggi <.08 m dan measured speed <.08 m/s selama .3 s;
+  timeout tetap tree_mount_timeout. Tinggi measured/reference dan kondisi
+  settling dilog. Tidak menurunkan scan berdasarkan corner path seen sesaat.
+- **Uji:** regression overshoot 3.44 m tidak boleh mengganti reference 3.32 m;
+  handoff menahan orbit sebelum tinggi stabil. Run ulang diperlukan.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
