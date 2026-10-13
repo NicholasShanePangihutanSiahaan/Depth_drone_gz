@@ -5,6 +5,7 @@ This is a small simulation reference, not a flight-qualified FAST-LIO replacemen
 No function accepts simulator position. The launch origin is a coordinate gauge.
 """
 import numpy as np
+from collections import deque
 from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation
 
@@ -54,6 +55,8 @@ class LidarImuOdometry:
         self.imu_shock_until=-np.inf
         self.imu_shock_peak=0.
         self.velocity_disagreement_scans=0
+        self.previous_velocity_disagreement=None
+        self.accepted_positions=deque(maxlen=3)
         self.covariance = np.eye(6)*1.
 
     def freeze_keyframe(self,points):
@@ -151,6 +154,7 @@ class LidarImuOdometry:
             self.freeze_keyframe(self.reference)
             self.ok,self.reason,self.last_good=True,'full_roll_bootstrap',stamp
             self.accepted_position=self.p.copy()
+            self.accepted_positions.append((stamp,self.p.copy()))
             self.covariance=np.eye(6)*.02
             return True
         if self.reference is None:
@@ -160,6 +164,7 @@ class LidarImuOdometry:
             self.ok, self.reason = True, 'bootstrap'
             self.last_good = stamp
             self.accepted_position=self.p.copy()
+            self.accepted_positions.append((stamp,self.p.copy()))
             self.covariance = np.eye(6)*0.02
             return True
         predicted_p, predicted_r = self.p.copy(), self.r.copy()
@@ -232,15 +237,27 @@ class LidarImuOdometry:
         if self.body_imu and self.last_good is not None:
             interval=stamp-self.last_good
             if 0<interval<=.5:
-                measured_velocity=(p-self.accepted_position)/interval if self.accepted_position is not None else self.v.copy()
-                disagreement=float(np.linalg.norm(measured_velocity-self.v))
-                self.velocity_disagreement_scans=(self.velocity_disagreement_scans+1 if disagreement>.3 else 0)
+                samples=[(t,q) for t,q in self.accepted_positions if 0<stamp-t<=.3]+[(stamp,p)]
+                samples=samples[-3:]
+                times=np.asarray([t for t,_ in samples]);centred_times=times-times.mean()
+                positions=np.asarray([q for _,q in samples])
+                measured_velocity=np.sum(centred_times[:,None]*positions,axis=0)/max(float(centred_times@centred_times),1e-9)
+                disagreement_vector=measured_velocity-self.v
+                disagreement=float(np.linalg.norm(disagreement_vector))
+                previous=self.previous_velocity_disagreement
+                coherent=(previous is not None and float(previous@disagreement_vector)>
+                          .7*np.linalg.norm(previous)*disagreement)
+                self.velocity_disagreement_scans=((self.velocity_disagreement_scans+1 if coherent else 1)
+                                                 if disagreement>.3 else 0)
+                self.previous_velocity_disagreement=disagreement_vector.copy() if disagreement>.3 else None
                 # A contact impulse may fall entirely between IMU samples.
                 # Two independently accepted scan displacements can expose it.
                 if self.velocity_disagreement_scans>=2:
                     self.imu_shock_until=stamp+.5
                 self.last_registration.update(scan_velocity_mps=measured_velocity.tolist(),
-                    velocity_disagreement_mps=disagreement,velocity_disagreement_scans=self.velocity_disagreement_scans)
+                    scan_velocity_window_seconds=float(times[-1]-times[0]),scan_velocity_samples=len(samples),
+                    velocity_disagreement_mps=disagreement,velocity_disagreement_scans=self.velocity_disagreement_scans,
+                    velocity_disagreement_coherent=bool(coherent))
                 if stamp<=self.imu_shock_until and self.accepted_position is not None:
                     # Contact impulses can alias at the IMU sample rate. Use
                     # independent accepted scan displacement to recover velocity;
@@ -252,6 +269,7 @@ class LidarImuOdometry:
                     self.last_registration['velocity_update']='scan_prediction_innovation'
                 self.last_registration['imu_shock_peak_mps2']=self.imu_shock_peak
         self.accepted_position=p.copy()
+        self.accepted_positions.append((stamp,p.copy()))
         self.p, self.r = p, r
         self.covariance = np.eye(6)*max(0.005, self.rmse**2)
         # Keep a bounded recent local map, with spatial culling.

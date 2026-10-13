@@ -1290,6 +1290,24 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
   lambat setelah GUI dibuka; audit summary kemudian membuktikan run sudah
   auto-stop route_changed, bukan bukti slowdown GUI pada run tersebut.
 
+### 2026-10-14 — Loop sensor 11: recovery velocity terlalu sensitif terhadap jitter
+
+- **Kronologi:** setup lolos, takeoff berhasil, drone mulai approach pertama.
+  Pada t~38.15 s measured_overspeed memicu brake dan auto-stop sebelum scan.
+- **Bukti:** `audit_11_inspection.summary.json`: 311 pasangan, RMSE posisi
+  .012157 m, max .037853 m. Scan velocity Y berubah -.451 lalu +.394 m/s;
+  disagreement berlawanan arah tetap dihitung dua scan, memicu gain .8.
+  Posisi tetap akurat cm, tetapi diferensiasi dua titik memperbesar jitter.
+- **Penyebab:** syarat dua disagreement besar belum memeriksa arah dan masih
+  memakai beda satu interval .1 s. Recovery benturan dapat aktif pada jitter.
+- **Perbaikan:** velocity scan menggunakan least-squares tiga posisi accepted
+  terbaru (jendela maksimal .3 s). Trigger non-impuls memerlukan dua residual
+  >.3 m/s dengan cos arah >.7. IMU impuls besar tetap dapat trigger langsung.
+  Jendela, jumlah sampel, dan koherensi residual ditambah ke log.
+- **Uji:** 9 tes estimator lulus: impuls tersampel, impuls terlewat, dan scan
+  jitter bolak-balik pada translasi .3 m/s tanpa false fast-recovery.
+  Batas overspeed dan watcher tetap sama. Misi harus diuji ulang headless.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:
