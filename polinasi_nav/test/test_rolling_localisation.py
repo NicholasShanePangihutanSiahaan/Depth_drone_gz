@@ -29,6 +29,14 @@ def test_body_imu_gravity_is_not_rotated_with_lidar_mount():
     np.testing.assert_allclose(e.r,np.eye(3),atol=1e-9)
 
 
+def test_stationary_calibration_does_not_integrate_gravity_magnitude_mismatch():
+    e=LidarImuOdometry([0,0,0,0,0,0],body_imu=True)
+    for i in range(200):e.imu([.001,0,0],[0,0,9.8],i*.005)
+    np.testing.assert_allclose(e.p,0.,atol=1e-9)
+    np.testing.assert_allclose(e.v,0.,atol=1e-9)
+    np.testing.assert_allclose(e.r,np.eye(3),atol=1e-9)
+
+
 def test_body_imu_fixture_is_physical_sensor_not_odometry(tmp_path):
     import importlib.util,json,xml.etree.ElementTree as ET
     from pathlib import Path

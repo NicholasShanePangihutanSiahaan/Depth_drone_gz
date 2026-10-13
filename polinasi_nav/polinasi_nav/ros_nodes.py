@@ -255,7 +255,7 @@ class LocalisationNode(ConfigNode):
         from .self_filter import self_mask
         keep = ~self_mask(body,self.c)
         if e.scan(points[keep], seconds(msg.header.stamp)):
-            self.publish(msg.header.stamp, e.p, e.r, e.v, [0., 0., 0.], e.covariance)
+            self.publish(msg.header.stamp, e.p, e.r, e.v, e.omega, e.covariance)
 
     def health(self):
         fresh = 0 <= self.now()-self.last_stamp < self.c['pose_timeout']
@@ -269,6 +269,7 @@ class LocalisationNode(ConfigNode):
                 healthy=bool(fresh),reason=self.mount_rejection or e.reason,
                 position=e.p.tolist(),imu_stamp=e.last_imu,scan_stamp=e.last_scan,
                 orientation_rpy=Rotation.from_matrix(e.r).as_euler('xyz').tolist(),velocity=e.v.tolist(),
+                calibrated_gravity_mps2=e.gravity_magnitude,gyro_bias=e.gyro_bias.tolist(),
                 registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
                 reference_points=0 if e.reference is None else len(e.reference),
                 dynamic_extrinsics=self.rolling_sensor,ground_truth_input=False),allow_nan=False)))

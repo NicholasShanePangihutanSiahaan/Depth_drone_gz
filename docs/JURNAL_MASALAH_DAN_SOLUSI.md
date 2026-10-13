@@ -1094,6 +1094,23 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
   Debug ditambah orientation_rpy dan velocity. Uji ulang masih diperlukan.
 - **Git:** paket awal sudah commit/push `03bc194` pada rotating-lidar.
 
+### Loop lokalisasi 02 — Posisi stabil, velocity drift saat disarmed
+
+- **Run:** `ros_sensor_palm_farm_20261013_204026_59440_mapping`.
+  Setelah full-roll bootstrap, t=15,3 s posisi error terukur 0,007322 m,
+  orientation error 0,000539 rad, sehat dan tracking. Namun debug velocity
+  sekitar `[-0.045,0.019,-0.119]` m/s meskipun badan diam di pad.
+- **Masalah:** IMU propagation memakai gravitasi tetap 9,81, sedangkan
+  simulasi nominalnya sekitar 9,8; correction ICP memperbaiki pose tetapi
+  velocity lama tidak dikoreksi. Ini membuat twist ExternalNav keliru.
+- **Solusi:** kalibrasi stationary gravity magnitude dan gyro bias pada body
+  IMU; accepted scan innovation juga mengoreksi velocity dengan gain bounded.
+  Angular twist memakai gyro body terkalibrasi, bukan selalu nol.
+- **Tindakan:** run dihentikan sebelum arm. Tes baru memastikan IMU diam
+  dengan gravitasi 9,8 dan bias gyro tidak menghasilkan gerak. Kalibrasi ini
+  masih prototype stationary, bukan estimator bias EKF FAST-LIO penuh.
+  Commit sebelumnya `dd10c0f` sudah dipush. Uji ulang setelah koreksi diperlukan.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

@@ -37,6 +37,10 @@ class LidarImuOdometry:
         self.last_scan = None
         self.last_good = None
         self.gravity_samples = []
+        self.gyro_samples=[]
+        self.gyro_bias=np.zeros(3)
+        self.gravity_magnitude=9.81
+        self.omega=np.zeros(3)
         self.initialized = False
         self.ok = False
         self.reason = 'initialising'
@@ -63,10 +67,15 @@ class LidarImuOdometry:
         if not self.initialized:
             if np.linalg.norm(gyro) < 0.05 and abs(np.linalg.norm(acceleration)-9.81) < 0.2:
                 self.gravity_samples.append(acceleration)
+                self.gyro_samples.append(gyro)
             else:
                 self.gravity_samples = []
+                self.gyro_samples=[]
             if len(self.gravity_samples) >= 40:
                 gravity = np.mean(self.gravity_samples, axis=0)
+                if self.body_imu:
+                    self.gravity_magnitude=float(np.linalg.norm(gravity))
+                    self.gyro_bias=np.mean(self.gyro_samples,axis=0)
                 # Gravity fixes roll/pitch; yaw is the arbitrary launch gauge.
                 unit = gravity/np.linalg.norm(gravity)
                 axis = np.cross(unit, [0., 0., 1.])
@@ -81,8 +90,10 @@ class LidarImuOdometry:
             if dt > 0.10:
                 self.ok, self.reason = False, 'imu_gap'
             else:
+                gyro=gyro-self.gyro_bias
+                self.omega=gyro.copy()
                 self.r = self.r@Rotation.from_rotvec(gyro*dt).as_matrix()
-                world_accel = self.r@acceleration-[0., 0., 9.81]
+                world_accel = self.r@acceleration-[0., 0., self.gravity_magnitude]
                 self.p += self.v*dt+0.5*world_accel*dt*dt
                 self.v += world_accel*dt
         self.last_imu = stamp
@@ -174,6 +185,10 @@ class LidarImuOdometry:
         if self.rmse > 0.18 or np.linalg.norm(p-predicted_p) > 0.5 or angle_error > 0.35:
             self.ok, self.reason = False, 'registration_rejected'
             return False
+        if self.body_imu and self.last_good is not None:
+            interval=stamp-self.last_good
+            if 0<interval<=.5:
+                self.v+=.2*(p-predicted_p)/interval
         self.p, self.r = p, r
         self.covariance = np.eye(6)*max(0.005, self.rmse**2)
         # Keep a bounded recent local map, with spatial culling.
