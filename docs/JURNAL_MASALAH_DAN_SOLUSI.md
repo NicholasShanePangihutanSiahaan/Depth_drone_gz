@@ -1129,6 +1129,29 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
 - **Tindakan:** run dihentikan sebelum arm, ulangi setelah commit/push.
   Commit sebelumnya `a5cba0b` sudah dipush. Landing sensor belum diuji.
 
+### Loop lokalisasi 04 — Takeoff berhasil, drift horizontal saat hover
+
+- **Run:** `ros_sensor_palm_farm_20261013_220240_67910_mapping`.
+  Seluruh setup check lolos, kemudian takeoff sensor-only berhasil. T=34,3 s
+  posisi error 0,011369 m; t=46,1 s membesar menjadi 0,064052 m, kemudian
+  t=50,1 s 0,211526 m. Observer mengukur 350 pasangan measurement-time,
+  RMSE posisi 0,040181 m. Navigasi gagal `tracking_error`; watcher otomatis
+  menghentikan run dan owned viewers. Hover/landing tidak dinyatakan lolos.
+- **Audit:** posisi, orientasi dan velocity bukan ground truth input. Error
+  pose masih dapat bertambah meski RMSE registration terlihat rendah; itu
+  ukuran kecocokan ke map estimator, bukan error terhadap posisi sebenarnya.
+- **Hipotesis:** scan-to-map update setiap scan membentuk feedback drift;
+  `voxel_downsample(...)[-40000:]` juga memilih ekor voxel terurut, bukan
+  spatially balanced history. Normal/korespondensi dapat menjadi tidak merata.
+- **Perbaikan:** frozen measured bootstrap anchor dan keyframes tiap .5 m
+  perpindahan, bukan insert setiap roll/yaw/hover. Bounded map memakai sampling
+  merata pada seluruh indeks, bukan memotong satu sisi. Debug menambah jumlah
+  keyframe dan eigenvalues informasi translasi. Tes stationary rolling
+  memastikan reference tidak berubah ketika badan tidak bergerak.
+- **Status:** perbaikan perlu flight ulang. Tidak memakai ground truth untuk
+  membekukan/correct map; tidak menambah toleransi error agar test lolos.
+  Commit sebelumnya `47dbcbb` sudah dipush.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

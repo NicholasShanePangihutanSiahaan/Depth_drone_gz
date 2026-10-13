@@ -28,6 +28,9 @@ class LidarImuOdometry:
         self.bootstrap_stationary=False
         self.normals=None
         self.normal_valid=None
+        self.keyframes=[]
+        self.last_keyframe_position=None
+        self.translation_information=[]
         self.p = np.asarray(origin, float).copy()
         self.r = np.eye(3)
         self.v = np.zeros(3)
@@ -46,6 +49,16 @@ class LidarImuOdometry:
         self.reason = 'initialising'
         self.rmse = np.inf
         self.covariance = np.eye(6)*1.
+
+    def freeze_keyframe(self,points):
+        self.keyframes.append((self.p.copy(),points.copy()))
+        self.keyframes=[self.keyframes[0],*self.keyframes[1:][-11:]]
+        self.last_keyframe_position=self.p.copy()
+        combined=voxel_downsample(np.vstack([cloud for _,cloud in self.keyframes]))
+        if len(combined)>40000:
+            combined=combined[np.linspace(0,len(combined)-1,40000,dtype=int)]
+        self.reference=combined
+        self.rebuild_reference()
 
     def rebuild_reference(self):
         self.tree=cKDTree(self.reference)
@@ -126,13 +139,14 @@ class LidarImuOdometry:
                 self.ok,self.reason=False,'collecting_stationary_full_roll_reference'
                 return False
             self.bootstrap_complete=True
-            self.rebuild_reference()
+            self.freeze_keyframe(self.reference)
             self.ok,self.reason,self.last_good=True,'full_roll_bootstrap',stamp
             self.covariance=np.eye(6)*.02
             return True
         if self.reference is None:
             self.reference = body@self.r.T+self.p
-            self.rebuild_reference()
+            if self.body_imu:self.freeze_keyframe(self.reference)
+            else:self.rebuild_reference()
             self.ok, self.reason = True, 'bootstrap'
             self.last_good = stamp
             self.covariance = np.eye(6)*0.02
@@ -151,6 +165,7 @@ class LidarImuOdometry:
                 normals=self.normals[ids[inliers]]
                 good=self.normal_valid[ids[inliers]]
                 a,b,normals=a[good],b[good],normals[good]
+                self.translation_information=np.linalg.eigvalsh(normals.T@normals/max(1,len(normals))).tolist()
                 if len(a)<80:
                     self.ok,self.reason=False,'insufficient_plane_constraints'
                     return False
@@ -192,9 +207,13 @@ class LidarImuOdometry:
         self.p, self.r = p, r
         self.covariance = np.eye(6)*max(0.005, self.rmse**2)
         # Keep a bounded recent local map, with spatial culling.
-        combined = np.vstack((self.reference, transformed))
-        combined = combined[np.linalg.norm(combined-p, axis=1) < 15.]
-        self.reference = voxel_downsample(combined)[-40000:]
-        self.rebuild_reference()
+        if self.body_imu:
+            if np.linalg.norm(p-self.last_keyframe_position)>=.5:
+                self.freeze_keyframe(transformed)
+        else:
+            combined = np.vstack((self.reference, transformed))
+            combined = combined[np.linalg.norm(combined-p, axis=1) < 15.]
+            self.reference = voxel_downsample(combined)[-40000:]
+            self.rebuild_reference()
         self.ok, self.reason, self.last_good = True, 'tracking', stamp
         return True

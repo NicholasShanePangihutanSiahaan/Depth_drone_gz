@@ -270,6 +270,7 @@ class LocalisationNode(ConfigNode):
                 position=e.p.tolist(),imu_stamp=e.last_imu,scan_stamp=e.last_scan,
                 orientation_rpy=Rotation.from_matrix(e.r).as_euler('xyz').tolist(),velocity=e.v.tolist(),
                 calibrated_gravity_mps2=e.gravity_magnitude,gyro_bias=e.gyro_bias.tolist(),
+                keyframes=len(e.keyframes),translation_information=e.translation_information,
                 registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
                 reference_points=0 if e.reference is None else len(e.reference),
                 dynamic_extrinsics=self.rolling_sensor,ground_truth_input=False),allow_nan=False)))

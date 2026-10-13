@@ -13,6 +13,7 @@ def test_stationary_body_remains_stationary_when_lidar_rolls():
                      np.column_stack((np.full_like(x,5.),x,y+3.)),
                      np.column_stack((x,np.full_like(x,5.),y+3.))))
     assert e.scan((world-e.mount_p)@e.mount_r,.245)
+    reference=e.reference.copy()
     for k in range(1,10):
         stamp=.245+k*.1
         for j in range(20):e.imu([0,0,0],[0,0,9.81],stamp-.095+j*.005)
@@ -20,6 +21,8 @@ def test_stationary_body_remains_stationary_when_lidar_rolls():
         assert e.scan((world-e.mount_p)@e.mount_r,stamp)
         np.testing.assert_allclose(e.p,0.,atol=1e-9)
         np.testing.assert_allclose(e.r,np.eye(3),atol=1e-9)
+    np.testing.assert_allclose(e.reference,reference,atol=1e-9)
+    assert len(e.keyframes)==1
 
 
 def test_body_imu_gravity_is_not_rotated_with_lidar_mount():
