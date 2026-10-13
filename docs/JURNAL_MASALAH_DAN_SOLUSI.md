@@ -1187,6 +1187,26 @@ pada detik 320,521, lalu simulasi dan kedua viewer dihentikan otomatis.
   lulus. Tes ROS memerlukan jaringan lokal di luar sandbox; kegagalan init
   sandbox bukan kegagalan algoritma.
 
+### 2026-10-13 — Loop sensor 06: hover lolos, impuls landing merusak velocity
+
+- **Kronologi:** drone berhasil takeoff, hover, kembali ke home, dan turun
+  sampai kaki menyentuh tanah. Pada t=100,4 s watcher melihat error velocity
+  1,648 m/s, lalu lima sampel berturut-turut melewati batas .15 m/s dan
+  menghentikan run sebelum landing/disarm selesai. Tidak diklaim COMPLETE.
+- **Bukti:** `reports/sensor_localisation/audit_06_hover.summary.json`,
+  run `ros_sensor_palm_farm_20261013_223251_74310_mapping`.
+  924 pasangan, RMSE posisi .013064 m, maksimum .045997 m; posisi saat
+  benturan tetap akurat. Kecepatan palsu meluruh .8 per scan karena koreksi
+  innovation lemah terhadap impuls IMU yang terintegrasi pada kontak tanah.
+- **Perbaikan:** setelah percepatan IMU badan >30 m/s², selama .5 s koreksi
+  velocity memakai selisih dua posisi scan accepted dengan gain .8.
+  Tanpa asumsi ground contact, tanpa pose/velocity GT, tanpa melonggarkan
+  batas watcher. Pose tetap harus lolos registration normal. Mode normal
+  tetap memakai IMU + innovation. Peak impuls dan sumber velocity dilog.
+- **Uji:** 7 tes rolling localisation lulus, termasuk impuls sintetis yang
+  sengaja alias dan recovery velocity <.15 m/s mulai scan kedua.
+  Tes flight ulang masih diperlukan; baseline berikutnya tanpa GUI.
+
 ## Cara memperbarui jurnal
 
 Tambahkan entri setiap masalah atau perbaikan bermakna dengan format:

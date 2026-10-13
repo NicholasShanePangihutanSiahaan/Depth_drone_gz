@@ -50,6 +50,9 @@ class LidarImuOdometry:
         self.rmse = np.inf
         self.point_rmse=np.inf
         self.last_registration={}
+        self.accepted_position=None
+        self.imu_shock_until=-np.inf
+        self.imu_shock_peak=0.
         self.covariance = np.eye(6)*1.
 
     def freeze_keyframe(self,points):
@@ -109,6 +112,9 @@ class LidarImuOdometry:
                 self.omega=gyro.copy()
                 self.r = self.r@Rotation.from_rotvec(gyro*dt).as_matrix()
                 world_accel = self.r@acceleration-[0., 0., self.gravity_magnitude]
+                if self.body_imu and np.linalg.norm(world_accel)>30.:
+                    self.imu_shock_until=stamp+.5
+                    self.imu_shock_peak=max(self.imu_shock_peak,float(np.linalg.norm(world_accel)))
                 self.p += self.v*dt+0.5*world_accel*dt*dt
                 self.v += world_accel*dt
         self.last_imu = stamp
@@ -143,6 +149,7 @@ class LidarImuOdometry:
             self.bootstrap_complete=True
             self.freeze_keyframe(self.reference)
             self.ok,self.reason,self.last_good=True,'full_roll_bootstrap',stamp
+            self.accepted_position=self.p.copy()
             self.covariance=np.eye(6)*.02
             return True
         if self.reference is None:
@@ -151,6 +158,7 @@ class LidarImuOdometry:
             else:self.rebuild_reference()
             self.ok, self.reason = True, 'bootstrap'
             self.last_good = stamp
+            self.accepted_position=self.p.copy()
             self.covariance = np.eye(6)*0.02
             return True
         predicted_p, predicted_r = self.p.copy(), self.r.copy()
@@ -223,7 +231,18 @@ class LidarImuOdometry:
         if self.body_imu and self.last_good is not None:
             interval=stamp-self.last_good
             if 0<interval<=.5:
-                self.v+=.2*(p-predicted_p)/interval
+                if stamp<=self.imu_shock_until and self.accepted_position is not None:
+                    # Contact impulses can alias at the IMU sample rate. Use
+                    # independent accepted scan displacement to recover velocity;
+                    # never assume ground contact or read simulator velocity.
+                    measured_velocity=(p-self.accepted_position)/interval
+                    self.v=.2*self.v+.8*measured_velocity
+                    self.last_registration['velocity_update']='accepted_scan_after_imu_shock'
+                else:
+                    self.v+=.2*(p-predicted_p)/interval
+                    self.last_registration['velocity_update']='scan_prediction_innovation'
+                self.last_registration['imu_shock_peak_mps2']=self.imu_shock_peak
+        self.accepted_position=p.copy()
         self.p, self.r = p, r
         self.covariance = np.eye(6)*max(0.005, self.rmse**2)
         # Keep a bounded recent local map, with spatial culling.
