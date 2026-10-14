@@ -1489,3 +1489,19 @@ LiDAR tetap fixed, quality gate/unknown rejection tidak dilonggarkan.
 Depth sintetis bukan emulasi kesalahan stereo ZED asli. Auditor kini berhenti
 juga bila session.json menandai run sudah ditutup, tidak menunggu 5400 detik.
 
+# 14 Oktober 2026 — Pohon pertama 6/6 selesai dengan fixed + depth
+
+Run `085556_21464` (`fixed_lidar_validation_20261014_085554`) mengulang
+takeoff, approach dan ascent. Pada waypoint 9, 34 unknown voxel bawah jalur
+memicu hold pada z~3,12 m, bukan explore turun. Camera gate mulai 105,8,
+mount settled 108,85, depth timestamp 109,0 memenuhi pengamatan baru.
+Setelah body/camera kembali tree-up, planner mendapat rute direct dan
+melanjutkan. Pada 150,9 sudah selesai 6/6 sektor pohon ID 4 dan approach
+ID 3, tanpa failure atau EXPLORE. Dua pohon + landing masih belum terbukti.
+
+Pemisahan klaim: lokalisasi memakai LiDAR + IMU tanpa ground truth; map
+navigasi run ini memakai LiDAR + depth RGBD sintetis. Ini BUKAN validasi
+navigasi LiDAR-only. Kamera diperlukan oleh konfigurasi run ini untuk
+melengkapi area bawah yang belum teramati, bukan bukti kamera wajib pada
+semua sistem MID-360. Pengamatan aktif LiDAR-only memerlukan uji tersendiri.
+
