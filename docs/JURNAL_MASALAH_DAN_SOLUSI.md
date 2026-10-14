@@ -1569,3 +1569,26 @@ memiliki jalan aman yang tidak dimanfaatkan pemilihan titik geometris lama.
 Hasil penerbangan implementasi panduan baru dicatat setelah run berikutnya.
 92 tes regresi lolos sebelum run, termasuk 8 tes panduan riwayat baru.
 
+# 14 Oktober 2026 — Tujuan tetap + panduan riwayat menyelesaikan misi baseline
+
+Run `reports/sensor_localisation_validation_20261014_204901/` pada map lama
+memakai LiDAR–IMU, bukan truth untuk navigasi. ID 4 dan ID 2 masing-masing
+6/6 sektor valid; transfer ke pohon kedua memakai full history detour, bukan
+titik geometris. RETURN mulai setelah scan kedua, dengan jalur penuh contoh
+[5,0283;-7,0902;2,7257] -> [4,5;-6,5;2,3] -> [0;0;2]. Drone keluar dari
+kanopi, kembali home, LAND, lalu COMPLETE + disarmed pada 380,1 s simulasi.
+Failure dan stop_reason kosong. Gate completion lulus semua syarat.
+
+Ada satu map-change brake saat scan pertama pada 149,95 s: daun baru
+memotong buffer future curve. Drone mengerem lalu pulih pada 151,2 s,
+melanjutkan tanpa abort. Jadi hasil ini bukan "tidak pernah mengerem".
+3713 pasangan audit: RMSE posisi 0,012906 m, maksimum 0,046869 m. Semua
+angka akurasi adalah pembanding simulator, bukan klaim hardware. Scan
+valid tidak berarti bunga terdeteksi atau semua permukaan terlihat.
+
+Dengan baseline lolos, runner ditambah argumen world bunga dan gate summary
+baseline wajib sebelum launch. Default tetap map lama; map lama tidak diubah.
+Tes menolak world tidak dikenal dan flower launch tanpa baseline. Pengujian
+world bunga berikutnya menggunakan aset lokal terpisah yang dibuat agen map;
+tidak otomatis menyatakan algoritma berhasil di map itu.
+

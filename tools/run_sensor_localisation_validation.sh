@@ -3,13 +3,22 @@
 set -eo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
-source tools/ros_environment.sh
 stage="${1:-inspection}"
+scenario="${2:-palm_farm}"
+case "$stage" in hover|inspection) ;; *) exit 2 ;; esac
+case "$scenario" in palm_farm) ;;
+  palm_farm_flowers)
+    baseline="${3:-}"
+    [[ -f "$baseline" ]] || { echo 'A completed old-map baseline summary is required before the flower world'; exit 2; }
+    /usr/bin/python3 tools/check_sensor_mission_completion.py "$baseline" || exit 2 ;;
+  *) exit 2 ;;
+esac
+source tools/ros_environment.sh
 folder="$project_dir/reports/sensor_localisation_validation_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$folder"
 echo "Validation logs: $folder"
 touch "$folder/launcher.log"
-bash tools/start_sensor_localisation.sh "$stage" > "$folder/launcher.log" 2>&1 &
+bash tools/start_sensor_localisation.sh "$stage" "$scenario" > "$folder/launcher.log" 2>&1 &
 launcher_pid=$!
 run_dir=""
 audit_pid=""

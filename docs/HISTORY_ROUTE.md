@@ -45,4 +45,7 @@ mengklaim performa paper: memakai SparseHistory + komponen free + A* proyek.
 
 Tes: `PYTHONPATH=polinasi_nav python3 -m pytest polinasi_nav/test/test_global_route.py -q`.
 Simulasi headless: `bash tools/run_sensor_localisation_validation.sh inspection`.
+Map bunga hanya setelah baseline lama lolos:
+`bash tools/run_sensor_localisation_validation.sh inspection palm_farm_flowers reports/sensor_localisation_validation_20261014_204901/accuracy.summary.json`.
+Runner memverifikasi COMPLETE, disarmed dan dua pohon/enam sektor sebelum launch.
 Belum validasi hardware; estimator tetap eksperimen scan-to-map ICP + IMU.
