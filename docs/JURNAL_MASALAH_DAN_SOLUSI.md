@@ -1619,3 +1619,32 @@ Hasil penerbangan ulang setelah perbaikan interval belum diklaim di entri ini.
 Sebelum relaunch, pengguna membatalkan permintaan window: run berikutnya
 tetap headless. RViz belum dibuka. Opsi view tetap tersedia tetapi tidak aktif.
 
+# 14 Oktober 2026 — World bunga: korespondensi bidang menyebabkan pose basi
+
+Run `reports/sensor_localisation_validation_20261014_214834/` melewati
+takeoff, approach, ascent dan failure interval lama. Leg approach terakhir
+0,299 m tidak memenuhi minimum blend 0,35 m, sehingga fallback stop/ascent
+terjadi. Pada scan pertama ID 5, altitude ~5,42 m, stale_localisation pada
+91,55 s menghentikan run. Data scan/IMU masuk sesuai timestamp; masalahnya
+registrasi ditolak. Dari 90,9 ke 91,4, plane_count turun 1988 -> 314,
+residual RMS naik 0,0424 -> 0,0803 m, melewati ambang 0,08. Translation
+correction sekitar 0,0118 m. 823 pasangan audit: RMSE posisi 0,01405 m,
+maksimum 0,03840 m sebelum stop; ini tidak mengizinkan memakai pose basi.
+
+Perbaikan opt-in estimator rolling: reject pasangan point-plane dengan
+residual >0,12 m SEBELUM solve dan evaluasi akhir. Tetap perlu >=80 pasangan,
+>=60% konsisten, RMS subset <=0,08 m, translation information tiga arah,
+serta batas correction/rotation. RMS raw dan fraction/count yang dibuang
+dicatat agar bukan sekadar menyembunyikan error. Tidak ada penggunaan truth,
+pelonggaran pose timeout, atau kenaikan ambang RMS accepted. Mekanisme
+serupa sudah ada pada branch fixed-lidar; dipindahkan terbatas ke estimator
+rotating dengan default lama tetap off. Semua threshold tetap eksperimen.
+
+Tes sintetik menerima minority outliers dengan pose tetap benar, menolak
+majority outliers tanpa memperbarui last_good, dan menolak keteramatan
+translasi yang hilang setelah trimming. Landasan robust point-to-plane:
+https://www.open3d.org/docs/latest/tutorial/t_pipelines/t_robust_kernel.html
+dan paper Fast and Robust ICP (Zhang et al., arXiv:2007.07627). Ini bukan
+implementasi FAST-LIO/IEKF atau klaim validasi hardware. Uji terbang ulang
+tetap diperlukan untuk menilai foliage scene; tests tidak menjamin berhasil.
+

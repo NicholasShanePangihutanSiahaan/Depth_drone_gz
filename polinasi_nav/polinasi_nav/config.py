@@ -24,6 +24,9 @@ def load_config(path=None):
     if c.get('sensor_rolling_localisation') and not (c.get('simulation_continuous_roll')
             and c.get('sensor_gimbals_enabled') and c.get('simulation_visual_model')=='polinasi_visual_50cm'):
         raise ValueError('sensor rolling localisation requires isolated visual50 rolling simulation')
+    if c.get('localisation_robust_planes'):
+        if c['localisation_robust_planes'] is not True or not c.get('sensor_rolling_localisation'):
+            raise ValueError('robust plane matching requires the rolling sensor estimator')
     if c.get('history_route_enabled'):
         if c['history_route_enabled'] is not True or not c.get('navigation_window_size'):
             raise ValueError('history routes require a rolling navigation window')

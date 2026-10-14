@@ -124,7 +124,8 @@ class LocalisationNode(ConfigNode):
         self.pending_imu = deque(maxlen=500)
         self.rolling_sensor=bool(self.mode=='sensor' and self.c.get('sensor_rolling_localisation'))
         self.estimator = LidarImuOdometry(self.c['lidar_mount'], self.c['initial_pose'],body_imu=self.rolling_sensor,
-            bootstrap_duration=2.2 if self.rolling_sensor else 0.)
+            bootstrap_duration=2.2 if self.rolling_sensor else 0.,
+            robust_planes=self.rolling_sensor and self.c.get('localisation_robust_planes',False))
         self.pending_scan=deque(maxlen=1)
         self.localisation_diagnostics=self.create_publisher(String,'/localisation/debug',10)
         self.mount_rejection=''
