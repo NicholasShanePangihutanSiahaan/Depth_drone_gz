@@ -73,9 +73,19 @@ def main():
         truths.append(msg)
     node.create_subscription(Odometry,'/simulation/ground_truth/odom',truth,qos_profile_sensor_data)
     node.create_subscription(Odometry,'/localisation/odometry',estimate,qos_profile_sensor_data)
-    node.create_subscription(String,'/localisation/debug',lambda m:latest.update(debug=json.loads(m.data)),10)
-    node.create_subscription(String,'/navigation/status',lambda m:latest.update(nav=json.loads(m.data)),10)
     args.output.parent.mkdir(parents=True,exist_ok=True)
+    def diagnostics(msg):
+        value=json.loads(msg.data)
+        latest['debug']=value
+        with args.output.with_suffix('.localisation.jsonl').open('a') as output:
+            output.write(json.dumps(value)+'\n')
+    def navigation(msg):
+        value=json.loads(msg.data)
+        latest['nav']=value
+        with args.output.with_suffix('.navigation.jsonl').open('a') as output:
+            output.write(json.dumps(value)+'\n')
+    node.create_subscription(String,'/localisation/debug',diagnostics,10)
+    node.create_subscription(String,'/navigation/status',navigation,10)
     deadline=time.monotonic()+args.seconds;last_print=0.
     try:
         with args.output.open('w') as stream:
@@ -105,6 +115,7 @@ def main():
     summary=dict(scope='simulation_sensor_pose_accuracy_not_hardware_validation',samples=len(samples),
         position_rmse_m=float(np.sqrt(np.mean(np.square(errors)))) if errors else None,
         position_max_error_m=max(errors) if errors else None,last_navigation=latest.get('nav',{}),
+        last_localisation_debug=latest.get('debug',{}),
         stop_reason=latest.get('stop_reason',''),
         recovery_events=recovery.events,
         ground_truth_used_by_estimator=False)

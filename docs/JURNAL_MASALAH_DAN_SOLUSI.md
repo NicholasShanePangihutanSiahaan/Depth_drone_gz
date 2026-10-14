@@ -1381,3 +1381,20 @@ setup check, start ber-ack, audit dan shutdown pada failure. Tahap pertama
 adalah takeoff-hover-return-land, baru inspeksi dua pohon setelah lulus.
 Penerbangan fixed belum dinyatakan berhasil pada entri setup ini.
 
+# 14 Oktober 2026 — Fixed run 1: setup lulus, lokalisasi basi saat awal takeoff
+
+Run `081813_12034` menerima arming dan ACK takeoff, tetapi berhenti pada
+13,70 detik simulasi karena `emergency_unavoidable:stale_localisation`.
+44 pasangan sensor/truth sebelum failure: RMSE posisi 0,00857 m, maksimum
+0,01006 m. Posisi accepted terakhir timestamp 13,4, jadi error kecil sebelum
+berhenti bukan bukti estimator tetap sehat pada scan sesudahnya. Tidak ada
+EXPLORE atau obstacle blocker pada status failure ini.
+
+Auditor lama hanya menyimpan debug yang berpasangan dengan pose accepted;
+scan gagal tidak tercatat lengkap. Ditambahkan log semua pesan debug dan
+navigation, termasuk alasan penolakan serta last debug di summary, sebelum
+mengulang diagnosis. Belum mengklaim tahu penyebab internal penolakan.
+Dimensi konservatif vertikal diperbesar menjadi 0,70 m agar mencakup sensor
+fixed baru pada z=0,28 m. Timeout dan quality gate tidak dilonggarkan.
+Data: `reports/fixed_lidar_validation_20261014_081811/`.
+

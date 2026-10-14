@@ -18,6 +18,7 @@ def main():
                  lidar_mount=[0., 0., .28, 0., 0., 0.],
                  camera_mount=[.20, 0., .06], camera_mount_yaw=0.,
                  camera_yaw_enabled=False, camera_pitch_enabled=True,
+                 drone_dimensions=[.60, .60, .70],
                  simulation_balance_front_payload=False,
                  mission_scope='experimental_fixed_lidar_sensor_localisation_' + stage)
         # Replace the old moving-sensor envelopes; preserve chassis geometry.

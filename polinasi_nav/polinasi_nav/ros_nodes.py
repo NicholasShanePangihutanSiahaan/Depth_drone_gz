@@ -280,7 +280,8 @@ class LocalisationNode(ConfigNode):
                 imu_shock_until=e.imu_shock_until if np.isfinite(e.imu_shock_until) else None,
                 registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
                 reference_points=0 if e.reference is None else len(e.reference),
-                dynamic_extrinsics=self.rolling_sensor,ground_truth_input=False),allow_nan=False)))
+                dynamic_extrinsics=bool(self.c.get('simulation_continuous_roll')),
+                fixed_lidar=bool(self.c.get('lidar_fixed')),ground_truth_input=False),allow_nan=False)))
 
 
 class ExternalNavNode(ConfigNode):
