@@ -1424,3 +1424,13 @@ view duplikat/invalid dan kegagalan audit. Launcher menerima pilihan world
 palm_farm_flowers tanpa memodifikasi map lama; default tetap palm_farm.
 Belum menjalankan map bunga karena baseline map lama belum selesai.
 
+# 14 Oktober 2026 — Kurva, moving handoff dan rem ascent melewati failure lama
+
+Run validasi `134905` setelah perbaikan guard: kurva approach diterima pada
+pohon ID 4. Handoff timestamp 79,85 dengan velocity vertikal 0,08 m/s,
+tanpa reset ke diam. Pada 90,9 drone sudah SCAN, altitude aktual sekitar
+3,35 m, failure kosong. Ascent berhenti oleh observation_guard_limit dan
+backup brake selesai tanpa pid_final_safety. Ini validasi transisi dan rem
+dalam run ini, belum klaim dua pohon + landing atau world bunga berhasil.
+Data: `reports/sensor_localisation_validation_20261014_134905/`.
+
