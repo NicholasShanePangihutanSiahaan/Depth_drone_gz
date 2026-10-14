@@ -127,6 +127,7 @@ class LocalisationNode(ConfigNode):
             bootstrap_duration=2.2 if self.rolling_sensor else 0.,
             robust_planes=self.rolling_sensor and self.c.get('localisation_robust_planes',False))
         self.pending_scan=deque(maxlen=1)
+        self.scan_input_diagnostics={}
         self.localisation_diagnostics=self.create_publisher(String,'/localisation/debug',10)
         self.mount_rejection=''
         if self.rolling_sensor:
@@ -247,9 +248,23 @@ class LocalisationNode(ConfigNode):
         if msg.header.frame_id != 'mid360' or not self.valid_time(msg.header.stamp):
             return
         stamp = seconds(msg.header.stamp)
+        input_r=self.estimator.r.copy()
+        integrated=[]
+        imu_intervals=[]
         while self.pending_imu and self.pending_imu[0][0] <= stamp:
             imu_stamp, gyro, acceleration = self.pending_imu.popleft()
+            if self.estimator.last_imu is not None:
+                imu_intervals.append(imu_stamp-self.estimator.last_imu)
             self.estimator.imu(gyro, acceleration, imu_stamp)
+            integrated.append((imu_stamp,float(np.linalg.norm(gyro)),float(np.linalg.norm(acceleration))))
+        self.scan_input_diagnostics=dict(scan_stamp=stamp,imu_samples=len(integrated),
+            first_imu_stamp=integrated[0][0] if integrated else None,
+            last_imu_stamp=integrated[-1][0] if integrated else None,
+            max_imu_interval_seconds=max(imu_intervals,default=0.),
+            peak_gyro_rad_s=max((s[1] for s in integrated),default=0.),
+            peak_acceleration_mps2=max((s[2] for s in integrated),default=0.),
+            predicted_rotation_delta_rad=float(np.linalg.norm(Rotation.from_matrix(self.estimator.r@input_r.T).as_rotvec())),
+            mount_rotation_rpy=Rotation.from_matrix(self.estimator.mount_r).as_euler('xyz').tolist())
         points = cloud_points(msg)
         ranges = np.linalg.norm(points, axis=1)
         points = points[(ranges >= self.c['lidar_min_range']) & (ranges < self.c['lidar_range']-0.05)]
@@ -278,6 +293,7 @@ class LocalisationNode(ConfigNode):
                 calibrated_gravity_mps2=e.gravity_magnitude,gyro_bias=e.gyro_bias.tolist(),
                 keyframes=len(e.keyframes),translation_information=e.translation_information,
                 registration=e.last_registration,
+                scan_inputs=self.scan_input_diagnostics,
                 imu_shock_until=e.imu_shock_until if np.isfinite(e.imu_shock_until) else None,
                 registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
                 reference_points=0 if e.reference is None else len(e.reference),

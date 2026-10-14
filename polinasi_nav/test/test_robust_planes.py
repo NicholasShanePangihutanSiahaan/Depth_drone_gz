@@ -36,6 +36,9 @@ def test_majority_inconsistent_planes_do_not_refresh_last_good_pose():
         cloud=cloud.copy();cloud[np.arange(len(cloud))%5!=0,axis]+=.25;clouds.append(cloud)
     assert not e.scan(np.vstack(clouds),.345)
     assert e.last_good==.245 and e.reason=='insufficient_consistent_planes'
+    assert e.last_registration['iteration']==0
+    assert np.all(np.isfinite(e.last_registration['predicted_position']))
+    assert e.last_registration['candidate_rotation_delta_rad']==0.
 
 
 def test_trimming_cannot_hide_loss_of_translation_observability():

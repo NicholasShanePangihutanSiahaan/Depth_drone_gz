@@ -1671,3 +1671,22 @@ semua daun pasti terlihat atau jaminan hardware. Diagnostics backup kini
 mencatat exact remaining-brake witness, elapsed dan map stamp saat gagal.
 Pengujian ulang diperlukan; belum dinyatakan selesai untuk world bunga.
 
+# 14 Oktober 2026 — Approach berhenti karena registrasi hilang sebelum uji ascent
+
+Run `sensor_localisation_validation_20261014_222206` berhasil takeoff dan
+mulai approach pohon ID 12, tetapi dihentikan otomatis pada 25,5 s karena
+`stale_localisation`. Perbaikan ascent belum sempat diuji. 162 pasangan
+audit memberi RMSE posisi 0,01120 m dan maksimum 0,02771 m. Setelah scan
+25,2 s diterima, dua scan berikutnya hanya memiliki 43,9% dan 49,4% plane
+yang konsisten (minimum 60%). Raw RMS naik dari 0,0553 menjadi 0,1766 m.
+Orientasi prediksi juga berubah mendadak; tanpa log masukan yang rinci
+belum dapat dipastikan apakah penyebabnya IMU, transform, atau pencocokan.
+
+Tidak menaikkan timeout atau melonggarkan penerimaan pose. Ditambahkan
+diagnostik per scan: jumlah/rentang timestamp IMU, interval maksimum,
+puncak gyro/akselerasi, perubahan rotasi prediksi, rotasi mount, iterasi
+ICP yang gagal dan kandidat koreksinya. Ini pengumpulan bukti, bukan
+klaim akar masalah telah diperbaiki. Run berikutnya tetap headless dengan
+roll 180 derajat/detik. Tes memastikan penolakan mencatat kandidat dan
+tidak memperbarui last_good.
+

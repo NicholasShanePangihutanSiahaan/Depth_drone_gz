@@ -190,6 +190,8 @@ class LidarImuOdometry:
                 if self.robust_planes:
                     valid=np.abs(residual)<=.12
                     self.last_registration=dict(stage='iterative_correspondence_rejection',
+                        iteration=_,predicted_position=predicted_p.tolist(),candidate_position=p.tolist(),
+                        candidate_rotation_delta_rad=float(np.linalg.norm(Rotation.from_matrix(r@predicted_r.T).as_rotvec())),
                         raw_plane_count=len(residual),consistent_plane_count=int(np.count_nonzero(valid)),
                         consistent_plane_fraction=float(np.mean(valid)),
                         raw_plane_rmse_m=float(np.sqrt(np.mean(residual**2))),residual_gate_m=.12)
