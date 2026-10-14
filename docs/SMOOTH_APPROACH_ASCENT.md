@@ -36,3 +36,15 @@ Urutan validasi yang diminta pengguna:
    jalankan map `palm_farm_flowers`, tanpa mengubah map lama.
 
 Belum boleh mengklaim langkah kedua lulus dari hasil langkah pertama.
+
+Gate read-only sebelum world kedua:
+
+```bash
+python3 tools/check_sensor_mission_completion.py reports/<folder-validasi>/accuracy.summary.json
+```
+
+Gate memerlukan sensor-mode, tidak memakai truth untuk estimator, COMPLETE,
+disarmed, dua tree ID dan minimal enam sektor unik valid per pohon. Operator
+stop, sekadar LAND, view duplikat atau failure tidak dianggap berhasil.
+Launcher sensor menerima argumen world kedua, default tetap `palm_farm`;
+world bunga baru dijalankan setelah gate map lama lulus.

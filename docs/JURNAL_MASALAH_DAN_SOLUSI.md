@@ -1415,3 +1415,12 @@ occupied/unknown relabeling atau perubahan footprint/clearance.
 767 pasangan audit sebelum stop: RMSE posisi 0,01113 m; maksimum 0,04381 m.
 Log: `reports/sensor_localisation_validation_20261014_133724/`.
 
+# 14 Oktober 2026 — Gate sebelum map palm_farm_flowers
+
+Disiapkan pemeriksa read-only summary: bukan sekadar tidak ada failure,
+tetapi COMPLETE + disarmed + sensor-only localisation + dua pohon dan enam
+sektor unik valid tiap pohon. Tes menolak LAND tanpa COMPLETE, operator stop,
+view duplikat/invalid dan kegagalan audit. Launcher menerima pilihan world
+palm_farm_flowers tanpa memodifikasi map lama; default tetap palm_farm.
+Belum menjalankan map bunga karena baseline map lama belum selesai.
+
