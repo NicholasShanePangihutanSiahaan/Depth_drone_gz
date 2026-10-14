@@ -66,7 +66,7 @@ class ApproachAscentTrajectory(ContinuousTrajectory):
 
 def build_approach_blend(grid,start,goal,tree,config):
     start,goal=np.asarray(start,float),np.asarray(goal,float)
-    detail=dict(policy='observed_under_canopy_C2_blend',accepted=False)
+    detail=dict(policy='observed_under_canopy_C2_blend',tree_id=tree.get('id'),accepted=False)
     horizontal=float(np.linalg.norm(start[:2]-goal[:2]))
     if not .35<=horizontal<=config.get('approach_blend_distance',1.8) or abs(start[2]-goal[2])>.15:
         return None,dict(detail,reason='not_final_level_approach_leg')

@@ -60,6 +60,21 @@ def test_async_snapshot_adopts_raised_goal_and_complete_curve():
     ctl.executor=None
 
 
+def test_observation_buffer_triggers_brake_but_does_not_forbid_certified_stop():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    c,g=fixture();ctl=ContinuousTreeInspectionController(c,g,asynchronous=False)
+    ctl.tree_phase='ASCEND';ctl.command=np.array([2.,0.,2.])
+    ctl.command_v=np.array([0.,0.,.1])
+    ctl.ascent_reference=SimpleNamespace(stop=None,reason='')
+    with patch('polinasi_nav.planning.brake_safe',return_value=False):
+        assert not ctl.final_reference_guard(np.zeros(3))
+        ctl.ascent_reference=SimpleNamespace(stop=object(),reason='observation_guard_limit')
+        assert ctl.final_reference_guard(np.zeros(3))
+    assert ctl.final_reference_guard_diagnostics['actual_and_reference_braking_still_required']
+    assert not ctl.final_reference_guard_diagnostics['observation_buffer_required']
+
+
 def test_unknown_and_occupied_curve_not_rounded_through():
     c,g=fixture();tree=dict(xy=[0.,0.],observed_stem_top=5.)
     for state in (UNKNOWN,OCCUPIED):

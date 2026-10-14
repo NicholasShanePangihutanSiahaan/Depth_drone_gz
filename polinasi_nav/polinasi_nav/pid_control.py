@@ -85,7 +85,8 @@ class PositionPID:
             safe = bool(np.linalg.norm(output) <= self.c['acceleration']+1e-8
                         and actual_safe and reference_safe and guard_safe)
             checks.append(dict(correction_scale=scale, actual=actual_check, reference=reference_check,
-                               observation_guard_safe=bool(guard_safe)))
+                               observation_guard_safe=bool(guard_safe),
+                               observation_guard_policy=getattr(controller,'final_reference_guard_diagnostics',{}).copy()))
             if safe:
                 break
         self.last.update(safety_checks=checks, correction_scale=scale,

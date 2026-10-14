@@ -201,12 +201,26 @@ class ContinuousTreeInspectionController(TreeInspectionController):
 
     def final_reference_guard(self,acceleration):
         from .planning import brake_safe
+        self.final_reference_guard_diagnostics={}
+        # The extra shifted observation buffer decides when to START braking.
+        # A certified stop must retain real body/reference stopping clearance,
+        # not an additional future-ascent buffer above its stopping corridor.
+        ref=getattr(self,'ascent_reference',None)
+        if self.tree_phase=='ASCEND' and ref is not None and ref.stop is not None:
+            self.final_reference_guard_diagnostics=dict(policy='certified_ascent_braking',
+                observation_buffer_required=False,ascent_stop_reason=ref.reason,
+                actual_and_reference_braking_still_required=True)
+            return True
         if not (getattr(self.trajectory,'approach_ascent_blend',False)
                 or self.c.get('smooth_approach_ascent') and self.tree_phase=='ASCEND'):
             return True
         guarded=self.command+np.array([0.,0.,self.c.get('tree_ascent_observation_guard',0.)])
-        return bool(self.grid.line_safe(self.command,guarded) and brake_safe(self.grid,guarded,
-            self.command_v,self.final_braking_config(),acceleration))
+        detail={}
+        safe=bool(self.grid.line_safe(self.command,guarded) and brake_safe(self.grid,guarded,
+            self.command_v,self.final_braking_config(),acceleration,diagnostics=detail))
+        self.final_reference_guard_diagnostics=dict(policy='continue_ascent_observation_buffer',
+            observation_buffer_required=True,safe=safe,braking=detail)
+        return safe
 
     def inspection_status(self):
         status=super().inspection_status()

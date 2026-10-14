@@ -1397,3 +1397,21 @@ dropout atau unknown tetap dapat memerlukan berhenti aman. Pengguna meminta
 map palm_farm_flowers hanya setelah map lama dua pohon + landing berhasil;
 urutan tersebut dicatat tanpa mengganti map saat ini.
 
+# 14 Oktober 2026 — Handoff mulus berhasil, final guard menolak rem ascent
+
+Run `133727_29658` memakai kurva di leg x~6,01 -> 6,97 m, z~2,00 -> 2,60 m.
+Pada 79,85 detik handoff ke ASCEND mempertahankan velocity z=0,075737 m/s
+dan acceleration z=0,015137 m/s²: tidak ada setpoint diam di sudut.
+Namun pada 86,25, saat naik sekitar 3,27 m, terjadi `pid_final_safety`.
+Ascent sudah mengaktifkan backup brake karena buffer pengamatan atas mulai
+terhalang margin daun. Semua kandidat PID lolos actual-body dan reference
+braking, tetapi hook baru masih menuntut buffer naik tambahan selama rem.
+
+Perbaikan: buffer tambahan hanya wajib ketika melanjutkan naik; selama
+backup brake aktif, tetap wajib actual-body/reference braking dengan
+reaction_time 0,7 s, namun tidak memaksa ruang untuk naik lebih jauh.
+Kebijakan dan alasan rem dicatat pada setiap safety check PID. Tidak ada
+occupied/unknown relabeling atau perubahan footprint/clearance.
+767 pasangan audit sebelum stop: RMSE posisi 0,01113 m; maksimum 0,04381 m.
+Log: `reports/sensor_localisation_validation_20261014_133724/`.
+
