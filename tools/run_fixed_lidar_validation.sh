@@ -8,6 +8,7 @@ stage="${1:-hover}"
 folder="$project_dir/reports/fixed_lidar_validation_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$folder"
 echo "Validation logs: $folder"
+touch "$folder/launcher.log"
 bash tools/start_fixed_lidar.sh "$stage" > "$folder/launcher.log" 2>&1 &
 launcher_pid=$!
 run_dir=""

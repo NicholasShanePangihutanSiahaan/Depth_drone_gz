@@ -1436,3 +1436,9 @@ kedua. Orphan SITL hanya dibersihkan bila cwd, executable, argumen JSON dan
 loopback cocok dengan run terdaftar yang launchernya sudah mati. Ditambahkan
 regresi bahwa dua stop hanya mengirim satu signal.
 
+# 14 Oktober 2026 — Race pembacaan log sebelum launcher mulai
+
+Runner `082931` keluar sebelum simulasi karena polling membaca launcher.log
+sebelum redirection background membuat file; `set -e` menganggapnya fatal.
+File log kini dibuat sebelum spawn. Tidak ada flight atau perubahan safety.
+
