@@ -1648,3 +1648,26 @@ dan paper Fast and Robust ICP (Zhang et al., arXiv:2007.07627). Ini bukan
 implementasi FAST-LIO/IEKF atau klaim validasi hardware. Uji terbang ulang
 tetap diperlukan untuk menilai foliage scene; tests tidak menjamin berhasil.
 
+# 14 Oktober 2026 — Voxel daun baru memotong rem saat naik di world bunga
+
+Run `reports/sensor_localisation_validation_20261014_220451/` dengan robust
+plane estimator lolos takeoff dan approach blend ID 18. Pada 66,45 s,
+handoff z=2,6 m mempertahankan vZ=0,08. Pada 69,0 s voxel occupied baru
+[2,5;5,9;3,3] masuk margin referensi di sekitar [2,097;5,079;2,889].
+Unknown_count=0. Reaction segment dan backup ascent kini tidak valid;
+emergency_unavoidable:ascent_backup_invalidated pada 69,25 menghentikan run.
+Estimator masih tracking, raw residual 0,0514 m, subset 0,0438 m, consistent
+fraction 0,9708; 601 pasangan audit RMSE 0,01157 m, maksimum 0,02991 m.
+Ini bukan failure estimator atau penolakan bagian rem yang sudah lewat:
+Brake.path_safe memang memeriksa suffix dari elapsed saat ini.
+
+Roll 180 deg/s butuh 2 s untuk satu siklus. Reserve ekstra .2 m pada ascent
+.108 m/s hanya ~1,85 s sebelum tambahan delay map/stopping. Scan berbeda
+sudut bisa memasukkan foliage yang sebelumnya terlewat. Ini tidak membuktikan
+sensor/mesh sempurna atau model free-space tahan false-negative. Perbaikan
+konservatif fixture: ascent max .08 (target .072), handoff .06, buffer ekstra
+.5 m; XY speed/margin fisik tidak dilonggarkan. Cadangan ini bukan bukti
+semua daun pasti terlihat atau jaminan hardware. Diagnostics backup kini
+mencatat exact remaining-brake witness, elapsed dan map stamp saat gagal.
+Pengujian ulang diperlukan; belum dinyatakan selesai untuk world bunga.
+

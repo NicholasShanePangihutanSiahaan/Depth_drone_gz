@@ -57,7 +57,12 @@ class ContinuousAscent:
                 'observed_stopping_corridor_limit' if not segment_safe or not stopping_safe else
                 'observation_guard_limit' if not guard_safe else 'desired_height_braking_limit')
             self.stop = Brake(p,v,a,self.c)
-        if not self.stop.path_safe(grid):
+        backup_detail={}
+        if not self.stop.path_safe(grid,diagnostics=backup_detail):
+            self.diagnostics.update(mode='backup_invalidated',backup_check=backup_detail,
+                brake_elapsed_seconds=float(self.stop.elapsed),current_reference=p.tolist(),
+                current_velocity=v.tolist(),map_version=int(grid.version),
+                map_stamp=float(grid.last_observation_stamp))
             raise RuntimeError('ascent_backup_invalidated')
         self.stop.step(dt)
         result = self.stop.p.copy(),self.stop.v.copy(),self.stop.a.copy()
