@@ -1424,3 +1424,15 @@ ground-truth tetap aktif. Raw RMSE dan fraksi konsisten ikut dicatat agar
 outlier tidak disembunyikan. Tes sintetis harus menerima sedikit outlier
 namun menolak cloud tanpa konsensus; penerbangan berikutnya diperlukan.
 
+# 14 Oktober 2026 — Stop ganda memotong cleanup, menyisakan port 5762
+
+Percobaan `082541` dan `082715` tidak memulai flight: guard port 5762 menolak
+startup. Pemeriksaan pemilik port mengonfirmasi PID 13721 adalah arducopter
+SITL, executable project dan cwd tepat run `082233_13607`, bukan hardware.
+Auditor stop lalu runner stop lagi; sinyal kedua dapat mematikan launcher
+di tengah cleanup karena trap sudah dimatikan agar tidak reentrant.
+Stop kini mencatat `stop_requested` sebelum signal dan mengabaikan request
+kedua. Orphan SITL hanya dibersihkan bila cwd, executable, argumen JSON dan
+loopback cocok dengan run terdaftar yang launchernya sudah mati. Ditambahkan
+regresi bahwa dua stop hanya mengirim satu signal.
+
