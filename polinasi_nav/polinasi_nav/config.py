@@ -24,6 +24,15 @@ def load_config(path=None):
     if c.get('sensor_rolling_localisation') and not (c.get('simulation_continuous_roll')
             and c.get('sensor_gimbals_enabled') and c.get('simulation_visual_model')=='polinasi_visual_50cm'):
         raise ValueError('sensor rolling localisation requires isolated visual50 rolling simulation')
+    if c.get('smooth_approach_ascent'):
+        if c['smooth_approach_ascent'] is not True or not c.get('continuous_tree_scanning') or not c.get('rolling_canopy_ascent'):
+            raise ValueError('smooth approach ascent requires continuous scan and guarded ascent')
+        for key in ('approach_blend_distance','approach_blend_rise','approach_blend_terminal_speed'):
+            value=c.get(key)
+            if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value<=0:
+                raise ValueError(key+' must be positive and finite')
+        if not .35<c['approach_blend_distance']<=2. or c['approach_blend_terminal_speed']>c.get('tree_ascent_speed',.12):
+            raise ValueError('invalid approach blend distance or terminal speed')
     for key in ('resolution', 'speed', 'acceleration', 'jerk', 'cloud_timeout',
                 'pose_timeout', 'free_ttl', 'orbit_radius', 'orbit_speed'):
         if c[key] <= 0:

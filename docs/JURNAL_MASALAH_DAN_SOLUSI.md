@@ -1380,3 +1380,20 @@ setup check, start ber-ack dan watchdog accuracy. Konfigurasi tetap rolling
 IMU; depth kamera tidak diaktifkan dari branch fixed. Tidak mengklaim
 LiDAR-only hardware, dan ground truth tetap hanya untuk audit.
 
+# 14 Oktober 2026 — Transisi approach-ascent tanpa sudut berhenti
+
+Sebelum run rotating berikutnya, pengguna meminta transisi mendekat lalu
+naik tidak patah. Startup `132646_27155` dihentikan untuk implementasi.
+Ditambahkan kurva quintic level-to-vertical pada leg approach terakhir yang
+direct; endpoint memiliki velocity vertikal bukan nol dan acceleration nol.
+Handoff ke ContinuousAscent mempertahankan reference p/v/a, tidak mengambil
+overshoot pengukuran atau mengirim hold di sudut. Ada pemeriksaan permukaan
+overhead, radius stand-off, seluruh curve/guard observed-free, derivative
+headroom, reaction/braking, map live dan koreksi PID final.
+
+Jika kurva belum aman, fallback lama tetap boleh dipakai dan alasannya
+dicatat. Ini bukan janji seluruh approach tanpa jeda: chunk lain, sensor
+dropout atau unknown tetap dapat memerlukan berhenti aman. Pengguna meminta
+map palm_farm_flowers hanya setelah map lama dua pohon + landing berhasil;
+urutan tersebut dicatat tanpa mengganti map saat ini.
+

@@ -76,13 +76,16 @@ class PositionPID:
             bounded = limit_norm(requested, self.c['acceleration'])
             output = self.previous_acceleration+limit_norm(bounded-self.previous_acceleration, self.c['jerk']*dt)
             actual_check, reference_check = {}, {}
-            actual_safe = brake_safe(controller.grid, position, velocity, self.c, output,
+            braking_config=getattr(controller,'final_braking_config',lambda:self.c)()
+            actual_safe = brake_safe(controller.grid, position, velocity, braking_config, output,
                                      actual=True, diagnostics=actual_check)
             reference_safe = brake_safe(controller.grid, controller.command, controller.command_v,
-                                        self.c, output, diagnostics=reference_check)
+                                        braking_config, output, diagnostics=reference_check)
+            guard_safe=getattr(controller,'final_reference_guard',lambda a:True)(output)
             safe = bool(np.linalg.norm(output) <= self.c['acceleration']+1e-8
-                        and actual_safe and reference_safe)
-            checks.append(dict(correction_scale=scale, actual=actual_check, reference=reference_check))
+                        and actual_safe and reference_safe and guard_safe)
+            checks.append(dict(correction_scale=scale, actual=actual_check, reference=reference_check,
+                               observation_guard_safe=bool(guard_safe)))
             if safe:
                 break
         self.last.update(safety_checks=checks, correction_scale=scale,

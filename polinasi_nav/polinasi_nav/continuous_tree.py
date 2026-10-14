@@ -18,6 +18,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.scan_sector_records=[]
         self.scan_settled_since=None
         self.scan_handoff={}
+        self.approach_transition={}
         self.scan_anchor_count=int(self.c.get('tree_scan_anchors',24))
         if self.scan_anchor_count<12 or self.scan_anchor_count%self.c['tree_view_count']:
             raise ValueError('scan anchors must be >=12 and divisible by sector count')
@@ -37,6 +38,8 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         if self.tree_phase!='SCAN':
             before=self.tree_phase
             ready=super()._prepare_trajectory(now,position,range_value,range_stamp)
+            if ready and self.trajectory is not None:
+                self.approach_transition=getattr(self.trajectory,'blend_diagnostics',self.approach_transition)
             if before=='APPROACH' and self.tree_phase=='SCAN' and self.c.get('rolling_canopy_ascent'):
                 self._mount_phase('ASCEND',now)
             return ready
@@ -95,6 +98,22 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.inspection_view=len([r for r in self.scan_sector_records if r['inspection_valid']])
 
     def _on_motion(self,now,position):
+        if (self.tree_phase=='APPROACH' and self.state=='SURVEY'
+                and getattr(self.trajectory,'approach_ascent_blend',False)
+                and self.elapsed>=self.trajectory.duration):
+            # Preserve p/v/a; the ascent starts from the same moving vertical
+            # boundary, not from measured overshoot or a rest setpoint.
+            from .ascent import ContinuousAscent
+            velocity,acceleration=self.command_v.copy(),self.command_a.copy()
+            self.approach_transition.update(handoff_stamp=float(now),
+                handoff_position=self.command.tolist(),handoff_velocity=velocity.tolist(),
+                handoff_acceleration=acceleration.tolist(),handoff_policy='moving_C2_vertical_boundary')
+            self._mount_phase('ASCEND',now)
+            height=float(np.clip(self.active_tree['observed_stem_top']-.4,self.c['takeoff_altitude'],5.5))
+            self.ascent_reference=ContinuousAscent(height,self.c)
+            self.ascent_nominal_acceleration=acceleration
+            self.view_target=np.r_[self.command[:2],height]
+            return
         if self.tree_phase=='SCAN' and self.state=='SURVEY' and self.scan_orbit_ready:
             self.goal_yaw=self._camera_heading(position)
             before=self.waypoint_index
@@ -150,12 +169,48 @@ class ContinuousTreeInspectionController(TreeInspectionController):
 
     def _trajectory_from_points(self,points,speed=None):
         trajectory=SurveyController._trajectory_from_points(self,points,speed)
+        if (self.c.get('smooth_approach_ascent') and self.tree_phase=='APPROACH'
+                and self.state=='SURVEY' and self.active_tree is not None
+                and self.view_target is not None and len(points)==2
+                and np.linalg.norm(np.asarray(points[-1])-self.view_target)<1e-6):
+            from .approach_blend import build_approach_blend
+            blend,detail=build_approach_blend(self.grid,points[0],points[-1],self.active_tree,self.c)
+            if blend is not None:
+                self.goal=self.view_target=blend.sample(blend.duration)[0].copy()
+                return blend
+            trajectory.blend_diagnostics=detail
         if self.tree_phase=='SCAN' and not isinstance(trajectory,ContinuousTrajectory):
             raise ValueError('continuous scan smoothing not certified')
         return trajectory
 
+    def _sample_next(self,dt,position,velocity):
+        result=super()._sample_next(dt,position,velocity)
+        if getattr(self.trajectory,'approach_ascent_blend',False):
+            detail={}
+            if not self.trajectory.candidate_safe(self.grid,*result[:3],diagnostics=detail):
+                self.approach_transition.update(runtime_guard=detail)
+                self.fail('approach_ascent_braking_guard')
+        return result
+
+    def final_braking_config(self):
+        if getattr(self.trajectory,'approach_ascent_blend',False):
+            return self.trajectory.c
+        if self.c.get('smooth_approach_ascent') and self.tree_phase=='ASCEND':
+            return dict(self.c,reaction_time=max(self.c['reaction_time'],self.c.get('tree_ascent_reaction_time',.7)))
+        return self.c
+
+    def final_reference_guard(self,acceleration):
+        from .planning import brake_safe
+        if not (getattr(self.trajectory,'approach_ascent_blend',False)
+                or self.c.get('smooth_approach_ascent') and self.tree_phase=='ASCEND'):
+            return True
+        guarded=self.command+np.array([0.,0.,self.c.get('tree_ascent_observation_guard',0.)])
+        return bool(self.grid.line_safe(self.command,guarded) and brake_safe(self.grid,guarded,
+            self.command_v,self.final_braking_config(),acceleration))
+
     def inspection_status(self):
         status=super().inspection_status()
+        status['approach_ascent_transition']=self.approach_transition
         ids=np.argwhere(self.grid.state==OCCUPIED)
         ceiling=None
         if len(ids):

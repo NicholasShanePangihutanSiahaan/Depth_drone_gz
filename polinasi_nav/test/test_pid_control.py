@@ -30,6 +30,15 @@ def test_pid_hover_and_no_optimizer_or_model_required():
     np.testing.assert_allclose(ctl.command_a, 0.)
     assert not ctl.failure and pid.status()['active_controller'] == 'PID_PVA_feedback'
     assert not hasattr(pid, 'worker') and not pid.status()['model_controls_flight']
+
+
+def test_pid_cannot_bypass_transition_guard_with_feedback_or_zero_correction():
+    c,ctl,pid=fixture()
+    ctl.final_reference_guard=Mock(return_value=False)
+    result=pid.apply(.05,ctl,ctl.command,np.zeros(3))
+    assert result==('brake','hold') and ctl.failure=='pid_final_safety'
+    assert ctl.final_reference_guard.call_count==3
+    assert all(not check['observation_guard_safe'] for check in pid.last['safety_checks'])
     # Live status publication must accept both saturated and unsaturated PID.
     json.dumps(pid.status(), allow_nan=False)
 
