@@ -257,6 +257,9 @@ class TreeInspectionController(SurveyController):
 
     def _mission_hint(self,current):
         if self.state == 'SURVEY' and self.view_target is not None:
+            if self.c.get('history_route_enabled') and self.tree_phase=='APPROACH':
+                goal=self._history_goal(current,self.view_target)
+                return np.asarray(current).copy() if goal is None else goal
             from .local_subgoal import inspection_hint, geometric_hint
             if self.executor is not None:
                 # Camera preparation needs a direction, not a costly detour search.
@@ -266,6 +269,11 @@ class TreeInspectionController(SurveyController):
                 allow_vertical=self.tree_phase=='APPROACH')
             return hint
         return super()._mission_hint(current)
+
+    def route_destination(self):
+        if self.state=='SURVEY' and self.tree_phase=='APPROACH' and self.view_target is not None:
+            return self.view_target.copy()
+        return super().route_destination()
 
     def _planning_clone(self):
         clone = super()._planning_clone()
@@ -346,6 +354,11 @@ class TreeInspectionController(SurveyController):
         return self.grid.safe(self.goal)
 
     def _prepare_trajectory(self,now,position,range_value=None,range_stamp=None):
+        if (self.c.get('history_route_enabled') and self.state=='SURVEY'
+                and self.tree_phase=='SEARCH' and self.active_tree is None):
+            # Select the final measured-tree approach goal BEFORE requesting a
+            # history route. This does not authorize a geometric local flight.
+            self._choose_goal(position)
         if getattr(self,'depth_navigation_paused',False):
             return False  # Keep the certified hold; do not accept pending plans.
         if self.auto_mounts() and self.state=='SURVEY' and self.tree_phase in ('ORIENT','UPWARD_OBSERVE','NORMALIZE'):

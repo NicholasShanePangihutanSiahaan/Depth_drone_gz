@@ -24,6 +24,17 @@ def load_config(path=None):
     if c.get('sensor_rolling_localisation') and not (c.get('simulation_continuous_roll')
             and c.get('sensor_gimbals_enabled') and c.get('simulation_visual_model')=='polinasi_visual_50cm'):
         raise ValueError('sensor rolling localisation requires isolated visual50 rolling simulation')
+    if c.get('history_route_enabled'):
+        if c['history_route_enabled'] is not True or not c.get('navigation_window_size'):
+            raise ValueError('history routes require a rolling navigation window')
+        for key in ('history_route_margin','history_route_max_age','history_route_local_lookahead','history_route_wait_timeout'):
+            value=c.get(key)
+            if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value<=0:
+                raise ValueError('invalid '+key)
+        for key,maximum in (('history_route_max_voxels',2000000),('history_route_max_expansions',100000)):
+            value=c.get(key)
+            if isinstance(value,bool) or not isinstance(value,int) or not 1<=value<=maximum:
+                raise ValueError('invalid '+key)
     if c.get('scan_adaptive_height'):
         if c['scan_adaptive_height'] is not True or not c.get('scan_target_repair'):
             raise ValueError('adaptive scan height requires scan target repair')

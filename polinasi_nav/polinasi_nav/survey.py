@@ -58,6 +58,9 @@ class SurveyController(MissionController):
         self.prefetch_submitted = self.prefetch_used = self.prefetch_rejected = 0
         self.prefetch_reason = ''
         self.skipped_targets = []
+        self.global_route={}
+        self.global_route_diagnostics={}
+        self.global_route_wait_since=None
 
     def _planning_clone(self):
         clone = object.__new__(type(self))
@@ -67,7 +70,20 @@ class SurveyController(MissionController):
                 setattr(clone, key, copy.deepcopy(value))
         clone.executor = clone.pending_plan = clone.prefetched_plan = clone.prefetch_key = None
         clone.planner_submitted_ns = time.monotonic_ns()
+        if clone.c.get('history_route_enabled') and clone.route_destination() is not None:
+            clone.goal=None
         return clone
+
+    def route_destination(self):
+        if self.state=='RETURN':
+            return np.array([*self.c['home'][:2],self.c['takeoff_altitude']])
+        return None
+
+    def _history_goal(self,current,destination):
+        from .global_route import local_route_goal
+        goal,self.global_route_diagnostics=local_route_goal(self.grid,current,destination,
+            self.global_route,self.survey_now,self.c)
+        return goal
 
     def _prefetch_next(self, now):
         if (not self.c.get('survey_prefetch', False) or self.executor is None or self.failure
@@ -119,6 +135,9 @@ class SurveyController(MissionController):
 
     def _return_goal(self, current):
         home = np.array([*self.c['home'][:2], self.c['takeoff_altitude']])
+        if self.c.get('history_route_enabled'):
+            goal=self._history_goal(current,home)
+            return np.asarray(current).copy() if goal is None else goal
         delta = home-np.asarray(current)
         distance = np.linalg.norm(delta)
         # Home may lie outside the rolling local map. Replan bounded legs;
@@ -162,6 +181,14 @@ class SurveyController(MissionController):
         return result
 
     def _prepare_trajectory(self, now, position, range_value=None, range_stamp=None):
+        destination=self.route_destination()
+        if self.c.get('history_route_enabled') and destination is not None:
+            if self._history_goal(self.command,destination) is None:
+                self.global_route_wait_since=now if self.global_route_wait_since is None else self.global_route_wait_since
+                if now-self.global_route_wait_since>self.c.get('history_route_wait_timeout',30.):
+                    self.fail('global_route_unavailable')
+                return False
+            self.global_route_wait_since=None
         if self.wait_for_scan is not None:
             if self.grid.last_observation_stamp > self.wait_for_scan:
                 self.wait_for_scan = None
@@ -220,6 +247,7 @@ class SurveyController(MissionController):
         self.planner_job_id = clone.planner_submitted_ns
         self.planner_stages_ms['submit_to_result'] = (time.monotonic_ns()-clone.planner_submitted_ns)/1e6
         self.planner_wall_max_ms = clone.planner_wall_max_ms
+        self.global_route_diagnostics=clone.global_route_diagnostics
         if clone.failure:
             self._accept_plan_auxiliary(clone,False)
             self.fail(clone.failure)

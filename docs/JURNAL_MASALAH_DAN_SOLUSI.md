@@ -1534,3 +1534,38 @@ final tetap diperiksa terpisah; diagnostics mencatat offset/curve yang gagal.
 Replay snapshot setelah mask guard menghasilkan kurva dan buffer aman.
 Penerbangan ulang tetap diperlukan; replay tidak dihitung mission success.
 
+# 14 Oktober 2026 — Scan adaptif dua pohon berhasil, subtarget return gagal
+
+Run `reports/sensor_localisation_validation_20261014_153250/` melewati
+failure smoothing sebelumnya. Pohon ID 4 menyelesaikan 6/6 pada 184,9 s,
+ID 5 menyelesaikan 6/6 pada 346,2 s. Tinggi berubah mengikuti cap bawah
+daun; gerak XY dan Z bersamaan tercatat, misalnya sektor pertama ID 4
+vZ=+0,0477 m/s dan sektor kedua -0,0892 m/s. Di sisi rendah ID 5, profil
+turun sekitar 2,72–2,92 m, melewati anchor yang dulu blocked, kemudian naik
+kembali pada ruang berikutnya. Enam sektor valid bukan bukti bunga terdeteksi.
+
+Setelah scan, pada 346,45 s drone masuk RETURN dari posisi sekitar
+[5,05;7,09;3,285] m. Home [0;0;2] diketahui, tetapi kode memilih titik
+geometris 2 m ke arah home. Endpoint itu tidak aman: log occupied_count=42,
+unknown_count=0, daun sekitar [2,9..3,5;5,5..5,9;3,5..3,9] masuk margin.
+Titik yang sama terus dicoba; blocked_route pada 358,55 s memicu stop auditor.
+3497 pasangan audit: RMSE 0,01150 m, maksimum 0,03493 m. Dua scan berhasil,
+tetapi return/landing belum, maka gate world bunga tetap belum lolos.
+
+Pengguna meminta tujuan akhir tetap dan jalur diambil dari memori peta,
+bukan hanya pergeseran subtarget. Ditambahkan worker panduan SparseHistory
+untuk RETURN dan APPROACH, A* penuh pada kotak start–goal plus margin, lalu
+prefix jalur dipotong sesuai jendela lokal. Peta live dan seluruh final
+safety tetap wajib. Unknown/expired free tetap blocked; jalur parsial
+ditandai eksplisit dan tidak dianggap sampai tujuan. Hasil lama/goal berbeda
+ditolak, tanpa rute hold dengan timeout. Runtime global tidak di callback
+kontrol; mapping melakukan copy history lalu worker terpisah menghitung.
+
+Replay snapshot dari run yang gagal justru menemukan rute penuh melalui
+[5,0518;7,0810;3,3204] -> [4,1;6,1;2,5] -> [0;0;2], 2003 ekspansi,
+sekitar 1195 ms worker pada pengujian ini. Bukan angka realtime hardware
+atau replay identik timing/state saat gagal. Ini membuktikan peta tersimpan
+memiliki jalan aman yang tidak dimanfaatkan pemilihan titik geometris lama.
+Hasil penerbangan implementasi panduan baru dicatat setelah run berikutnya.
+92 tes regresi lolos sebelum run, termasuk 8 tes panduan riwayat baru.
+

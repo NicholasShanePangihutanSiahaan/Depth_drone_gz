@@ -366,6 +366,9 @@ class NavigationNode(ConfigNode):
                 from .continuous_tree import ContinuousTreeInspectionController
                 controller_type=ContinuousTreeInspectionController
         self.controller = controller_type(self.c, self.grid, self.get_parameter('mode').value == 'sensor')
+        if self.c.get('history_route_enabled'):
+            if not self.separate_mapping:raise ValueError('history routes require separate mapping process')
+            self.create_subscription(String,'/mapping/history_route',self.history_route_cb,QoSProfile(depth=1))
         if self.c.get('active_tree_inspection'):
             self.create_subscription(String,'/perception/trees',
                 lambda msg:self.controller.receive_trees(json.loads(msg.data)),1)
@@ -612,6 +615,21 @@ class NavigationNode(ConfigNode):
                 # Latest-only scan queue; keep only the in-flight and newest trace.
                 if len(self.scan_receipts) > 8:
                     self.scan_receipts.pop(next(iter(self.scan_receipts)))
+
+    def history_route_cb(self,msg):
+        try:
+            route=json.loads(msg.data)
+            points=np.asarray(route['path'],float)
+            goal=np.asarray(route['goal'],float)
+            if (route['frame']!='map' or route['source']!='measured_sparse_history'
+                    or goal.shape!=(3,) or not np.all(np.isfinite(goal))
+                    or len(points)>5000 or (len(points) and (points.ndim!=2 or points.shape[1]!=3 or not np.all(np.isfinite(points))))
+                    or not 0<=self.now()-route['stamp']<=self.c.get('history_route_max_age',8.)):
+                raise ValueError('invalid or stale history route')
+            if route['request_id']>self.controller.global_route.get('request_id',-1):
+                self.controller.global_route=route
+        except (ValueError,KeyError,TypeError) as exc:
+            self.get_logger().warning(f'Rejected history route: {exc}')
 
     @measured('navigation_snapshot_receive')
     def navigation_snapshot(self, msg):
@@ -1122,6 +1140,11 @@ class NavigationNode(ConfigNode):
             if self.controller.state not in ('IDENTIFY', 'SURVEY', 'RETURN'):
                 status['predictive_active'] = False
         self.last_status = status
+        destination=self.controller.route_destination() if hasattr(self.controller,'route_destination') else None
+        status['history_route_request']=(dict(start=self.controller.command.tolist(),goal=destination.tolist())
+            if self.c.get('history_route_enabled') and destination is not None else None)
+        status['history_route_diagnostics']=getattr(self.controller,'global_route_diagnostics',{})
+        status['history_route']=getattr(self.controller,'global_route',{}) if destination is not None else {}
         if self.separate_mapping:
             status.update(self.map_statistics)
             status['runtime_isolation'] = ('identification_no_mapping' if self.identification_empty_arena
