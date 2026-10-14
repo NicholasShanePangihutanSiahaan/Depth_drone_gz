@@ -1,0 +1,37 @@
+# Uji MID-360 fixed
+
+Branch `fixed-lidar`; konfigurasi rotating tetap di branch `rotating-lidar`.
+MID-360 horizontal, fixed pada `[0, 0, 0.28]` meter terhadap badan.
+ZED di depan `[0.20, 0, 0.06]`, yaw nol, hanya pitch (termasuk ke atas).
+Model visual 50 cm dipertahankan; dinamika tetap Iris, bukan model hardware
+50 cm teridentifikasi. Pantulan badan tidak disembunyikan dari sensor.
+
+Lokalisasi sensor memakai LiDAR dan IMU badan yang rigid. Ground truth hanya
+dipakai auditor, tidak dikirim ke kontrol. Estimator eksperimental yang sama
+dengan branch rotating dipakai untuk perbandingan, bukan FAST-LIO produksi.
+Kamera RGB simulasi bukan bukti stereo-depth ZED tervalidasi. Depth fusion
+belum diaktifkan pada fixture awal agar baseline LiDAR dapat diukur dahulu.
+Unknown tetap ditolak; tidak ada pelonggaran clearance atau bypass takeoff.
+
+Jalankan tanpa GUI, dari root repository:
+
+```bash
+source tools/ros_environment.sh
+bash tools/run_fixed_lidar_validation.sh hover
+# Hanya setelah hover COMPLETE dan disarmed, lanjutkan:
+bash tools/run_fixed_lidar_validation.sh inspection
+```
+
+Runner melakukan build, menyalakan Gazebo/SITL/ROS, menetapkan origin,
+memeriksa setup, memulai misi, mengaudit, dan menghentikan run miliknya.
+Run gagal tidak diulang buta: periksa log, perbaiki, tes, lalu jalankan lagi.
+Jangan menjalankan dua simulasi bersamaan. Semua perintah hanya untuk SITL.
+
+Log tahap/setup/akurasi: `reports/fixed_lidar_validation_<tanggal>/`.
+`run.txt` menunjuk log mentah Gazebo/ROS/SITL; map HTML berada di
+`reports/<nama-run>/map_3d/map.html`. Akurasi, alasan berhenti dan status
+terakhir tersimpan dalam `accuracy.summary.json`.
+
+Uji awal kode: 29 tes fixed-geometry, sensor-localisation, continuous-scan
+dan ascent lulus. Hasil ini bukan keberhasilan misi terbang; lihat jurnal
+dan ringkasan run untuk hasil penerbangan aktual.

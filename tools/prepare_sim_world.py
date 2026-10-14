@@ -221,9 +221,18 @@ def prepare(source, output, factor, sensor_config=None):
                 raise ValueError('gimbals are not enabled in the identification arena')
             rolling = config.get('simulation_continuous_roll',False)
             visual50 = config.get('simulation_visual_model')=='polinasi_visual_50cm'
-            if (not rolling and config['lidar_mount'] != [0.,0.,.2,0.,0.,0.]) or (not visual50 and config['camera_mount'] != [.2,0.,.02]):
+            if (not rolling and not config.get('lidar_fixed') and config['lidar_mount'] != [0.,0.,.2,0.,0.,0.]) or (not visual50 and config['camera_mount'] != [.2,0.,.02]):
                 raise ValueError('gimbal SDF currently requires the calibrated default mounting poses')
             add_sensor_gimbals(sensor_tree, config.get('camera_yaw_enabled',True))
+            if config.get('lidar_fixed'):
+                model = sensor_tree.getroot().find('model')
+                model.find("link[@name='mid360_link']/pose").text = ' '.join(map(str,mount))
+                joint = model.find("joint[@name='lidar_pitch']")
+                joint.set('type','fixed')
+                joint.remove(joint.find('axis'))
+                for plugin in list(model.findall('plugin')):
+                    if plugin.findtext('joint_name') == 'lidar_pitch':
+                        model.remove(plugin)
             if rolling:
                 if mount[3:] != [0.,0.,0.]:
                     raise ValueError('continuous roll requires zero initial RPY')
@@ -235,10 +244,10 @@ def prepare(source, output, factor, sensor_config=None):
             if config.get('simulation_lidar_hide_self'):
                 exclude_simulation_self_visuals(sensor_tree, directory.parent, project)
         if config.get('simulation_visual_model')=='polinasi_visual_50cm':
-            if not config.get('simulation_continuous_roll') or config.get('camera_yaw_enabled',True):
+            if not (config.get('simulation_continuous_roll') or config.get('lidar_fixed')) or config.get('camera_yaw_enabled',True):
                 raise ValueError('visual50 requires roll and pitch-only camera')
             integrate_visual_50cm(sensor_tree,directory.parent,project,config)
-        if config.get('sensor_rolling_localisation'):
+        if config.get('sensor_rolling_localisation') or config.get('sensor_fixed_localisation'):
             # Separate, timestamped inertial sensor rigidly on the body; no pose
             # or simulator ground truth feeds the localisation estimator.
             model=sensor_tree.getroot().find('model')

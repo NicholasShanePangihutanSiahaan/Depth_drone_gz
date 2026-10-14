@@ -108,7 +108,7 @@ class LocalisationNode(ConfigNode):
         self.declare_parameter('mode', 'ground_truth')
         self.declare_parameter('world_to_odom', [0., 0., 0., 0., 0., 0.])
         self.mode = self.get_parameter('mode').value
-        if self.c.get('sensor_gimbals_enabled') and self.mode != 'ground_truth' and not self.c.get('sensor_rolling_localisation'):
+        if self.c.get('sensor_gimbals_enabled') and self.mode != 'ground_truth' and not (self.c.get('sensor_rolling_localisation') or self.c.get('sensor_fixed_localisation')):
             raise ValueError('LiDAR–IMU estimator does not support moving sensor extrinsics')
         if self.mode not in ('ground_truth', 'sensor'):
             raise ValueError('mode must be ground_truth or sensor')
@@ -122,7 +122,7 @@ class LocalisationNode(ConfigNode):
         self.last_stamp = -math.inf
         self.last_imu = -math.inf
         self.pending_imu = deque(maxlen=500)
-        self.rolling_sensor=bool(self.mode=='sensor' and self.c.get('sensor_rolling_localisation'))
+        self.rolling_sensor=bool(self.mode=='sensor' and (self.c.get('sensor_rolling_localisation') or self.c.get('sensor_fixed_localisation')))
         self.estimator = LidarImuOdometry(self.c['lidar_mount'], self.c['initial_pose'],body_imu=self.rolling_sensor,
             bootstrap_duration=2.2 if self.rolling_sensor else 0.)
         self.pending_scan=deque(maxlen=1)

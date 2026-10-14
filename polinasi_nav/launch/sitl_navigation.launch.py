@@ -25,7 +25,7 @@ def nodes(context):
     with open(params['config_file']) as config_stream:
         config=json.load(config_stream)
         gimbals = config.get('sensor_gimbals_enabled',False)
-    if gimbals and ((mode != 'ground_truth' and not config.get('sensor_rolling_localisation')) or mission != 'mapping'):
+    if gimbals and ((mode != 'ground_truth' and not (config.get('sensor_rolling_localisation') or config.get('sensor_fixed_localisation'))) or mission != 'mapping'):
         raise ValueError('Sensor gimbals currently require ground_truth mapping simulation')
     if LaunchConfiguration('autostart').perform(context) not in ('true', 'false'):
         raise ValueError('autostart must be true or false')

@@ -24,6 +24,10 @@ def load_config(path=None):
     if c.get('sensor_rolling_localisation') and not (c.get('simulation_continuous_roll')
             and c.get('sensor_gimbals_enabled') and c.get('simulation_visual_model')=='polinasi_visual_50cm'):
         raise ValueError('sensor rolling localisation requires isolated visual50 rolling simulation')
+    if c.get('sensor_fixed_localisation') and (not c.get('lidar_fixed') or
+            c.get('simulation_continuous_roll') or c.get('automatic_tilt_ascent') or
+            c.get('sensor_rolling_localisation')):
+        raise ValueError('fixed sensor localisation requires a fixed, non-tilting LiDAR')
     for key in ('resolution', 'speed', 'acceleration', 'jerk', 'cloud_timeout',
                 'pose_timeout', 'free_ttl', 'orbit_radius', 'orbit_speed'):
         if c[key] <= 0:

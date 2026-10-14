@@ -1364,3 +1364,20 @@ tulis demikian. Jangan menimpa kegagalan lama dengan klaim keberhasilan baru.
 Direktori `reports/` adalah bukti lokal yang umumnya diabaikan Git; jurnal
 dan dokumentasi ini disimpan di repository, sedangkan file log tidak otomatis
 tersedia di GitHub.
+# 14 Oktober 2026 — Baseline pembanding LiDAR fixed, kamera depan pitch-only
+
+Pengguna ingin membandingkan mekanisme rotating dengan MID-360 fixed seperti
+baseline navigasi hutan, bukan menganggap mekanisme putar wajib. Branch baru
+`fixed-lidar` dibuat tanpa menghapus konfigurasi rotating. Ditemukan guard
+konfigurasi/controller/SDF yang mengasumsikan continuous scan harus rolling.
+Guard dipisahkan dengan opt-in fixed; LiDAR benar-benar joint fixed di atas
+badan dan TF statis, kamera depan tetap joint pitch terukur. IMU badan dan
+estimator sensor dipertahankan; ground truth hanya untuk audit. Clearance,
+unknown rejection, freshness dan ownership kontrol tidak dilonggarkan.
+
+29 tes terarah lulus, termasuk geometri SDF, kamera pitch-only dan penolakan
+konfigurasi fixed yang meminta tilt. Runner headless menyiapkan origin,
+setup check, start ber-ack, audit dan shutdown pada failure. Tahap pertama
+adalah takeoff-hover-return-land, baru inspeksi dua pohon setelah lulus.
+Penerbangan fixed belum dinyatakan berhasil pada entri setup ini.
+

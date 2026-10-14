@@ -10,7 +10,8 @@ from .mapping import OCCUPIED
 
 class ContinuousTreeInspectionController(TreeInspectionController):
     def __init__(self,config,grid,sensor_mode=False,asynchronous=True):
-        if (sensor_mode and not config.get('sensor_rolling_localisation')) or not config.get('simulation_continuous_roll'):
+        sensor_opt_in = config.get('sensor_rolling_localisation') or config.get('sensor_fixed_localisation')
+        if (sensor_mode and not sensor_opt_in) or not (config.get('simulation_continuous_roll') or config.get('lidar_fixed')):
             raise ValueError('continuous tree scan currently requires rolling GT simulation')
         super().__init__(config,grid,sensor_mode,asynchronous)
         self.scan_orbit_ready=False
@@ -88,7 +89,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
                 and abs(measured.get('camera_pitch',99)-targets.get('camera_pitch',0))<.1)
         record=dict(tree_id=self.active_tree['id'],view=int((index+1)//step-1),
                     anchor=index,position=np.asarray(position).tolist(),scan_stamp=float(self.grid.last_observation_stamp),
-                    camera_policy='continuous_left_tree',inspection_valid=bool(useful),
+                    camera_policy='continuous_front_tree' if self.c.get('lidar_fixed') else 'continuous_left_tree',inspection_valid=bool(useful),
                     body_yaw_error_rad=float(yaw_error),commanded_speed_mps=float(np.linalg.norm(self.command_v)))
         self.scan_sector_records.append(record)
         if useful:self.scan_records.append(record)
