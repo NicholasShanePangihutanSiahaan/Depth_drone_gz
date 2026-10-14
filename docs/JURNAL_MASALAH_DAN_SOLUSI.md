@@ -1398,3 +1398,11 @@ Dimensi konservatif vertikal diperbesar menjadi 0,70 m agar mencakup sensor
 fixed baru pada z=0,28 m. Timeout dan quality gate tidak dilonggarkan.
 Data: `reports/fixed_lidar_validation_20261014_081811/`.
 
+# 14 Oktober 2026 — Cleanup runner background tidak merespons SIGINT
+
+Percobaan ulang fixed ditolak guard duplicate publisher: run pertama belum
+benar-benar mati walau auditor mengirim stop. Bash yang diluncurkan dengan
+`&` mewarisi SIGINT diabaikan. Stop terdaftar diganti SIGTERM, yang masuk
+trap cleanup TERM launcher dan tetap menutup hanya kelompok proses miliknya.
+Tidak memakai pkill global. Run kedua yang ditolak tidak mengirim arming.
+

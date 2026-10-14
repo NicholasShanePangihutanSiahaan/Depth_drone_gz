@@ -58,7 +58,9 @@ def main():
     for path in paths:
         data = json.loads(path.read_text())
         if live(data):
-            os.kill(int(data['launcher_pid']), signal.SIGINT)
+            # Bash started with '&' inherits ignored SIGINT. SIGTERM still
+            # invokes the launcher's TERM cleanup trap and owned-group cleanup.
+            os.kill(int(data['launcher_pid']), signal.SIGTERM)
             print('Stop requested; launcher closes its Gazebo, RViz, ROS and SITL: '+data['run'])
             return
     print('No registered active project simulation found; no processes were signalled.')

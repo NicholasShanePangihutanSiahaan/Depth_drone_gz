@@ -20,7 +20,7 @@ cleanup() {
   if [[ -n "$run_dir" ]]; then
     /usr/bin/python3 tools/stop_simulation.py --run "$run_dir" || true
   else
-    kill -INT "$launcher_pid" 2>/dev/null || true
+    kill -TERM "$launcher_pid" 2>/dev/null || true
   fi
   wait "$launcher_pid" || true
 }
