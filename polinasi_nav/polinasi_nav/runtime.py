@@ -1,7 +1,18 @@
-"""Wall-time diagnostics; never changes simulation deadlines or control state."""
+"""Timing diagnostics and the shared bounded control integration step."""
 import functools
+import math
 import time
 from collections import deque
+
+
+def control_step_dt(interval):
+    """Use one conservative integration step for reference AND PID.
+
+    ROS scheduling gaps >.2 s still abort; this does not replay missed ticks.
+    """
+    if not math.isfinite(interval) or not 0<interval<=.2:
+        raise ValueError('invalid control interval')
+    return min(interval,.1)
 
 
 def timed_job(function, submitted_ns, *args):

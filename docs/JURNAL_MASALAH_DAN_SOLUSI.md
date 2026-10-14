@@ -1592,3 +1592,30 @@ Tes menolak world tidak dikenal dan flower launch tanpa baseline. Pengujian
 world bunga berikutnya menggunakan aset lokal terpisah yang dibuat agen map;
 tidak otomatis menyatakan algoritma berhasil di map itu.
 
+# 14 Oktober 2026 — World bunga: interval reference dan PID tidak konsisten
+
+Run `reports/sensor_localisation_validation_20261014_213407/` lolos setup,
+takeoff, approach ke pohon ID 11, lalu naik. Approach memakai prefix parsial
+ke [-1,7;-6,1;1,9] yang masuk toleransi pose approach, bukan kurva blend
+langsung; fallback berhenti-lalu-naik terjadi dan tidak diklaim mulus.
+Pada 84,909 s, altitude ~4,058 m, `pid_invalid_measurement_or_dt` memicu
+stop auditor. Sebelumnya timestamp status 84,800; interval callback 0,109 s.
+756 pasangan audit: RMSE 0,01154 m, maksimum 0,04296 m. Stopping/guard ascent
+sebelumnya aman; last PID diagnostics masih menampilkan tick lama.
+
+Outer tick mengizinkan interval sampai 0,2 s. MissionController membatasi
+integration dt ke 0,1 s, tetapi adapter PID menerima interval mentah dan
+menolak >0,1 s. Perbaikan: satu bounded integration dt dipakai reference dan
+PID, dengan raw interval dan flag clipped dicatat terpisah. Interval >0,2,
+reset clock, sensor stale dan tracking/safety gates tetap menghentikan run;
+tidak mereplay tick yang terlewat. Invalid PID kini mencatat dt/reason baru,
+bukan membiarkan diagnostics tick sukses sebelumnya. Tes mencakup 0,109 s,
+batas floating point, 0,2 s, serta penolakan interval >0,2/NaN/negatif.
+
+Pengguna meminta RViz dibuka sambil dipantau. Launcher sensor kini menerima
+mode view `rviz`, runner argumen keempat, tanpa membuka Gazebo GUI/kamera.
+RViz masuk daftar PID cleanup run agar ikut tertutup jika run dihentikan.
+Hasil penerbangan ulang setelah perbaikan interval belum diklaim di entri ini.
+Sebelum relaunch, pengguna membatalkan permintaan window: run berikutnya
+tetap headless. RViz belum dibuka. Opsi view tetap tersedia tetapi tidak aktif.
+

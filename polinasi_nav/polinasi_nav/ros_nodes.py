@@ -31,7 +31,7 @@ from .map_log import MapLog, write_snapshot
 from .survey import SurveyController
 from .frames import FCULocalAlignment,pose_at
 from .takeoff import TakeoffSequence
-from .runtime import CallbackTiming, measured, timed_job, PipelineTiming
+from .runtime import CallbackTiming, measured, timed_job, PipelineTiming, control_step_dt
 from .visual_worker import build_visual_snapshot
 from .map_transport import decode_window
 from .coverage_mapping import (navigation_window, SparseHistory, initialise_rolling_mapper,
@@ -801,7 +801,7 @@ class NavigationNode(ConfigNode):
             # Duplicate callbacks at the same simulation timestamp do not
             # advance flight. They are not evidence of a backwards clock jump.
             return
-        if dt < 0 or dt > 0.2:
+        if not math.isfinite(dt) or dt < 0 or dt > 0.2:
             # Time resets and scheduling gaps cannot replay an old trajectory.
             self.last_timing_gap = float(dt)
             self.timing_gap_context = copy.copy(self.callback_timing.last)
@@ -810,6 +810,10 @@ class NavigationNode(ConfigNode):
                 self.controller.fail('clock_or_scheduler_gap')
                 self.publish_status(now, 'clock_or_scheduler_gap')
             return
+        self.control_step_timing=dict(raw_interval_sim_seconds=float(dt),
+            integration_step_sim_seconds=control_step_dt(dt),
+            clipped=bool(dt>.1),policy='shared_reference_PID_step; gap_over_0.2s_still_aborts')
+        dt=self.control_step_timing['integration_step_sim_seconds']
         if not self.separate_mapping:
             self.map_pending()
         NavigationNode.range_pending(self)
@@ -1063,6 +1067,7 @@ class NavigationNode(ConfigNode):
                    'speed_diagnostics': getattr(self.controller, 'speed_diagnostics', {}),
                    'predictive_alignment': getattr(self, 'predictive_alignment', {}),
                    'callback_wall_max_ms': dict(self.callback_timing.max_ms),
+                   'control_step_timing': getattr(self,'control_step_timing',{}),
                    'planner_worker_wall_max_ms': getattr(self.controller, 'planner_wall_max_ms', None),
                    'planner_stages_last_wall_ms': getattr(self.controller, 'planner_stages_ms', {}),
                    'planner_job_id': getattr(self.controller, 'planner_job_id', None),

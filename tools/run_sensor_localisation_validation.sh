@@ -5,6 +5,8 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
 stage="${1:-inspection}"
 scenario="${2:-palm_farm}"
+view="${4:-headless}"
+case "$view" in headless|rviz) ;; *) exit 2 ;; esac
 case "$stage" in hover|inspection) ;; *) exit 2 ;; esac
 case "$scenario" in palm_farm) ;;
   palm_farm_flowers)
@@ -18,7 +20,7 @@ folder="$project_dir/reports/sensor_localisation_validation_$(date +%Y%m%d_%H%M%
 mkdir -p "$folder"
 echo "Validation logs: $folder"
 touch "$folder/launcher.log"
-bash tools/start_sensor_localisation.sh "$stage" "$scenario" > "$folder/launcher.log" 2>&1 &
+bash tools/start_sensor_localisation.sh "$stage" "$scenario" "$view" > "$folder/launcher.log" 2>&1 &
 launcher_pid=$!
 run_dir=""
 audit_pid=""

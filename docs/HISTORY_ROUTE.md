@@ -48,4 +48,7 @@ Simulasi headless: `bash tools/run_sensor_localisation_validation.sh inspection`
 Map bunga hanya setelah baseline lama lolos:
 `bash tools/run_sensor_localisation_validation.sh inspection palm_farm_flowers reports/sensor_localisation_validation_20261014_204901/accuracy.summary.json`.
 Runner memverifikasi COMPLETE, disarmed dan dua pohon/enam sektor sebelum launch.
+Tambahkan argumen keempat `rviz` untuk membuka RViz saja; Gazebo server tetap
+headless dan kamera tidak dibuka. RViz milik run ditutup oleh cleanup ketika
+run berhenti, sehingga tidak menampilkan data lama setelah abort.
 Belum validasi hardware; estimator tetap eksperimen scan-to-map ICP + IMU.

@@ -42,6 +42,9 @@ class PositionPID:
             return controller.command.copy(), controller.command_v.copy()
         values = np.r_[position, velocity, controller.command, controller.command_v, controller.command_a, dt]
         if not np.all(np.isfinite(values)) or not 0 < dt <= .1:
+            self.last=dict(active=False,reason='pid_invalid_measurement_or_dt',
+                dt=float(dt) if np.isfinite(dt) else None,
+                measurements_finite=bool(np.all(np.isfinite(values))))
             controller.fail('pid_invalid_measurement_or_dt')
             return controller._braking(dt if np.isfinite(dt) and 0 < dt <= .1 else .05)
         error = controller.command-np.asarray(position)
