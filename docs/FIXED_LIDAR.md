@@ -32,6 +32,8 @@ Log tahap/setup/akurasi: `reports/fixed_lidar_validation_<tanggal>/`.
 `reports/<nama-run>/map_3d/map.html`. Akurasi, alasan berhenti dan status
 terakhir tersimpan dalam `accuracy.summary.json`.
 
-Uji awal kode: 29 tes fixed-geometry, sensor-localisation, continuous-scan
-dan ascent lulus. Hasil ini bukan keberhasilan misi terbang; lihat jurnal
-dan ringkasan run untuk hasil penerbangan aktual.
+Uji kode: 30 tes fixed-geometry, sensor-localisation, continuous-scan/ascent,
+1 tes stop idempotent dan 10 tes adapter mount ROS lulus.
+Baseline `fixed_lidar_validation_20261014_082953`: takeoff-hover-return-land,
+COMPLETE/disarmed, RMSE posisi 1,60 cm; maksimum 5,43 cm (802 pasangan).
+Inspeksi dua pohon belum dinyatakan lulus oleh hasil baseline ini.

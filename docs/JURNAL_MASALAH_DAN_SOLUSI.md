@@ -1452,3 +1452,19 @@ tetap sensor-only. Ditambahkan regresi ROS bahwa mount fixed hanya meminta
 feedback kamera, tidak menunggu joint pitch LiDAR yang memang tidak ada.
 10 tes adapter mount ROS lulus dengan environment ROS dan PYTHONPATH lengkap.
 
+# 14 Oktober 2026 — Fixed baseline COMPLETE, lanjut inspeksi dua pohon
+
+Run `082955_15779` pada folder validasi `082953` menyelesaikan takeoff,
+hover 2 m, RETURN, LAND dan disarm; COMPLETE pada 89,05 detik simulasi,
+tanpa failure/recovery event. Dari 802 pasangan sensor/truth: RMSE posisi
+0,015964 m, maksimum 0,054329 m. Sumber localisation hanya cloud + IMU
+badan; truth hanya untuk audit. Ini baseline GPS-free simulasi, bukan uji
+hardware atau bukti seluruh inspeksi berhasil.
+
+Log penuh: `reports/fixed_lidar_validation_20261014_082953/`.
+Pemrosesan map-ROS sampai setpoint yang memakai map: p50 892,1 ms, p95
+910,0 ms waktu nyata, maksimum 1165,7 ms pada mesin ini dengan pacing .15.
+Metrik tidak memasukkan waktu sebelum ROS receive, pengiriman MAVROS-FCU,
+atau respons kendaraan, dan bukan benchmark real-time hardware.
+Loop berikutnya menjalankan continuous inspection dua pohon, bukan hover.
+
