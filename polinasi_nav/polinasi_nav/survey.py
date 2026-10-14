@@ -221,6 +221,7 @@ class SurveyController(MissionController):
         self.planner_stages_ms['submit_to_result'] = (time.monotonic_ns()-clone.planner_submitted_ns)/1e6
         self.planner_wall_max_ms = clone.planner_wall_max_ms
         if clone.failure:
+            self._accept_plan_auxiliary(clone,False)
             self.fail(clone.failure)
             return False
         new_skips = clone.skipped_targets[len(self.skipped_targets):]

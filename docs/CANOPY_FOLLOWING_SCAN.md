@@ -18,6 +18,9 @@ Kandidat radial tetap fallback terbatas, bukan penghapusan sektor.
 Kurva quintic 3D dan timing bersama menghasilkan gerakan mendatar + vertikal
 bersamaan. Tidak ada penambahan Z setelah smoothing atau publisher baru.
 Seluruh curve, buffer vertikal, limit v/a/j, braking dan PID final diperiksa.
+Buffer juga masuk planner-only blocked mask untuk A* dan smoothing; raw map
+dan actual-body mask tidak diubah. Kolom tinggi memilih chord langsung yang
+aman bila tersedia, bukan memaksakan endpoint setinggi mungkin di tepi daun.
 Buffer vertikal diperiksa dengan curve salinan yang digeser maksimum setengah
 voxel per langkah: setiap interval blocked Z (minimal satu voxel) tersampel;
 ini bukan downsampling sensor atau pelabelan ulang unknown.

@@ -2,7 +2,7 @@ from pathlib import Path
 import numpy as np
 from polinasi_nav.config import load_config
 from polinasi_nav.mapping import VoxelMap,FREE,OCCUPIED,UNKNOWN
-from polinasi_nav.canopy_scan import canopy_profile,CanopyScanTrajectory
+from polinasi_nav.canopy_scan import canopy_profile,CanopyScanTrajectory,canopy_guard_grid
 from polinasi_nav.continuous import ContinuousTrajectory
 
 
@@ -79,3 +79,15 @@ def test_three_dimensional_scan_curve_keeps_dynamic_bounds():
     assert max(np.linalg.norm(v) for _,v,_,_ in samples)<=c['command_speed']+1e-6
     assert max(np.linalg.norm(a) for _,_,a,_ in samples)<=c['acceleration']+1e-6
     assert max(np.linalg.norm(j) for _,_,_,j in samples)<=c['jerk']+1e-6
+
+
+def test_guard_planning_mask_reserves_overhead_without_mutating_map():
+    c,g,_=fixture()
+    g.state[:,:,g.indices([0.,0.,3.95])[2]]=OCCUPIED;g.rebuild(0.)
+    original=g.blocked.copy();raw=g.state.copy()
+    guarded=canopy_guard_grid(g,.4)
+    assert g.safe([1.,0.,2.8]) and not guarded.safe([1.,0.,3.0])
+    assert not guarded.line_safe([1.,0.,2.8],[1.,0.,3.0])
+    np.testing.assert_array_equal(g.blocked,original)
+    np.testing.assert_array_equal(g.state,raw)
+    assert guarded.blocked_actual is g.blocked_actual

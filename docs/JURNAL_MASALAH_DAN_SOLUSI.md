@@ -1509,3 +1509,28 @@ daun dengan udara bebas di atas, unknown overhead, pemanfaatan headroom baru,
 buffer curve/suffix dan derivative bounds. Config hover menonaktifkan fitur
 scan. Hasil penerbangan setelah perubahan ini belum diklaim di entri ini.
 
+# 14 Oktober 2026 — Cap endpoint aman tetapi kurva di antaranya terkena buffer
+
+Run `reports/sensor_localisation_validation_20261014_151825/` berhasil
+takeoff dan handoff approach-ascent dengan vZ ~0,07986 m/s. Pada 90,1 s,
+sebelum sektor scan pertama, `unsafe_smoothed_trajectory` menghentikan run.
+807 pasangan audit: RMSE posisi 0,01115 m, maksimum 0,03593 m; bukan
+lokalisasi yang memicu stop. Profil worker ditolak sebelum masuk status,
+sehingga ditambahkan penerusan diagnostics juga pada rejected plan.
+
+Audit offline dari snapshot peta akhir mereproduksi: target pertama sekitar
+[7,026;-0,531;3,323] aman dengan buffer di endpoint, tetapi kurva mendekati
+x=7,0 dari sisi x<7 melewati kanopi lebih rendah. Kurva nominal aman, salinan
+buffer +0,1 m terhalang di sekitar [6,999;-0,425;3,4]. Sumber occupied daun
+sekitar [5,9;-0,7;4,3], [5,9;-0,3;4,3], [6,1;-1,1;4,3]. Ini snapshot akhir,
+bukan rekonstruksi identik seluruh state/timing worker saat kejadian.
+
+Perbaikan: buffer atas kini masuk ke planner-only blocked mask, sehingga
+A* dan smoothing sejak awal menggunakan clearance yang sama dengan final
+certificate. Raw occupancy, unknown dan actual-body mask tidak diubah.
+Pemilihan tinggi juga memilih chord langsung yang sedikit lebih rendah
+sebelum menuntut A* detour kecil ke endpoint yang tepat di tepi cap. Buffer
+final tetap diperiksa terpisah; diagnostics mencatat offset/curve yang gagal.
+Replay snapshot setelah mask guard menghasilkan kurva dan buffer aman.
+Penerbangan ulang tetap diperlukan; replay tidak dihitung mission success.
+

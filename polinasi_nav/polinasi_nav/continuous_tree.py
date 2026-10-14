@@ -22,6 +22,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.scan_target_repairs=[]
         self.scan_target_diagnostics={}
         self.scan_height_diagnostics={}
+        self.scan_curve_diagnostics={}
         self.scan_anchor_count=int(self.c.get('tree_scan_anchors',24))
         if self.scan_anchor_count<12 or self.scan_anchor_count%self.c['tree_view_count']:
             raise ValueError('scan anchors must be >=12 and divisible by sector count')
@@ -146,6 +147,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         if self.tree_phase=='SCAN' and self.scan_orbit_ready:
             self.scan_target_diagnostics=clone.scan_target_diagnostics
             self.scan_height_diagnostics=clone.scan_height_diagnostics
+            self.scan_curve_diagnostics=clone.scan_curve_diagnostics
             if ready:
                 self.waypoints=clone.waypoints.copy()
                 self.scan_target_repairs=clone.scan_target_repairs
@@ -249,7 +251,15 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         return SurveyController._prepare_trajectory(self,now,position,range_value,range_stamp)
 
     def _trajectory_from_points(self,points,speed=None):
-        trajectory=SurveyController._trajectory_from_points(self,points,speed)
+        grid=self.grid
+        adaptive=self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height')
+        if adaptive:
+            from .canopy_scan import canopy_guard_grid
+            self.grid=canopy_guard_grid(grid,self.c.get('tree_ascent_observation_guard',.2))
+        try:
+            trajectory=SurveyController._trajectory_from_points(self,points,speed)
+        finally:
+            self.grid=grid
         if (self.c.get('smooth_approach_ascent') and self.tree_phase=='APPROACH'
                 and self.state=='SURVEY' and self.active_tree is not None
                 and self.view_target is not None and len(points)==2
@@ -265,7 +275,20 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         if self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height'):
             from .canopy_scan import CanopyScanTrajectory
             trajectory=CanopyScanTrajectory(trajectory,self.c.get('tree_ascent_observation_guard',.2))
+            trajectory.safe(self.grid)
+            self.scan_curve_diagnostics=trajectory.canopy_certificate
         return trajectory
+
+    def _plan_route(self,start,goal):
+        if not (self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height')):
+            return super()._plan_route(start,goal)
+        from .canopy_scan import canopy_guard_grid
+        grid=self.grid
+        self.grid=canopy_guard_grid(grid,self.c.get('tree_ascent_observation_guard',.2))
+        try:
+            return super()._plan_route(start,goal)
+        finally:
+            self.grid=grid
 
     def _sample_next(self,dt,position,velocity):
         result=super()._sample_next(dt,position,velocity)
@@ -312,6 +335,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         status['scan_target_diagnostics']=self.scan_target_diagnostics
         status['scan_target_repairs']=self.scan_target_repairs
         status['scan_height_profile']=self.scan_height_diagnostics
+        status['scan_curve_diagnostics']=self.scan_curve_diagnostics
         ids=np.argwhere(self.grid.state==OCCUPIED)
         ceiling=None
         if len(ids):

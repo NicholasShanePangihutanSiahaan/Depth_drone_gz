@@ -3,8 +3,23 @@
 No direct setpoint override: the caller must certify the resulting 3D curve.
 """
 import math
+import copy
 import numpy as np
 from .continuous import ContinuousTrajectory
+
+
+def canopy_guard_grid(grid,guard):
+    """Planner-only view: reserve the complete upward interval, voxel-rounded.
+
+    Raw occupancy, timestamps and actual-body mask are not modified.
+    """
+    view=copy.copy(grid)
+    view.blocked=grid.blocked.copy()
+    cells=max(0,int(math.ceil(guard/grid.res-1e-9)))
+    for offset in range(1,cells+1):
+        view.blocked[:,:,:-offset]|=grid.blocked[:,:,offset:]
+        view.blocked[:,:,-offset:]=True
+    return view
 
 
 class CanopyScanTrajectory(ContinuousTrajectory):
@@ -27,8 +42,17 @@ class CanopyScanTrajectory(ContinuousTrajectory):
         return np.linspace(0.,self.canopy_guard,count+1)[1:]
 
     def safe(self,grid):
-        return (super().safe(grid) and
-                all(self._shifted(offset).safe(grid) for offset in self._offsets(grid)))
+        nominal=super().safe(grid)
+        self.canopy_certificate=dict(nominal_safe=bool(nominal),guard_m=self.canopy_guard)
+        if not nominal:return False
+        for offset in self._offsets(grid):
+            proxy=self._shifted(offset)
+            if not proxy.safe_from(grid,0.):
+                self.canopy_certificate.update(guard_safe=False,failed_offset_m=float(offset),
+                    failure=proxy.execution_certificate)
+                return False
+        self.canopy_certificate['guard_safe']=True
+        return True
 
     def safe_from(self,grid,elapsed):
         safe=super().safe_from(grid,elapsed)
@@ -50,6 +74,7 @@ def canopy_profile(grid,waypoints,index,current,tree,config,initial_height):
     result=np.asarray(waypoints).copy()
     stop=min(len(result),index+config.get('survey_batch_points',6))
     guard=config.get('tree_ascent_observation_guard',.2)
+    guarded_grid=canopy_guard_grid(grid,guard)
     camera_z=config.get('camera_mount',[0.,0.,0.])[2]
     target=min(5.5,stem_target_height(tree,config)-camera_z)
     floor=max(config['takeoff_altitude'],initial_height-config.get('scan_target_max_descent',.6))
@@ -63,10 +88,9 @@ def canopy_profile(grid,waypoints,index,current,tree,config,initial_height):
         connected=[]
         for height in heights:
             p=np.r_[xy,height]
-            upper=p+np.array([0.,0.,guard])
             # A contiguous observed-free column from below cannot jump through
             # leaves into free air ABOVE the canopy. Unknown also blocks it.
-            if not grid.line_safe(low,upper):
+            if not guarded_grid.line_safe(low,p):
                 break
             connected.append(float(height))
         ceiling=max(connected) if connected else None
@@ -75,6 +99,12 @@ def canopy_profile(grid,waypoints,index,current,tree,config,initial_height):
             selected=min(ceiling,previous[2]+config.get('scan_height_max_slope',.45)*distance)
             if abs(selected-previous[2])<config.get('scan_height_hysteresis',.08) and ceiling>=previous[2]:
                 selected=float(previous[2])
+            # A cap at the endpoint alone misses a lower leaf BETWEEN anchors.
+            # Prefer a slightly lower straight chord over a tiny A* detour to
+            # a saturated ceiling endpoint. Real lateral blocks still use A*.
+            direct=np.arange(selected,floor-1e-8,-resolution)
+            selected=next((float(z) for z in direct
+                if guarded_grid.line_safe(previous,np.r_[xy,z])),selected)
             result[i,2]=selected
         entries.append(dict(anchor=int(i),observed_height_cap_m=ceiling,
             selected_height_m=float(result[i,2]),column_connected=bool(connected)))
