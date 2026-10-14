@@ -9,8 +9,11 @@ Model visual 50 cm dipertahankan; dinamika tetap Iris, bukan model hardware
 Lokalisasi sensor memakai LiDAR dan IMU badan yang rigid. Ground truth hanya
 dipakai auditor, tidak dikirim ke kontrol. Estimator eksperimental yang sama
 dengan branch rotating dipakai untuk perbandingan, bukan FAST-LIO produksi.
-Kamera RGB simulasi bukan bukti stereo-depth ZED tervalidasi. Depth fusion
-belum diaktifkan pada fixture awal agar baseline LiDAR dapat diukur dahulu.
+Depth fusion tidak aktif pada fixture hover untuk mengisolasi baseline LiDAR.
+Fixture inspection memakai RGBD sintetis untuk mengamati bagian bawah jalur;
+ini bukan emulasi kesalahan stereo ZED atau validasi hardware. Explore scan
+tetap pada ketinggian sama. Jika unknown menghalangi, kamera mengamati jalur
+ke bawah saat hold, lalu kembali tree-up sebelum melanjutkan scanning.
 Unknown tetap ditolak; tidak ada pelonggaran clearance atau bypass takeoff.
 
 Jalankan tanpa GUI, dari root repository:

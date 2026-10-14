@@ -26,6 +26,16 @@ def main():
         for mount, radius in ((c['lidar_mount'], .055), (c['camera_mount'], .095)):
             shapes.append(dict(kind='sphere', size=[radius], pose=[*mount[:3], 0., 0., 0.]))
         c['self_filter_shapes'] = shapes
+        if stage == 'inspection':
+            c.update(tree_exploration_same_altitude=True,
+                     exploration_directional_preference=True,exploration_progress_tolerance=.1,
+                     exploration_backward_penalty=4.,exploration_retrace_penalty=2.,
+                     depth_camera_enabled=True,depth_camera_timeout=1.,
+                     depth_min_range=.3,depth_max_range=20.,
+                     depth_mapping_stride=8,depth_mapping_budget=800,
+                     depth_approach_depression_degrees=25.,
+                     tree_camera_observe_before_plan=True,tree_camera_observe_dwell=.4,
+                     fixed_scan_depth_observation=True)
         (output / f'{stage}.json').write_text(json.dumps(c, indent=2) + '\n')
 
 

@@ -30,6 +30,23 @@ def test_circle_is_constant_height_ccw_and_left_camera_faces_tree():
     np.testing.assert_allclose(ctl.waypoints[-1],[2.,0.,2.],atol=1e-10)
 
 
+def test_fixed_scan_unknown_requests_stationary_depth_then_restores_tree_alignment():
+    ctl=controller()
+    ctl.c.update(fixed_scan_depth_observation=True,lidar_fixed=True,camera_mount_yaw=0.)
+    ctl.route_blockage={'unknown_count':3}
+    ctl.scan_start_aligned=True
+    position=np.array([2.,0.,2.])
+    ctl._camera_observation_ready=lambda now,p:False
+    assert not ctl._prepare_scan(1.,position)
+    assert ctl.navigation_camera_active and ctl.camera_navigation_view()
+    ctl._camera_observation_ready=lambda now,p:True
+    assert not ctl._prepare_scan(2.,position)
+    assert not ctl.navigation_camera_active and not ctl.camera_navigation_view()
+    assert not ctl.scan_start_aligned
+    assert ctl.navigation_camera_completed[0]==ctl.waypoint_index
+    np.testing.assert_allclose(ctl.navigation_camera_completed[1],position)
+
+
 def test_scan_does_not_promote_ascent_overshoot_to_new_altitude():
     ctl=controller();ctl.inspection_altitude=3.32
     ctl.command=np.array([2.,0.,3.32])

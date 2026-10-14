@@ -19,6 +19,7 @@ def test_fixed_config_and_world(tmp_path):
     c = load_config(path)
     assert c['lidar_fixed'] and not c['simulation_continuous_roll']
     assert c['camera_mount_yaw'] == 0 and not c['camera_yaw_enabled']
+    assert c['depth_camera_enabled'] and c['tree_exploration_same_altitude']
     prepare(ROOT/'polinasi_nav/worlds/palm_farm.sdf',tmp_path/'world.sdf',.15,path)
     model = ET.parse(tmp_path/'models/iris_lidar_mapping/model.sdf').getroot().find('model')
     assert model.find("joint[@name='lidar_pitch']").get('type') == 'fixed'
@@ -26,10 +27,16 @@ def test_fixed_config_and_world(tmp_path):
     assert model.find("joint[@name='lidar_roll']") is None
     assert model.find("joint[@name='camera_yaw']").get('type') == 'fixed'
     assert model.find("joint[@name='camera_pitch']").get('type') == 'revolute'
+    assert model.find(".//sensor[@name='zed_placeholder']").get('type')=='rgbd_camera'
     assert model.find("link[@name='mid360_link']/pose").text == '0.0 0.0 0.28 0.0 0.0 0.0'
     ctl = ContinuousTreeInspectionController(c,VoxelMap(c),sensor_mode=True,asynchronous=False)
     ctl.active_tree={'xy':[0.,0.]}
     assert abs(ctl._camera_heading([2.,0.,2.])) == pytest.approx(3.141592653589793)
+    ctl.tree_phase='SCAN'
+    assert ctl._same_altitude_exploration()
+    assert not ctl.camera_navigation_view()
+    ctl.navigation_camera_active=True
+    assert ctl.camera_navigation_view()
 
 
 def test_fixed_rejects_moving_lidar(tmp_path):

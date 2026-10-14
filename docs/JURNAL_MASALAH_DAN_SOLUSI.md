@@ -1468,3 +1468,24 @@ Metrik tidak memasukkan waktu sebelum ROS receive, pengiriman MAVROS-FCU,
 atau respons kendaraan, dan bukan benchmark real-time hardware.
 Loop berikutnya menjalankan continuous inspection dua pohon, bukan hover.
 
+# 14 Oktober 2026 — Dua sektor valid, lalu explore turun akibat konfigurasi lama
+
+Run inspeksi `084057_18408` takeoff, approach dan ASCEND berhasil. Di sekitar
+95,8 detik sudah 2/6 sektor valid pada 3,12 m. Kemudian waypoint 9 meminta
+pengamatan: 18 unknown voxel di sisi belakang batang, z=2,3–2,7 m, tanpa
+occupied pada koridor. Ini bagian bawah footprint, bukan bukti pohon tidak
+terlihat. Fixture turunan rotating masih `legacy_3D`, depth=False; kandidat
+explore dipilih pada z=2,3 sehingga drone turun. Run dihentikan agen karena
+perilaku tidak sesuai ketinggian scanning, bukan diklaim menyelesaikan pohon.
+
+Perbaikan: pertahankan ketinggian explore APPROACH/SCAN dan preferensi maju;
+aktifkan depth RGBD sintetis kamera depan pada fixture inspection. Approach
+memeriksa depth bawah jalur. Pada SCAN, kamera tetap tree-up saat bergerak;
+hanya ketika unknown menghalangi, drone hold, hadapkan badan menuju jalur,
+pitch kamera ke bawah, tunggu depth baru terintegrasi sesudah mount settle,
+lalu pulihkan heading tree-up sebelum bergerak. Ini tidak menjamin tanpa
+jeda: kamera pitch-only tidak dapat melihat tree dan arah tangensial sekaligus.
+LiDAR tetap fixed, quality gate/unknown rejection tidak dilonggarkan.
+Depth sintetis bukan emulasi kesalahan stereo ZED asli. Auditor kini berhenti
+juga bila session.json menandai run sudah ditutup, tidak menunggu 5400 detik.
+

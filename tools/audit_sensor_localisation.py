@@ -95,6 +95,11 @@ def main():
                     print(json.dumps(dict(pairs=len(samples),latest=samples[-1] if samples else latest.get('debug',{}))),flush=True)
                     last_print=time.monotonic()
                 nav=latest.get('nav',{})
+                if args.stop_run:
+                    session=args.stop_run/'session.json'
+                    if session.exists() and json.loads(session.read_text()).get('stopped'):
+                        latest['stop_reason']='registered_simulation_stopped'
+                        break
                 fault=recovery.check(nav,time.monotonic())
                 if fault:latest['stop_reason']=fault
                 if len(recovery.events)>events_written:

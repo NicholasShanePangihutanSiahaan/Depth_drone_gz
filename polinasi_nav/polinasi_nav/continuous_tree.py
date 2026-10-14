@@ -19,6 +19,8 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.scan_sector_records=[]
         self.scan_settled_since=None
         self.scan_handoff={}
+        self.navigation_camera_active=False
+        self.navigation_camera_completed=None
         self.scan_anchor_count=int(self.c.get('tree_scan_anchors',24))
         if self.scan_anchor_count<12 or self.scan_anchor_count%self.c['tree_view_count']:
             raise ValueError('scan anchors must be >=12 and divisible by sector count')
@@ -107,6 +109,24 @@ class ContinuousTreeInspectionController(TreeInspectionController):
     def _prepare_scan(self,now,position,range_value=None,range_stamp=None):
         if not self.scan_orbit_ready:
             self._begin_continuous_scan(position)
+        # A pitch-only front camera cannot simultaneously face the tree and
+        # inspect below a tangential route. Observe at rest only when unknown
+        # blocks progress, then restore tree-facing alignment before motion.
+        if self.c.get('fixed_scan_depth_observation') and self.state=='SURVEY':
+            completed=self.navigation_camera_completed
+            observed_here=(completed is not None and completed[0]==self.waypoint_index
+                           and np.linalg.norm(np.asarray(position)-completed[1])<.3)
+            needs_view=(self.route_blockage.get('unknown_count',0)>0 and not observed_here)
+            if self.navigation_camera_active or needs_view:
+                if not self.navigation_camera_active:
+                    self.camera_gate={}
+                    self.navigation_camera_active=True
+                if not self._camera_observation_ready(now,np.asarray(position)):
+                    return False
+                self.navigation_camera_completed=(self.waypoint_index,np.asarray(position).copy())
+                self.navigation_camera_active=False
+                self.scan_start_aligned=False
+                return False
         if self.state=='SURVEY' and not self.scan_start_aligned:
             target=self._camera_heading(position)
             dt=0. if self.mount_tick_stamp is None else max(0.,min(.1,now-self.mount_tick_stamp))
@@ -149,6 +169,11 @@ class ContinuousTreeInspectionController(TreeInspectionController):
             return False
         return SurveyController._prepare_trajectory(self,now,position,range_value,range_stamp)
 
+    def camera_navigation_view(self):
+        if self.c.get('fixed_scan_depth_observation') and self.tree_phase=='SCAN':
+            return self.navigation_camera_active
+        return super().camera_navigation_view()
+
     def _trajectory_from_points(self,points,speed=None):
         trajectory=SurveyController._trajectory_from_points(self,points,speed)
         if self.tree_phase=='SCAN' and not isinstance(trajectory,ContinuousTrajectory):
@@ -157,6 +182,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
 
     def inspection_status(self):
         status=super().inspection_status()
+        status['fixed_scan_navigation_camera_active']=self.navigation_camera_active
         ids=np.argwhere(self.grid.state==OCCUPIED)
         ceiling=None
         if len(ids):
