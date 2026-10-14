@@ -6,7 +6,7 @@ import time
 from copy import deepcopy
 
 import rclpy
-from geometry_msgs.msg import Pose, PoseStamped
+from geometry_msgs.msg import Point, Pose, PoseStamped
 from nav_msgs.msg import Path
 from pcl_cstm_msg.msg import (
     AxisAlignedElipsoid,
@@ -18,7 +18,32 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
 
-ORBIT_STATES = {'START_ORBIT', 'WAIT_ORBIT', 'ALIGN_TO_LAST_ORBIT'}
+ORBIT_PATH_STATES = {'WAIT_ORBIT'}
+
+
+def build_orbit_reference_path(center, current_pose, radius, point_count,
+                               stamp=None, frame_id='map'):
+    """Build the legacy CCW circular orbit as a closed reference Path."""
+    count = max(16, int(point_count))
+    radius = max(0.10, float(radius))
+    start_angle = math.atan2(
+        float(current_pose.position.y) - float(center.y),
+        float(current_pose.position.x) - float(center.x))
+    path = Path()
+    path.header.frame_id = frame_id
+    if stamp is not None:
+        path.header.stamp = stamp
+    for index in range(count + 1):
+        angle = start_angle + 2.0 * math.pi * index / count
+        waypoint = PoseStamped()
+        waypoint.header.frame_id = frame_id
+        if stamp is not None:
+            waypoint.header.stamp = stamp
+        waypoint.pose.position.x = float(center.x) + radius * math.cos(angle)
+        waypoint.pose.position.y = float(center.y) + radius * math.sin(angle)
+        waypoint.pose.position.z = float(center.z)
+        path.poses.append(waypoint)
+    return path
 
 
 def select_lookahead_pose(path, current_pose, lookahead):
@@ -67,9 +92,9 @@ def cylinder_to_ellipsoid(tracked, minimum_radius, minimum_half_height):
 class PriestAvoidanceController(Node):
     """Feed goals/obstacles to PRIEST and expose one safe local target.
 
-    Orbit remains on the field-tested dynamic target path. For all other
-    navigation states the controller fails closed: when no fresh PRIEST path
-    exists it publishes the current vehicle pose instead of the unchecked goal.
+    Linear goals and the field-tested circular orbit are reference trajectories.
+    PRIEST locally optimizes both against obstacles. Without a fresh optimized
+    path the controller fails closed and holds the current vehicle position.
     """
 
     def __init__(self):
@@ -80,6 +105,9 @@ class PriestAvoidanceController(Node):
         self.declare_parameter('goal_republish_period', 0.50)
         self.declare_parameter('minimum_obstacle_radius', 0.10)
         self.declare_parameter('minimum_obstacle_half_height', 0.25)
+        self.declare_parameter('orbit_radius', 2.7)
+        self.declare_parameter('orbit_reference_points', 120)
+        self.declare_parameter('reference_republish_period', 0.50)
         self.path_timeout = float(self.get_parameter('path_timeout').value)
         self.lookahead = float(self.get_parameter('waypoint_lookahead').value)
         self.goal_period = float(
@@ -88,15 +116,23 @@ class PriestAvoidanceController(Node):
             self.get_parameter('minimum_obstacle_radius').value)
         self.minimum_half_height = float(
             self.get_parameter('minimum_obstacle_half_height').value)
+        self.orbit_radius = float(self.get_parameter('orbit_radius').value)
+        self.orbit_reference_points = int(
+            self.get_parameter('orbit_reference_points').value)
+        self.reference_period = float(
+            self.get_parameter('reference_republish_period').value)
 
         self.current_pose = None
         self.fsm_goal = None
         self.orbit_goal = None
+        self.orbit_center = None
+        self.orbit_reference = None
         self.fsm_state = 'INIT'
         self.path = None
         self.path_received_at = None
         self.last_goal_sent_at = 0.0
         self.last_goal_xyz = None
+        self.last_reference_sent_at = 0.0
         self.holding = False
 
         sensor_qos = QoSProfile(
@@ -119,6 +155,9 @@ class PriestAvoidanceController(Node):
             PoseStamped, '/control/dynamic_target',
             self.orbit_goal_callback, 10)
         self.create_subscription(
+            Point, '/control/orbit_target',
+            self.orbit_center_callback, 10)
+        self.create_subscription(
             String, '/mission/fsm_state', self.state_callback, 10)
         self.create_subscription(
             Path, '/navigation/priest/trajectory/out',
@@ -129,6 +168,8 @@ class PriestAvoidanceController(Node):
 
         self.goal_publisher = self.create_publisher(
             Pose, '/navigation/priest/linear_goal', reliable_qos)
+        self.reference_publisher = self.create_publisher(
+            Path, '/navigation/priest/trajectory/in', reliable_qos)
         self.obstacle_publisher = self.create_publisher(
             AxisAlignedElipsoidArray, '/ellipsoids', sensor_qos)
         self.safe_target_publisher = self.create_publisher(
@@ -136,7 +177,7 @@ class PriestAvoidanceController(Node):
         rate = max(5.0, float(self.get_parameter('publish_rate').value))
         self.create_timer(1.0 / rate, self.control_loop)
         self.get_logger().info(
-            'PRIEST avoidance bridge aktif; orbit memakai jalur legacy.')
+            'PRIEST local trajectory optimizer aktif untuk linear dan orbit.')
 
     def pose_callback(self, message):
         self.current_pose = message
@@ -147,7 +188,16 @@ class PriestAvoidanceController(Node):
     def orbit_goal_callback(self, message):
         self.orbit_goal = message
 
+    def orbit_center_callback(self, message):
+        self.orbit_center = deepcopy(message)
+        self.orbit_reference = None
+
     def state_callback(self, message):
+        if message.data != self.fsm_state:
+            self.path = None
+            self.path_received_at = None
+            if message.data in ORBIT_PATH_STATES:
+                self.orbit_reference = None
         self.fsm_state = message.data
 
     def path_callback(self, message):
@@ -186,27 +236,58 @@ class PriestAvoidanceController(Node):
         output.pose = deepcopy(pose)
         self.safe_target_publisher.publish(output)
 
-    def control_loop(self):
-        if self.current_pose is None:
+    def publish_orbit_reference(self):
+        if self.current_pose is None or self.orbit_center is None:
             return
-        if self.fsm_state in ORBIT_STATES:
-            if self.orbit_goal is not None:
-                self.publish_target(self.orbit_goal.pose)
-            return
+        if self.orbit_reference is None:
+            self.orbit_reference = build_orbit_reference_path(
+                self.orbit_center,
+                self.current_pose.pose,
+                self.orbit_radius,
+                self.orbit_reference_points,
+                self.get_clock().now().to_msg(),
+            )
+        now = time.monotonic()
+        if now - self.last_reference_sent_at >= self.reference_period:
+            self.reference_publisher.publish(self.orbit_reference)
+            self.last_reference_sent_at = now
 
-        if self.fsm_goal is None:
-            return
-        self.publish_linear_goal()
+    def fresh_selected_pose(self):
         path_fresh = (
             self.path is not None
             and self.path_received_at is not None
             and time.monotonic() - self.path_received_at <= self.path_timeout
         )
-        selected = (
-            select_lookahead_pose(
-                self.path, self.current_pose.pose, self.lookahead)
-            if path_fresh else None
-        )
+        if not path_fresh:
+            return None
+        return select_lookahead_pose(
+            self.path, self.current_pose.pose, self.lookahead)
+
+    def control_loop(self):
+        if self.current_pose is None:
+            return
+        if self.fsm_state in ORBIT_PATH_STATES:
+            self.publish_orbit_reference()
+            selected = self.fresh_selected_pose()
+            if selected is None:
+                selected = deepcopy(self.current_pose.pose)
+                if not self.holding:
+                    self.get_logger().warning(
+                        'Trajectory orbit PRIEST belum fresh; hold posisi.')
+                self.holding = True
+            else:
+                # Pertahankan yaw legacy yang selalu menghadap pusat pohon.
+                if self.orbit_goal is not None:
+                    selected.orientation = deepcopy(
+                        self.orbit_goal.pose.orientation)
+                self.holding = False
+            self.publish_target(selected)
+            return
+
+        if self.fsm_goal is None:
+            return
+        self.publish_linear_goal()
+        selected = self.fresh_selected_pose()
         if selected is None:
             selected = deepcopy(self.current_pose.pose)
             selected.orientation = deepcopy(self.fsm_goal.pose.orientation)

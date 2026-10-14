@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from geometry_msgs.msg import Pose
 
 from beehive_drone.priest_avoidance_controller import (
+    build_orbit_reference_path,
     cylinder_to_ellipsoid,
     select_lookahead_pose,
 )
@@ -62,3 +63,21 @@ def test_invalid_cylinder_is_ignored():
     tracked = SimpleNamespace(cylinder=SimpleNamespace(is_valid=False))
 
     assert cylinder_to_ellipsoid(tracked, 0.10, 0.25) is None
+
+
+def test_orbit_reference_is_closed_ccw_circle():
+    center = SimpleNamespace(x=5.0, y=2.0, z=1.9)
+    current = pose(7.7, 2.0, 1.9)
+
+    path = build_orbit_reference_path(center, current, 2.7, 24)
+
+    assert len(path.poses) == 25
+    first = path.poses[0].pose.position
+    quarter = path.poses[6].pose.position
+    last = path.poses[-1].pose.position
+    assert abs(first.x - 7.7) < 1e-6
+    assert abs(first.y - 2.0) < 1e-6
+    assert abs(quarter.x - 5.0) < 1e-6
+    assert abs(quarter.y - 4.7) < 1e-6
+    assert abs(last.x - first.x) < 1e-6
+    assert abs(last.y - first.y) < 1e-6

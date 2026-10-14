@@ -191,10 +191,9 @@ priest_dyn_node:
 
     is_log_CEM_progress: True
 
-    # Orbit tetap memakai dynamic_orbit_controller yang sudah diuji lapangan.
-    # PRIEST digunakan untuk goal linear di luar orbit.
-    # Sentinel yang bukan state FSM menjaga ROS 2 mengenali tipe string array.
-    reference_trajectory_states: ["__linear_only__"]
+    # Pada WAIT_ORBIT, PRIEST mengikuti reference Path lingkaran dari bridge.
+    # State lain memakai linear_goal dari FSM.
+    reference_trajectory_states: ["WAIT_ORBIT"]
 
 priest_avoidance_controller:
   ros__parameters:
@@ -204,4 +203,7 @@ priest_avoidance_controller:
     goal_republish_period: 0.50
     minimum_obstacle_radius: 0.10
     minimum_obstacle_half_height: 0.25
+    orbit_radius: 2.7
+    orbit_reference_points: 120
+    reference_republish_period: 0.50
       
