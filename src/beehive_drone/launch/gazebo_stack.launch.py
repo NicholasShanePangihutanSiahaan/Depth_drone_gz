@@ -4,16 +4,11 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (
-    DeclareLaunchArgument,
-    IncludeLaunchDescription,
-    LogInfo,
-)
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from launch_ros.substitutions import FindPackageShare
 
 
 def typed(name, value_type):
@@ -25,34 +20,16 @@ def generate_launch_description():
     pcl_share = get_package_share_directory('point-cloud-test')
 
     arguments = [
-        DeclareLaunchArgument('enable_depth_avoidance', default_value='true'),
-        DeclareLaunchArgument('depth_config', default_value=os.path.join(
-            beehive_share, 'config', 'depth_avoidance.yaml')),
         DeclareLaunchArgument('auto_start', default_value='false'),
-        DeclareLaunchArgument('mission_mode', default_value='single_tree'),
         DeclareLaunchArgument('mission_type', default_value='basic_orbit'),
-        DeclareLaunchArgument('max_trees', default_value='2'),
+        DeclareLaunchArgument('mission_mode', default_value='multi_tree'),
+        DeclareLaunchArgument('use_priest', default_value='true'),
         DeclareLaunchArgument(
-            'virtual_tree_offset', default_value='6.0'),
-        DeclareLaunchArgument(
-            'virtual_tree_position_mode', default_value='toward_home'),
-        DeclareLaunchArgument('virtual_tree_position_x', default_value='0.0'),
-        DeclareLaunchArgument('virtual_tree_position_y', default_value='0.0'),
-        DeclareLaunchArgument('require_tree_ahead', default_value='true'),
-        DeclareLaunchArgument(
-            'tree_source', default_value='manual',
+            'altitude_source', default_value='rangefinder',
             description=(
-                "manual: tree_positions; sdf: discover tree_* from world "
-                "SDF")),
-        DeclareLaunchArgument(
-            'tree_world', default_value='plantation_737c519.sdf'),
-        DeclareLaunchArgument('source_tree_limit', default_value='0'),
-        DeclareLaunchArgument(
-            'tree_world_file',
-            default_value=PathJoinSubstitution([
-                FindPackageShare('uav_plantation_sim'), 'worlds',
-                LaunchConfiguration('tree_world')]),
-            description='SDF used for automatic tree discovery'),
+                'Sumber altitude flight_manager. Baseline simulasi cbeea78 '
+                'memakai rangefinder dengan kompensasi origin sensor.')),
+        DeclareLaunchArgument('max_trees', default_value='2'),
         DeclareLaunchArgument(
             'tree_positions',
             default_value='7.0,0.0;14.0,0.0;21.0,0.0'),
@@ -80,9 +57,6 @@ def generate_launch_description():
             'tree_y': typed('tree_y', float),
             'tree_ground_z': typed('tree_ground_z', float),
             'tree_positions': LaunchConfiguration('tree_positions'),
-            'tree_source': LaunchConfiguration('tree_source'),
-            'world_sdf_file': LaunchConfiguration('tree_world_file'),
-            'source_tree_limit': typed('source_tree_limit', int),
             'camera_x': typed('camera_x', float),
             'camera_y': typed('camera_y', float),
             'camera_z': typed('camera_z', float),
@@ -99,8 +73,8 @@ def generate_launch_description():
             'input_topic': '/range',
             'output_topic': '/mavros/rangefinder/rangefinder',
             'frame_id': 'range_link',
-            # Kompensasi origin model / sensor Gazebo agar pembacaan AGL
-            # ekuivalen dengan rangefinder pada baseline Jetson.
+            # Pertahankan kalibrasi simulasi cbeea78 yang sudah berhasil:
+            # origin lidar/model membuat pembacaan sekitar 0.30 m lebih rendah.
             'measurement_offset': 0.30,
         }])
 
@@ -115,8 +89,7 @@ def generate_launch_description():
     return LaunchDescription(arguments + [
         LogInfo(msg=(
             'Gazebo stack memakai algoritma polinasi dan adapter sensor '
-            'sintetis. Jangan jalankan pb_sprayer atau perception stack '
-            'lain.')),
+            'sintetis. Jangan jalankan pb_sprayer atau perception stack lain.')),
         Node(
             package='beehive_drone', executable='sim_sprayer',
             name='sim_sprayer', output='screen'),
@@ -138,23 +111,14 @@ def generate_launch_description():
                 beehive_share, 'launch', 'real_mission.launch.py')),
             launch_arguments={
                 'auto_start': LaunchConfiguration('auto_start'),
-                'enable_depth_avoidance': LaunchConfiguration('enable_depth_avoidance'),
-                'depth_config': LaunchConfiguration('depth_config'),
-                'depth_use_receipt_time': 'true',
-                'depth_inf_is_clear': 'true',
-                'mission_mode': LaunchConfiguration('mission_mode'),
                 'mission_type': LaunchConfiguration('mission_type'),
+                'mission_mode': LaunchConfiguration('mission_mode'),
                 'max_trees': LaunchConfiguration('max_trees'),
-                'virtual_tree_offset_toward_home':
-                    LaunchConfiguration('virtual_tree_offset'),
-                'virtual_tree_position_mode':
-                    LaunchConfiguration('virtual_tree_position_mode'),
-                'virtual_tree_position_x':
-                    LaunchConfiguration('virtual_tree_position_x'),
-                'virtual_tree_position_y':
-                    LaunchConfiguration('virtual_tree_position_y'),
-                'require_tree_ahead':
-                    LaunchConfiguration('require_tree_ahead'),
+                'use_priest': LaunchConfiguration('use_priest'),
+                # Pertahankan gate takeoff cbeea78; bridge simulasi memberi
+                # kompensasi +0.30 m sehingga tidak mengubah konfigurasi real.
+                'altitude_source': LaunchConfiguration('altitude_source'),
+                'enable_flower_detection': 'false',
                 'record_data': 'false',
                 'analyzer_output_directory':
                     LaunchConfiguration('report_output_directory'),

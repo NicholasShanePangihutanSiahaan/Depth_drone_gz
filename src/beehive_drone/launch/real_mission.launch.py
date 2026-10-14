@@ -1,123 +1,128 @@
-"""Real mission nodes.
+"""Launch the field-tested mission stack with optional PRIEST avoidance."""
 
-MAVROS, ZED wrapper, ``vision_to_mavros``, and ``bb_proc_node.launch.py`` must
-already be healthy. Perception is intentionally kept out of this launch so the
-mission never starts a second publisher on ``/global_cylinders``.
-"""
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from ament_index_python.packages import get_package_share_directory
-import os
 
 
 def generate_launch_description():
-    config = os.path.join(
+    default_config = os.path.join(
         get_package_share_directory('beehive_drone'), 'config', 'real.yaml')
+    config = LaunchConfiguration('config_file')
     auto_start = LaunchConfiguration('auto_start')
-    depth_enabled = LaunchConfiguration('enable_depth_avoidance')
-    depth_config = LaunchConfiguration('depth_config')
-    depth_required = ParameterValue(depth_enabled, value_type=bool)
-    mission_mode = LaunchConfiguration('mission_mode')
     mission_type = LaunchConfiguration('mission_type')
+    mission_mode = LaunchConfiguration('mission_mode')
     max_trees = LaunchConfiguration('max_trees')
-    require_tree_ahead = LaunchConfiguration('require_tree_ahead')
+    use_priest = LaunchConfiguration('use_priest')
     record_data = LaunchConfiguration('record_data')
-    analyzer_output_directory = LaunchConfiguration(
-        'analyzer_output_directory')
-    return LaunchDescription([
-        DeclareLaunchArgument('enable_depth_avoidance', default_value='false'),
-        DeclareLaunchArgument('depth_config', default_value=os.path.join(
-            get_package_share_directory('beehive_drone'), 'config', 'depth_avoidance.yaml')),
-        DeclareLaunchArgument('depth_use_receipt_time', default_value='false'),
-        DeclareLaunchArgument('depth_inf_is_clear', default_value='false'),
-        DeclareLaunchArgument(
-            'auto_start', default_value='false',
-            description=(
-                'true: otomatis GUIDED/arm/takeoff setelah local pose '
-                'tersedia. Aktifkan hanya setelah MAVROS, ZED, dan vision '
-                'bridge sehat.')),
-        DeclareLaunchArgument(
-            'mission_mode', default_value='single_tree',
-            description='Pilih single_tree atau multi_tree.'),
+    enable_flower = LaunchConfiguration('enable_flower_detection')
+    altitude_source = LaunchConfiguration('altitude_source')
+    hover_tolerance = LaunchConfiguration('hover_tolerance')
+
+    arguments = [
+        DeclareLaunchArgument('config_file', default_value=default_config),
+        DeclareLaunchArgument('auto_start', default_value='false'),
         DeclareLaunchArgument(
             'mission_type', default_value='basic_orbit',
-            description='Pilih basic_orbit atau virtual_tree_test.'),
+            description='Registered beehive_drone mission strategy.'),
         DeclareLaunchArgument(
-            'virtual_tree_offset_toward_home', default_value='6.0'),
-        DeclareLaunchArgument(
-            'virtual_tree_position_mode', default_value='toward_home'),
-        DeclareLaunchArgument('virtual_tree_position_x', default_value='0.0'),
-        DeclareLaunchArgument('virtual_tree_position_y', default_value='0.0'),
+            'mission_mode', default_value='single_tree',
+            choices=['single_tree', 'multi_tree']),
         DeclareLaunchArgument(
             'max_trees', default_value='0',
-            description='Batas multi-tree; 0 berarti tanpa batas.'),
+            description='Tree limit in multi_tree mode; 0 is unlimited.'),
         DeclareLaunchArgument(
-            'require_tree_ahead', default_value='true',
-            description='Batasi pemilihan target pada arah eksplorasi.'),
+            'use_priest', default_value='false',
+            description=(
+                'false preserves branch_wafi vortex behavior; true routes '
+                'non-orbit goals through PRIEST.')),
         DeclareLaunchArgument(
-            'record_data', default_value='true',
-            description='Jalankan recorder lapangan Jetson.'),
+            'enable_flower_detection', default_value='true'),
+        DeclareLaunchArgument(
+            'altitude_source', default_value='rangefinder',
+            choices=['local_position', 'relative_alt', 'rangefinder'],
+            description='Sumber altitude untuk konfirmasi takeoff.'),
+        DeclareLaunchArgument(
+            'hover_tolerance', default_value='0.2',
+            description='Toleransi konfirmasi ketinggian takeoff.'),
+        DeclareLaunchArgument('record_data', default_value='false'),
         DeclareLaunchArgument(
             'analyzer_output_directory',
-            default_value='~/beehive_mission_reports/real',
-            description='Mission analyzer output directory.'),
-        # /global_cylinders berasal dari bb_pcl_proc_node yang dijalankan
-        # terpisah setelah ZED object detection sehat.
-        Node(package='beehive_drone', executable='tree_mapper',
-             parameters=[config], output='screen'),
-        Node(package='beehive_drone',
-             executable='vortex_avoidance_controller', output='screen',
-             condition=UnlessCondition(depth_enabled)),
-        Node(package='beehive_drone', executable='depth_avoidance_controller',
-             parameters=[depth_config, {
-                 'use_receipt_time': ParameterValue(LaunchConfiguration(
-                     'depth_use_receipt_time'), value_type=bool),
-                 'inf_is_clear': ParameterValue(LaunchConfiguration(
-                     'depth_inf_is_clear'), value_type=bool),
-             }], output='screen', condition=IfCondition(depth_enabled)),
-        Node(package='beehive_drone',
-             executable='dynamic_orbit_controller',
-             parameters=[config, {'require_depth_avoidance': depth_required,
-                                  'orbit_timeout': 480.0}], output='screen'),
-        Node(package='beehive_drone',
-             executable='position_setpoint_controller',
-             parameters=[config, {'require_depth_avoidance': depth_required}], output='screen'),
-        Node(package='beehive_drone', executable='flight_manager',
-             parameters=[config], output='screen'),
-        Node(package='beehive_drone', executable='mission_safety_monitor',
-             parameters=[config], output='screen'),
-        Node(package='beehive_drone', executable='mission_analyzer',
-             parameters=[config, {
-                 'output_directory': analyzer_output_directory}],
-             output='screen'),
-        Node(package='beehive_drone', executable='mission_state_machine',
-             parameters=[config, {
-                 'require_depth_avoidance': depth_required,
-                 'auto_start': ParameterValue(auto_start, value_type=bool),
-                 'mission_mode': mission_mode,
-                 'mission_type': mission_type,
-                 'max_trees': ParameterValue(max_trees, value_type=int),
-                 'virtual_tree_offset_toward_home': ParameterValue(
-                     LaunchConfiguration('virtual_tree_offset_toward_home'),
-                     value_type=float),
-                 'virtual_tree_position_mode': LaunchConfiguration(
-                     'virtual_tree_position_mode'),
-                 'virtual_tree_position_x': ParameterValue(
-                     LaunchConfiguration('virtual_tree_position_x'),
-                     value_type=float),
-                 'virtual_tree_position_y': ParameterValue(
-                     LaunchConfiguration('virtual_tree_position_y'),
-                     value_type=float),
-                 'require_tree_ahead': ParameterValue(
-                     require_tree_ahead, value_type=bool),
-             }], output='screen'),
-        ExecuteProcess(
-            cmd=['/bin/bash', '/home/palmbee1/DTETI-WS/data/record_scripts.sh', '/home/palmbee1/DTETI-WS/data/'],
-            output='screen',
+            default_value='~/beehive_mission_reports/real'),
+        DeclareLaunchArgument(
+            'record_script',
+            default_value='/home/palmbee1/DTETI-WS/data/record_scripts.sh'),
+        DeclareLaunchArgument(
+            'record_output_directory',
+            default_value='/home/palmbee1/DTETI-WS/data/'),
+    ]
+
+    nodes = [
+        Node(
+            package='beehive_drone', executable='tree_mapper',
+            parameters=[config], output='screen'),
+        Node(
+            package='beehive_drone', executable='vortex_avoidance_controller',
+            condition=UnlessCondition(use_priest), output='screen'),
+        Node(
+            package='priest_dyn_traj', executable='priest_dyn_node',
+            name='priest_dyn_node', condition=IfCondition(use_priest),
+            parameters=[config], output='screen', emulate_tty=True),
+        Node(
+            package='beehive_drone', executable='priest_avoidance_controller',
+            condition=IfCondition(use_priest), parameters=[config],
+            output='screen'),
+        Node(
+            package='beehive_drone', executable='dynamic_orbit_controller',
+            parameters=[config], output='screen'),
+        Node(
+            package='beehive_drone', executable='position_setpoint_controller',
+            parameters=[config], output='screen'),
+        Node(
+            package='beehive_drone', executable='flight_manager',
+            # Pada ROS 2 Humble yang dipakai sistem ini, nilai parameter
+            # duplikat dari file pertama dipertahankan. Letakkan override
+            # launch lebih dahulu agar simulasi dapat memilih local_position,
+            # sementara parameter lain tetap dibaca dari real.yaml.
+            parameters=[{
+                'altitude_source': altitude_source,
+                'hover_tolerance': ParameterValue(
+                    hover_tolerance, value_type=float),
+            }, config], output='screen'),
+        Node(
+            package='beehive_drone', executable='mission_safety_monitor',
+            parameters=[config], output='screen'),
+        Node(
+            package='beehive_drone', executable='mission_analyzer',
             condition=IfCondition(record_data),
-        )
-    ])
+            parameters=[config, {
+                'output_directory':
+                    LaunchConfiguration('analyzer_output_directory')}],
+            output='screen'),
+        # Exactly one FSM owns mode/arm/takeoff/navigation commands.
+        Node(
+            package='beehive_drone', executable='mission_state_machine',
+            parameters=[config, {
+                'auto_start': ParameterValue(auto_start, value_type=bool),
+                'mission_type': mission_type,
+                'mission_mode': mission_mode,
+                'max_trees': ParameterValue(max_trees, value_type=int),
+            }],
+            output='screen'),
+        Node(
+            package='beehive_drone', executable='detect_flower',
+            condition=IfCondition(enable_flower), parameters=[config],
+            output='screen'),
+        ExecuteProcess(
+            cmd=[
+                '/bin/bash', LaunchConfiguration('record_script'),
+                LaunchConfiguration('record_output_directory')],
+            condition=IfCondition(record_data), output='screen'),
+    ]
+    return LaunchDescription(arguments + nodes)

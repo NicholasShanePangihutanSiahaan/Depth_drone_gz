@@ -36,11 +36,6 @@ class PositionSetpointController(Node):
         self.declare_parameter('max_terrain_correction', 1.0)
         self.declare_parameter('max_terrain_target_rate', 0.50)
         self.declare_parameter('hold_position_on_range_loss', True)
-        self.declare_parameter('require_depth_avoidance', False)
-        self.require_depth = bool(self.get_parameter('require_depth_avoidance').value)
-        self.avoidance_hold = True
-        self.avoidance_time = -float('inf')
-        self.depth_hold_pose = None
         self.max_xy = float(self.get_parameter('max_horizontal_step').value)
         self.max_z = float(self.get_parameter('max_vertical_step').value)
         self.timeout = float(self.get_parameter('target_timeout').value)
@@ -80,7 +75,6 @@ class PositionSetpointController(Node):
         self.create_subscription(PoseStamped, '/mavros/local_position/pose', self.pose_cb, qos)
         self.create_subscription(PoseStamped, '/control/safe_target_pose', self.target_cb, 10)
         self.create_subscription(Bool, '/control/setpoint_enabled', self.enabled_cb, 10)
-        self.create_subscription(Bool, '/avoidance/hold', self.avoidance_cb, 10)
         self.create_subscription(
             Range, self.rangefinder_topic, self.rangefinder_cb, qos)
         self.pub = self.create_publisher(PoseStamped, '/mavros/setpoint_position/local', 10)
@@ -105,10 +99,6 @@ class PositionSetpointController(Node):
     def target_cb(self, msg):
         self.target = msg
         self.target_time = self.get_clock().now()
-
-    def avoidance_cb(self, msg):
-        self.avoidance_hold = msg.data
-        self.avoidance_time = time.monotonic()
 
     def rangefinder_cb(self, msg):
         if not self.terrain_enabled or self.pose is None:
@@ -171,17 +161,6 @@ class PositionSetpointController(Node):
         if not self.enabled:
             return
         now = self.get_clock().now()
-        if self.require_depth and (
-                self.avoidance_hold or time.monotonic()-self.avoidance_time > 0.5):
-            if self.depth_hold_pose is None:
-                self.depth_hold_pose = deepcopy(self.pose)
-            self.commanded_pose = deepcopy(self.depth_hold_pose)
-            if (self.target is not None and self.target_time is not None
-                    and (now-self.target_time).nanoseconds*1e-9 < self.timeout):
-                self.commanded_pose.pose.orientation = deepcopy(self.target.pose.orientation)
-            self.pub.publish(self.copy_pose(self.commanded_pose, now.to_msg(), self.output_frame))
-            return
-        self.depth_hold_pose = None
         if self.commanded_pose is None:
             self.commanded_pose = deepcopy(self.pose)
         # Target kedaluwarsa berarti hold posisi saat ini, bukan meneruskan target lama.

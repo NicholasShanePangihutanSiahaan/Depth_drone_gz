@@ -1,3 +1,8 @@
+/**:
+  ros__parameters:
+    orbit_radius: 2.7
+    flight_altitude: 1.9
+
 pcl_proc_node:
   ros__parameters:
     # Dipertahankan untuk replay/legacy pcl_proc_node. Pada penerbangan real,
@@ -49,14 +54,12 @@ tree_mapper:
     max_trunk_base_height: 3.0
     min_cylinder_confidence: 0.25
     position_alpha: 0.20
+    label_pohon: pohon
 
 mission_state_machine:
   ros__parameters:
-    # Default mempertahankan perilaku Jetson teruji: satu pohon lalu pulang.
+    # Default aman/kompatibel dengan penerbangan satu pohon yang telah diuji.
     mission_mode: single_tree
-    # Hanya digunakan pada multi_tree; 0 berarti tanpa batas jumlah.
-    max_trees: 0
-    flight_altitude: 1.9
     # Jarak horizontal titik approach terhadap pusat batang.
     approach_distance: 2.6
     tree_distance_tolerance: 0.5
@@ -69,7 +72,7 @@ mission_state_machine:
     auto_start: false
     state_timeout: 300.0
     pose_timeout: 5.0
-    post_takeoff_hover_time: 5.0
+    post_takeoff_hover_time: 2.0
     align_yaw_tolerance_degrees: 7.5
     align_yaw_hold_time: 1.5
     require_frame_alignment: false
@@ -79,18 +82,22 @@ mission_state_machine:
     vision_pose_topic: /mavros/vision_pose/pose
     vision_pose_timeout: 1.0
     vision_warmup_time: 5.0
+    # Hanya dipakai dalam multi_tree; 0: tanpa batas jumlah pohon.
+    max_trees: 0
     abort_mode: BRAKE
 
 dynamic_orbit_controller:
   ros__parameters:
-    orbit_radius: 2.6
     orbit_altitude: 1.9
     orbit_velocity: 0.55
     orbit_timeout: 180.0
     radial_tolerance: 0.3
+    toleransi_radius_balik_dari_pause: 0.1 # Ketika pause baru resume
     yaw_offset: 0.0
     completion_tolerance_degrees: 2.0
-
+detect_flower:
+  ros__parameters:
+    label_bunga: bunga
 position_setpoint_controller:
   ros__parameters:
     publish_rate: 20.0
@@ -103,7 +110,7 @@ position_setpoint_controller:
     # vertikal agar clearance terhadap permukaan tetap 1.5 m.
     terrain_following_enabled: false
     rangefinder_topic: /mavros/rangefinder/rangefinder
-    desired_agl: 1.7
+    desired_agl: 2.3
     rangefinder_timeout: 0.50
     rangefinder_min_valid: 0.08
     rangefinder_max_valid: 8.0
@@ -150,3 +157,51 @@ mission_analyzer:
     expected_takeoff_altitude: 1.5
     expected_approach_distance: 1.5
     expected_orbit_radius: 1.5
+
+priest_dyn_node:
+  ros__parameters:
+    plan_rate_hz: 7.0
+    goal_tolerance: 0.15
+    horizon_seconds: 10.0
+
+    num_samples: 100
+    num_batch: 110
+    max_obstacles: 60
+    reference_samples: 300
+    cem_iterations: 13
+
+    v_max: 0.90
+    v_min: 0.0
+    a_max: 1.30
+    v_des: 0.55
+    weight_smoothness: 1.0
+    weight_track: 0.001
+    robot_radius: 0.25
+    safety_margin: 0.10
+    goal_clearance: 0.08
+    goal_lateral_weight: 0.0
+
+    odom_timeout: 1.0
+    obstacle_timeout: 2.0
+    max_solve_age: 30.0
+    max_start_drift: 0.50
+    require_obstacles: True
+    device: 'cpu'
+    seed: 0
+
+    is_log_CEM_progress: True
+
+    # Orbit tetap memakai dynamic_orbit_controller yang sudah diuji lapangan.
+    # PRIEST digunakan untuk goal linear di luar orbit.
+    # Sentinel yang bukan state FSM menjaga ROS 2 mengenali tipe string array.
+    reference_trajectory_states: ["__linear_only__"]
+
+priest_avoidance_controller:
+  ros__parameters:
+    publish_rate: 20.0
+    path_timeout: 2.0
+    waypoint_lookahead: 0.60
+    goal_republish_period: 0.50
+    minimum_obstacle_radius: 0.10
+    minimum_obstacle_half_height: 0.25
+      

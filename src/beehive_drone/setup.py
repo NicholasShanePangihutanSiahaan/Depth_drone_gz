@@ -25,7 +25,6 @@ setup(
     license='TODO: License declaration',
     entry_points={
         'console_scripts': [
-            'depth_avoidance_controller = beehive_drone.depth_avoidance_controller:main',
             # DAFTARKAN SEMUA NODE DI SINI (nama_eksekusi = nama_folder.nama_file:main)
             'mission_state_machine = beehive_drone.mission_state_machine:main',
             'dynamic_orbit_controller = beehive_drone.dynamic_orbit_controller:main',
@@ -42,6 +41,7 @@ setup(
             'zed_frame_alignment = beehive_drone.frame_alignment:main',
             'detect_flower = beehive_drone.detect_flower_pose:main',
             'sim_sprayer = beehive_drone.sim_sprayer:main',
+            'priest_avoidance_controller = beehive_drone.priest_avoidance_controller:main',
             'sim_zed_adapter = beehive_drone.sim_zed_adapter:main',
             'real_stack_sim_validator = beehive_drone.real_stack_sim_validator:main',
         ],
