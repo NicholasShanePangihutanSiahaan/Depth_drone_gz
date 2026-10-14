@@ -39,6 +39,12 @@ from .coverage_mapping import (navigation_window, SparseHistory, initialise_roll
 from .coverage_mapping import rolling_input
 
 
+def localisation_imu_qos():
+    profile=copy.deepcopy(qos_profile_sensor_data)
+    profile.depth=256
+    return profile
+
+
 def seconds(stamp):
     return stamp.sec+stamp.nanosec*1e-9
 
@@ -142,7 +148,10 @@ class LocalisationNode(ConfigNode):
             self.create_subscription(Odometry, '/simulation/ground_truth/odom', self.truth, qos_profile_sensor_data)
             self.get_logger().warning('GROUND-TRUTH LOCALISATION: planner isolation only')
         else:
-            self.create_subscription(Imu, '/simulation/body_imu' if self.rolling_sensor else '/livox/imu', self.imu, qos_profile_sensor_data)
+            # ICP runs on this executor. Preserve high-rate IMU packets while
+            # a scan is processed; the generic sensor profile stores only 5.
+            # Keep BEST_EFFORT compatibility and the existing freshness gate.
+            self.create_subscription(Imu, '/simulation/body_imu' if self.rolling_sensor else '/livox/imu', self.imu, localisation_imu_qos())
             self.create_subscription(PointCloud2, '/livox/lidar',self.pending_scan.append if self.rolling_sensor else self.scan, qos_profile_sensor_data)
             self.get_logger().warning('SENSOR LOCALISATION: experimental IMU-predicted ICP')
         self.create_timer(0.1, self.health)

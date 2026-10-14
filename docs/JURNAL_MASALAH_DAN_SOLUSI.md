@@ -1690,3 +1690,26 @@ klaim akar masalah telah diperbaiki. Run berikutnya tetap headless dengan
 roll 180 derajat/detik. Tes memastikan penolakan mencatat kandidat dan
 tidak memperbarui last_good.
 
+# 14 Oktober 2026 — Sampel IMU terlewat selama pemrosesan scan
+
+Run `sensor_localisation_validation_20261014_222753` berhenti saat takeoff
+di 16,5 s (`localisation_loss`), sebelum approach. Diagnostik baru menunjukkan
+scan 16,2 s hanya mengintegrasikan IMU sampai 16,155. Sampel berikutnya
+16,235: gap 80 ms, bukan interval normal 5 ms. Prediksi rotasi kemudian
+berubah 0,02958 rad; registrasi ditolak pada iterasi 0 (59,3% konsisten),
+lalu scan berikutnya 57,1%. IMU tidak menunjukkan shock besar. 72 pasangan
+audit: RMSE posisi 0,00891 m, maksimum 0,02384 m sebelum stop.
+
+Subscriber IMU memakai profil sensor-data umum KEEP_LAST depth 5, hanya
+25 ms riwayat pada 200 Hz. ICP dan callback IMU berbagi executor; antrean
+pendek berisiko mengganti sampel yang belum diproses ketika ICP berjalan.
+Perbaikan: profil IMU tersendiri depth 256, tetap BEST_EFFORT, sementara
+cloud tetap terbaru dan pemeriksaan umur IMU 0,1 s tidak dilonggarkan.
+Ini mengurangi risiko overflow, bukan jaminan tidak ada packet loss atau
+deadline terlewat. Uji memeriksa profil global tidak berubah dan kebijakan
+reliability/history tetap sama. Run berikutnya menguji apakah gap tersebut
+berkurang dan apakah misi bisa berlanjut; belum klaim selesai.
+
+Rujukan primer profil ROS 2 Humble:
+https://github.com/ros2/rmw/blob/humble/rmw/include/rmw/qos_profiles.h
+
