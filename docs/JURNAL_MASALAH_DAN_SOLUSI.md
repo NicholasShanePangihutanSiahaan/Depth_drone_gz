@@ -1442,3 +1442,13 @@ Runner `082931` keluar sebelum simulasi karena polling membaca launcher.log
 sebelum redirection background membuat file; `set -e` menganggapnya fatal.
 File log kini dibuat sebelum spawn. Tidak ada flight atau perubahan safety.
 
+# 14 Oktober 2026 — Fixed run 7 melewati takeoff, hover sensor sehat
+
+Run `082953` berhasil melewati titik penolakan scan sebelumnya, naik sampai
+sekitar 2 m dan masuk SURVEY untuk hover. Pada timestamp 28,15, dari 193
+pasangan diperoleh RMSE posisi 0,01412 m dan maksimum 0,03068 m. Ini hasil
+sementara, bukan klaim landing atau inspeksi berhasil. Semua sumber kontrol
+tetap sensor-only. Ditambahkan regresi ROS bahwa mount fixed hanya meminta
+feedback kamera, tidak menunggu joint pitch LiDAR yang memang tidak ada.
+10 tes adapter mount ROS lulus dengan environment ROS dan PYTHONPATH lengkap.
+

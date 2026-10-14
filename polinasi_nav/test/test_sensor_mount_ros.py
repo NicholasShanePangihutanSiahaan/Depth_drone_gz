@@ -9,6 +9,22 @@ from builtin_interfaces.msg import Time
 from polinasi_nav.sensor_mount_node import SensorMountNode
 
 
+def test_fixed_lidar_mount_ready_requires_only_camera_joint_feedback():
+    import json
+    fake=SimpleNamespace(now=lambda:1.1,last_tick=1.,navigation={},armed=False,
+        state_stamp=1.,c={'lidar_fixed':True},rolling=False,
+        targets={'camera_pitch':.5},commands={'camera_pitch':.4},
+        measured={'camera_pitch':.4},stamps={'camera_pitch':1.},
+        outputs={'camera_pitch':Mock()},status=Mock(),rejection='')
+    SensorMountNode.tick(fake)
+    status=json.loads(fake.status.publish.call_args.args[0].data)
+    assert status['navigation_ready'] and status['feedback_fresh']
+    assert 'lidar_pitch' not in fake.targets
+    fake.stamps['camera_pitch']=0.
+    SensorMountNode.tick(fake)
+    assert not json.loads(fake.status.publish.call_args.args[0].data)['navigation_ready']
+
+
 def test_roll_rate_log_uses_timestamped_measured_angle_not_command():
     import math
     fake=SimpleNamespace(now=lambda:2.05,targets={'lidar_roll':0.},
