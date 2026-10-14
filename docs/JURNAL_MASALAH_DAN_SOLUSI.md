@@ -1364,3 +1364,19 @@ tulis demikian. Jangan menimpa kegagalan lama dengan klaim keberhasilan baru.
 Direktori `reports/` adalah bukti lokal yang umumnya diabaikan Git; jurnal
 dan dokumentasi ini disimpan di repository, sedangkan file log tidak otomatis
 tersedia di GitHub.
+# 14 Oktober 2026 — Kembali ke loop rotating-lidar atas permintaan pengguna
+
+Run fixed `085556_21464` dihentikan sesuai permintaan. Saat dihentikan,
+pohon pertama ID 4 sudah 6/6, lalu approach pohon ID 3; dua pohon dan landing
+belum selesai. Semua perubahan fixed tersimpan pada branch fixed-lidar.
+Workspace tidak memiliki direktori rotating terpisah; kembali ke branch
+rotating-lidar, terakhir `cb9871d` (pemisahan reference/actual braking).
+
+Hanya perbaikan umum supervisor dibawa: stop TERM idempotent, cleanup orphan
+SITL exact-run, log semua debug localisation/navigation, penghentian auditor
+bila session berakhir. Ditambahkan runner sensor headless dengan origin,
+setup check, start ber-ack dan watchdog accuracy. Konfigurasi tetap rolling
+180 derajat/detik, kamera kiri pitch-only, sensor localisation LiDAR + body
+IMU; depth kamera tidak diaktifkan dari branch fixed. Tidak mengklaim
+LiDAR-only hardware, dan ground truth tetap hanya untuk audit.
+

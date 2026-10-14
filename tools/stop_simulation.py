@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,6 +29,41 @@ def live(data):
                 and not data.get('stopped', False))
     except (FileNotFoundError, ProcessLookupError, KeyError):
         return False
+
+
+def request_stop(path, data):
+    if data.get('stop_requested'):
+        print('Cleanup already requested; not interrupting launcher cleanup: '+data['run'])
+        return
+    data['stop_requested'] = True
+    path.write_text(json.dumps(data, indent=2)+'\n')
+    os.kill(int(data['launcher_pid']), signal.SIGTERM)
+    print('Stop requested; launcher closes its Gazebo, RViz, ROS and SITL: '+data['run'])
+
+
+def reap_orphan_sitl(run):
+    """Exact registered run cwd + SITL executable; never signal real FCUs."""
+    executable=ROOT/'.dependencies/ardupilot/build/sitl/bin/arducopter'
+    found=False
+    for proc in Path('/proc').iterdir():
+        if not proc.name.isdigit():continue
+        try:
+            if (proc/'cwd').resolve()!=run or (proc/'exe').resolve()!=executable:
+                continue
+            command=(proc/'cmdline').read_bytes().split(b'\0')
+            if b'JSON' not in command or b'127.0.0.1' not in command:continue
+            pid=int(proc.name);ticks=process_start(pid)
+            os.kill(pid,signal.SIGTERM)
+            for _ in range(25):
+                time.sleep(.2)
+                if not proc.exists() or process_start(pid)!=ticks:break
+            else:
+                os.kill(pid,signal.SIGKILL)
+            print('Stopped orphan SITL for exact registered run: '+str(run))
+            found=True
+        except (FileNotFoundError,ProcessLookupError,PermissionError):
+            continue
+    return found
 
 
 def main():
@@ -58,8 +94,11 @@ def main():
     for path in paths:
         data = json.loads(path.read_text())
         if live(data):
-            os.kill(int(data['launcher_pid']), signal.SIGINT)
-            print('Stop requested; launcher closes its Gazebo, RViz, ROS and SITL: '+data['run'])
+            # Bash started with '&' inherits ignored SIGINT. SIGTERM still
+            # invokes the launcher's TERM cleanup trap and owned-group cleanup.
+            request_stop(path,data)
+            return
+        if args.run and data.get('run')==str(args.run) and reap_orphan_sitl(args.run):
             return
     print('No registered active project simulation found; no processes were signalled.')
 
