@@ -84,6 +84,26 @@ def test_unknown_and_occupied_curve_not_rounded_through():
         assert t is None
 
 
+def test_descending_final_approach_turns_up_without_interior_stop():
+    c,g=fixture();tree=dict(id=2,xy=[0.,0.],observed_stem_top=5.)
+    t,detail=build_approach_blend(g,[3.,0.,2.26257],[2.,0.,2.],tree,c)
+    assert t is not None,detail
+    states=[t.sample(s) for s in np.linspace(0,t.duration,101)]
+    assert min(p[2] for p,_,_ in states)>=2.
+    assert min(v[2] for _,v,_ in states)<0
+    assert min(np.linalg.norm(v) for _,v,_ in states[1:-1])>0
+    np.testing.assert_allclose(states[-1][0],[2.,0.,2.6])
+    assert states[-1][1][2]>0
+    np.testing.assert_allclose(states[-1][2],0,atol=1e-12)
+
+
+def test_final_local_leg_can_use_full_two_metre_horizon():
+    c,g=fixture();c['approach_blend_distance']=2.
+    t,detail=build_approach_blend(g,[3.95,0.,2.],[2.,0.,2.],
+        dict(id=2,xy=[0.,0.],observed_stem_top=5.),c)
+    assert t is not None,detail
+
+
 def test_blend_requires_measured_canopy_not_just_a_tree_height_guess():
     c,g=fixture();g.state[:]=FREE;g.rebuild(0.)
     t,detail=build_approach_blend(g,[3.,0.,2.],[2.,0.,2.],dict(xy=[0.,0.],observed_stem_top=5.),c)

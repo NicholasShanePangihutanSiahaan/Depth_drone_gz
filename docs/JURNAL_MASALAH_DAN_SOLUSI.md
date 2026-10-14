@@ -1434,3 +1434,19 @@ backup brake selesai tanpa pid_final_safety. Ini validasi transisi dan rem
 dalam run ini, belum klaim dua pohon + landing atau world bunga berhasil.
 Data: `reports/sensor_localisation_validation_20261014_134905/`.
 
+# 14 Oktober 2026 — Pohon pertama selesai, leg menurun pohon kedua belum diblend
+
+Run `134908_31852` menyelesaikan 6/6 pohon pertama dan approach pohon ID 2.
+Tidak ada failure/EXPLORE, tetapi log pada 197,95 menunjukkan fallback
+`not_final_level_approach_leg`: start leg terakhir sekitar
+[5,41389,-5,70310,2,26257], target [5,03152,-7,06503,2,0]. Selisih tinggi
+0,263 m melebihi syarat datar 0,15 m, padahal jarak horizontal ~1,41 m.
+Run dihentikan agen agar fitur mulus tidak hanya berhasil di pohon pertama.
+
+Kurva diperluas untuk pendekatan sedikit menurun (default maksimal 0,4 m):
+control point corner memakai tinggi approach rendah, lalu naik menuju
+terminal velocity vertikal. Tidak harus mengunjungi titik sudut terendah
+secara tepat; seluruh lengkung tetap wajib teramati bebas dan di bawah cap
+kanopi. Log penolakan kini menyimpan start, target, jarak dan offset tinggi.
+Tes menambahkan kasus turun-lalu-naik tanpa berhenti di bagian dalam kurva.
+

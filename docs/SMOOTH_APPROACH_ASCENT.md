@@ -3,7 +3,8 @@
 Opt-in pada fixture rotating sensor inspection: `smooth_approach_ascent`.
 Bagian akhir approach level yang direct dan dekat target diganti kurva
 quintic Bezier, bukan garis maju lalu berhenti di sudut 90 derajat.
-Awal kurva memiliki tangent horizontal, akhir tangent vertikal dengan
+Pada approach level, awal kurva memiliki tangent horizontal; approach yang
+masih sedikit menurun dapat melengkung turun-lalu-naik. Akhir tangent vertikal dengan
 kecepatan naik bukan nol. Posisi, kecepatan dan percepatan diteruskan ke
 ContinuousAscent (kontinuitas C2). Tick yang melintasi batas waktu kurva
 tetap mengintegrasikan posisi vertikal, bukan membekukan posisi sambil
@@ -18,11 +19,14 @@ Kurva hanya diterima bila:
 - map live, actual-body braking, nominal-reference braking dan output PID
   tetap lolos pemeriksaan saat dieksekusi.
 
-Pengaturan awal: jarak leg akhir maksimal 1,8 m, kenaikan sampai 0,6 m,
+Pengaturan awal: jarak leg akhir maksimal 2 m, offset turun maksimal 0,4 m,
+kenaikan sampai 0,6 m dari tinggi sudut approach rendah,
 kecepatan vertikal terminal 0,08 m/s. Bila kandidat 0,6 m tidak aman, coba
 0,4/0,2 m. Jika tetap tidak aman, gunakan approach/ascent aman sebelumnya
 dan catat alasan penolakan; tidak memaksa rounding melalui daun/unknown.
 Ini tidak menghilangkan stop antar chunk lain atau jeda sensor/perencanaan.
+Seperti rounding lainnya, kurva tidak harus mengunjungi tepat titik sudut
+rendah semula. Seluruh geometri tetap diperiksa, bukan hanya endpoint.
 
 Log `/navigation/status`: `approach_ascent_transition` memuat cap kanopi,
 kandidat diterima/ditolak, durasi, batas turunan, dan kondisi handoff.

@@ -9,8 +9,9 @@ def main():
     generate_continuous()
     c=json.loads((ROOT/'reports/continuous_inspection/config.json').read_text())
     c.update(sensor_rolling_localisation=True,mission_scope='experimental_rolling_sensor_localisation_not_FAST_LIO')
-    c.update(smooth_approach_ascent=True,approach_blend_distance=1.8,
-             approach_blend_rise=.6,approach_blend_terminal_speed=.08)
+    c.update(smooth_approach_ascent=True,approach_blend_distance=2.,
+             approach_blend_rise=.6,approach_blend_terminal_speed=.08,
+             approach_blend_max_descent=.4)
     folder=ROOT/'reports/sensor_localisation';folder.mkdir(parents=True,exist_ok=True)
     (folder/'inspection.json').write_text(json.dumps(c,indent=2)+'\n')
     c.update(active_tree_inspection=False,continuous_tree_scanning=False,rolling_canopy_ascent=False,

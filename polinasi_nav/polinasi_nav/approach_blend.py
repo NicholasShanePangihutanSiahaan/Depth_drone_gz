@@ -7,16 +7,17 @@ from .planning import brake_safe
 
 
 class ApproachAscentTrajectory(ContinuousTrajectory):
-    def __init__(self, start, end, config, terminal_speed):
+    def __init__(self, start, end, config, terminal_speed, corner_height=None):
         self.c=dict(config)
         self.c['reaction_time']=max(config['reaction_time'],config.get('tree_ascent_reaction_time',.7))
         p,q=np.asarray(start,float),np.asarray(end,float)
-        rise=float(q[2]-p[2])
-        if rise<=0 or not 0<terminal_speed<=config.get('tree_ascent_speed',.12):
+        corner_z=float(p[2] if corner_height is None else corner_height)
+        rise=float(q[2]-corner_z)
+        if rise<=0 or q[2]<=p[2] or not math.isfinite(corner_z) or not 0<terminal_speed<=config.get('tree_ascent_speed',.12):
             raise ValueError('invalid rising blend boundary')
         # Initial velocity/acceleration zero, initial geometric tangent level;
         # final tangent vertical with nonzero velocity and zero acceleration.
-        h=np.r_[q[:2],p[2]]
+        h=np.r_[q[:2],corner_z]
         self.controls=[np.array([p,p,p,h,(h+q)/2,q])]
         self.durations=np.array([2.5*rise/terminal_speed])
         self.certificate=None
@@ -66,10 +67,14 @@ class ApproachAscentTrajectory(ContinuousTrajectory):
 
 def build_approach_blend(grid,start,goal,tree,config):
     start,goal=np.asarray(start,float),np.asarray(goal,float)
-    detail=dict(policy='observed_under_canopy_C2_blend',tree_id=tree.get('id'),accepted=False)
+    detail=dict(policy='observed_under_canopy_C2_blend',tree_id=tree.get('id'),accepted=False,
+                start=start.tolist(),original_approach_goal=goal.tolist())
     horizontal=float(np.linalg.norm(start[:2]-goal[:2]))
-    if not .35<=horizontal<=config.get('approach_blend_distance',1.8) or abs(start[2]-goal[2])>.15:
-        return None,dict(detail,reason='not_final_level_approach_leg')
+    detail.update(horizontal_distance_m=horizontal,start_height_above_corner_m=float(start[2]-goal[2]))
+    if not .35<=horizontal<=config.get('approach_blend_distance',1.8)+1e-8:
+        return None,dict(detail,reason='not_final_approach_distance')
+    if not -.15<=start[2]-goal[2]<=config.get('approach_blend_max_descent',.4):
+        return None,dict(detail,reason='approach_height_offset_too_large')
     outward=goal[:2]-np.asarray(tree['xy'])
     if np.dot(start[:2]-goal[:2],outward)<-1e-8:
         return None,dict(detail,reason='would_cut_inside_standoff_tangent')
@@ -85,11 +90,12 @@ def build_approach_blend(grid,start,goal,tree,config):
     detail.update(observed_ceiling_z_m=ceiling,maximum_end_z_m=cap,
                   start=start.tolist(),original_approach_goal=goal.tolist())
     for rise in (config.get('approach_blend_rise',.6),.4,.2):
-        if start[2]+rise>cap or rise<=0:continue
-        end=np.r_[goal[:2],start[2]+rise]
+        if goal[2]+rise>cap or goal[2]+rise<=start[2] or rise<=0:continue
+        end=np.r_[goal[:2],goal[2]+rise]
         try:
             trajectory=ApproachAscentTrajectory(start,end,config,
-                min(config.get('approach_blend_terminal_speed',.08),config.get('tree_ascent_speed',.12)))
+                min(config.get('approach_blend_terminal_speed',.08),config.get('tree_ascent_speed',.12)),
+                corner_height=goal[2])
         except ValueError:continue
         if not trajectory.safe(grid):
             detail['reason']='curve_or_observation_envelope_not_free'

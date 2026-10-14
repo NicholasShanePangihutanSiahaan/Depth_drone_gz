@@ -33,6 +33,9 @@ def load_config(path=None):
                 raise ValueError(key+' must be positive and finite')
         if not .35<c['approach_blend_distance']<=2. or c['approach_blend_terminal_speed']>c.get('tree_ascent_speed',.12):
             raise ValueError('invalid approach blend distance or terminal speed')
+        descent=c.get('approach_blend_max_descent',.4)
+        if isinstance(descent,bool) or not isinstance(descent,(int,float)) or not math.isfinite(descent) or not 0<=descent<=.6:
+            raise ValueError('invalid approach blend descent bound')
     for key in ('resolution', 'speed', 'acceleration', 'jerk', 'cloud_timeout',
                 'pose_timeout', 'free_ttl', 'orbit_radius', 'orbit_speed'):
         if c[key] <= 0:
