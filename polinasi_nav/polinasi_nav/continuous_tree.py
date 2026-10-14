@@ -19,6 +19,9 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.scan_settled_since=None
         self.scan_handoff={}
         self.approach_transition={}
+        self.scan_target_repairs=[]
+        self.scan_target_diagnostics={}
+        self.scan_height_diagnostics={}
         self.scan_anchor_count=int(self.c.get('tree_scan_anchors',24))
         if self.scan_anchor_count<12 or self.scan_anchor_count%self.c['tree_view_count']:
             raise ValueError('scan anchors must be >=12 and divisible by sector count')
@@ -62,6 +65,10 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.waypoints=np.column_stack((centre[0]+radius*np.cos(angles),
                                        centre[1]+radius*np.sin(angles),
                                        np.full(len(angles),position[2])))
+        self.scan_nominal_waypoints=self.waypoints.copy()
+        self.scan_initial_height=float(position[2])
+        self.scan_target_repairs=[]
+        self.scan_target_diagnostics={}
         self.waypoint_index=0
         self.view_target=self.goal=self.trajectory=None
         self.batch_end_index=None
@@ -72,9 +79,76 @@ class ContinuousTreeInspectionController(TreeInspectionController):
 
     def _choose_goal(self,current):
         if self.tree_phase=='SCAN' and self.scan_orbit_ready and self.state=='SURVEY':
+            if self.c.get('scan_adaptive_height'):
+                from .canopy_scan import canopy_profile
+                self.waypoints,self.scan_height_diagnostics=canopy_profile(self.grid,
+                    self.waypoints,self.waypoint_index,self.command,self.active_tree,self.c,
+                    self.scan_initial_height)
             self.goal=self.waypoints[self.waypoint_index].copy()
+            if self.c.get('scan_target_repair') and self.grid.occupied_goal(self.goal):
+                self._repair_scan_target(current)
             return self.grid.safe(self.goal)
         return super()._choose_goal(current)
+
+    def _repair_scan_target(self,current):
+        """Resample the SAME angular anchor, never skip an inspection sector.
+
+        Only at rest in the planner snapshot. A free endpoint is not a flight
+        certificate: the shared A*, curve and braking checks still own that.
+        """
+        index=self.waypoint_index
+        nominal=self.scan_nominal_waypoints[index]
+        delta=nominal[:2]-np.asarray(self.active_tree['xy'])
+        radius=float(np.linalg.norm(delta))
+        direction=delta/max(radius,1e-9)
+        top=float(self.waypoints[index,2])
+        floor=max(float(self.c['takeoff_altitude']),
+                  float(nominal[2])-self.c.get('scan_target_max_descent',.6))
+        step=self.grid.res
+        rejects=dict(occupied=0,unknown_or_outside=0)
+        candidates=[]
+        for offset in np.arange(0.,self.c.get('scan_target_max_outward',1.)+1e-8,step):
+            for height in np.arange(top,floor-1e-8,-step):
+                p=np.r_[nominal[:2]+offset*direction,height]
+                if self.grid.occupied_goal(p):
+                    rejects['occupied']+=1
+                elif not self.grid.safe(p):
+                    rejects['unknown_or_outside']+=1
+                else:
+                    score=float(offset+3*(top-height)+.05*np.linalg.norm(p-current))
+                    candidates.append((score,p))
+        detail=dict(policy='same_angle_observed_free_resampling',tree_id=self.active_tree['id'],
+            anchor=int(index),nominal=nominal.tolist(),blocked_target=self.goal.tolist(),
+            map_version=int(self.grid.version),rejections=rejects,candidate_count=len(candidates),
+            observation_stamp=float(self.grid.last_observation_stamp),
+            original_blockage=self.grid.describe_blockage(self.grid.indices(self.goal)),
+            sector_skipped=False,endpoint_is_not_route_certificate=True)
+        if not candidates:
+            self.scan_target_diagnostics=dict(detail,result='no_observed_safe_candidate')
+            return
+        candidates.sort(key=lambda item:item[0])
+        # Prefer a directly reachable candidate. Otherwise let A* find a detour
+        # to the least-displaced free endpoint; unknown is never free.
+        selected=next((p for _,p in candidates if self.grid.line_safe(self.command,p)),candidates[0][1])
+        self.waypoints[index]=selected
+        # A lower roof applies to the remaining ring. Do not repeatedly climb
+        # back into the old blocked height at every following angular anchor.
+        if not self.c.get('scan_adaptive_height'):
+            self.waypoints[index:,2]=np.minimum(self.waypoints[index:,2],selected[2])
+        self.goal=selected.copy()
+        detail.update(result='proposed_requires_route_certificate',selected=selected.tolist(),
+            remaining_height_m=float(selected[2]),
+            direct_corridor_safe=bool(self.grid.line_safe(self.command,selected)))
+        self.scan_target_diagnostics=detail
+        self.scan_target_repairs.append(detail)
+
+    def _accept_plan_auxiliary(self,clone,ready):
+        if self.tree_phase=='SCAN' and self.scan_orbit_ready:
+            self.scan_target_diagnostics=clone.scan_target_diagnostics
+            self.scan_height_diagnostics=clone.scan_height_diagnostics
+            if ready:
+                self.waypoints=clone.waypoints.copy()
+                self.scan_target_repairs=clone.scan_target_repairs
 
     def _camera_heading(self,position):
         delta=np.asarray(self.active_tree['xy'])-np.asarray(position)[:2]
@@ -92,7 +166,10 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         record=dict(tree_id=self.active_tree['id'],view=int((index+1)//step-1),
                     anchor=index,position=np.asarray(position).tolist(),scan_stamp=float(self.grid.last_observation_stamp),
                     camera_policy='continuous_left_tree',inspection_valid=bool(useful),
-                    body_yaw_error_rad=float(yaw_error),commanded_speed_mps=float(np.linalg.norm(self.command_v)))
+                    body_yaw_error_rad=float(yaw_error),commanded_speed_mps=float(np.linalg.norm(self.command_v)),
+                    commanded_vertical_speed_mps=float(self.command_v[2]),
+                    estimated_stem_top_m=self.active_tree.get('observed_stem_top'),
+                    adaptive_scan_height=bool(self.c.get('scan_adaptive_height')))
         self.scan_sector_records.append(record)
         if useful:self.scan_records.append(record)
         self.inspection_view=len([r for r in self.scan_sector_records if r['inspection_valid']])
@@ -165,6 +242,10 @@ class ContinuousTreeInspectionController(TreeInspectionController):
                 self.view_target=None;self.inspection_view=0
                 self.waypoint_index=0
             return False
+        if self.state=='SURVEY' and self.trajectory is None and self.pending_plan is None:
+            # A previous chunk's endpoint can remain in goal after braking.
+            # Always re-evaluate the next unvisited angular anchor on fresh map.
+            self.goal=None
         return SurveyController._prepare_trajectory(self,now,position,range_value,range_stamp)
 
     def _trajectory_from_points(self,points,speed=None):
@@ -181,6 +262,9 @@ class ContinuousTreeInspectionController(TreeInspectionController):
             trajectory.blend_diagnostics=detail
         if self.tree_phase=='SCAN' and not isinstance(trajectory,ContinuousTrajectory):
             raise ValueError('continuous scan smoothing not certified')
+        if self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height'):
+            from .canopy_scan import CanopyScanTrajectory
+            trajectory=CanopyScanTrajectory(trajectory,self.c.get('tree_ascent_observation_guard',.2))
         return trajectory
 
     def _sample_next(self,dt,position,velocity):
@@ -225,6 +309,9 @@ class ContinuousTreeInspectionController(TreeInspectionController):
     def inspection_status(self):
         status=super().inspection_status()
         status['approach_ascent_transition']=self.approach_transition
+        status['scan_target_diagnostics']=self.scan_target_diagnostics
+        status['scan_target_repairs']=self.scan_target_repairs
+        status['scan_height_profile']=self.scan_height_diagnostics
         ids=np.argwhere(self.grid.state==OCCUPIED)
         ceiling=None
         if len(ids):

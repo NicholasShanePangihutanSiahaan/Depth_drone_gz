@@ -6,9 +6,10 @@ riwayat proyek. Tanggal mengikuti dokumentasi atau nama direktori simulasi
 lokal (Asia/Jakarta), bukan waktu simulasi. Solusi yang diterapkan tidak
 otomatis berarti masalah selesai; hasil pengujian ditulis terpisah.
 
-Semua penerbangan yang dirangkum di sini memakai posisi ground truth
-(posisi sebenarnya dari simulator), dengan navigasi GPS dinonaktifkan.
-Hasilnya bukan validasi lokalisasi LiDAR–IMU atau keselamatan hardware.
+Bagian awal jurnal memakai posisi ground truth (posisi sebenarnya dari
+simulator). Entri sensor-localisation berikutnya membedakan estimator
+LiDAR–IMU dengan ground truth yang hanya dipakai auditor. Navigasi GPS
+dinonaktifkan. Hasil simulasi bukan validasi keselamatan hardware.
 
 Bagian **Kronologi penemuan** menceritakan urutan kejadian berdasarkan log
 dan dokumentasi yang tersedia, bukan pengamatan visual baru. Angka detik
@@ -1449,4 +1450,62 @@ terminal velocity vertikal. Tidak harus mengunjungi titik sudut terendah
 secara tepat; seluruh lengkung tetap wajib teramati bebas dan di bawah cap
 kanopi. Log penolakan kini menyimpan start, target, jarak dan offset tinggi.
 Tes menambahkan kasus turun-lalu-naik tanpa berhenti di bagian dalam kurva.
+
+# 14 Oktober 2026 — Dua handoff mulus, scan pohon kedua terhalang daun
+
+Run `reports/sensor_localisation_validation_20261014_141509/` berhasil
+takeoff, mendekati pohon ID 4, naik dengan handoff bergerak pada 80,2 s,
+dan menyelesaikan 6/6 sektor. Drone lalu memilih ID 5 dari posisi akhirnya.
+Handoff kedua pada 223,25 s mempertahankan velocity z 0,07493 m/s. Setelah
+berhenti aman di bawah daun, scan pohon kedua mencapai 3/6 sektor valid.
+
+Pada 315,8 s, pengamatan tambahan memasukkan voxel occupied sekitar
+[1,5;9,7;4,1] m. Footprint/margin target orbit sekitar [2,5;9,5;3,32]
+menjadi terhalang. Controller mengerem, pulih pada 317,45 s, tetapi masih
+mencoba anchor orbit yang sama dan endpoint tidak aman. Pada 366,85 s
+failure `blocked_route` mengakhiri run; auditor menghentikan simulator.
+UNKNOWN bukan penyebab: log mencatat unknown_count=0, occupied_count=1.
+3577 pasangan audit: RMSE posisi 0,01205 m, maksimum 0,03627 m. Estimator
+memakai LiDAR–IMU, ground truth hanya audit. Dua pohon + landing BELUM
+berhasil, sehingga map bunga belum dijalankan.
+
+Perbaikan: pada perencanaan di keadaan diam, evaluasi ulang anchor scan
+berikutnya, bukan endpoint lama dari batch sebelumnya. Jika terkena
+occupied, cari endpoint observed-free pada sudut yang sama: radius boleh
+bertambah maksimal 1 m, ketinggian boleh turun maksimal total 0,6 m dari
+awal scan dan tidak di bawah takeoff altitude. Radius tidak diperkecil.
+Sisa orbit mengikuti batas tinggi yang lebih rendah agar tidak berulang
+naik ke daun. Target nominal dipertahankan terpisah. Tidak ada sektor yang
+di-skip atau disahkan hanya karena target baru ditemukan.
+
+Endpoint baru bukan sertifikat penerbangan. A*, kurva utuh, braking,
+pemeriksaan map live dan PID tetap wajib. Perubahan waypoint dari worker
+hanya diadopsi bersama trajectory yang lolos live-map check; tidak ada
+publisher kontrol tambahan. Log baru: scan_target_diagnostics dan
+scan_target_repairs, termasuk obstacle, kandidat ditolak, map/stamp, posisi
+pilihan, dan kebijakan sektor. Tes mencakup occupied, unknown, radius,
+penurunan terbatas, sisa orbit, serta adopsi snapshot async. Uji penerbangan
+setelah perbaikan dicatat terpisah; belum dinyatakan berhasil di entri ini.
+
+# 14 Oktober 2026 — Permintaan scan aktif mengikuti ruang bawah daun
+
+Setelah audit blocked_route tadi, pengguna menjelaskan tinggi scan tidak
+boleh terkunci ke satu bidang: kamera harus mencoba menyamai perkiraan pucuk
+batang dan drone naik lagi jika atap di sisi berikutnya lebih tinggi. Maka
+ditambahkan profil 3D per enam anchor dengan cap dari kolom observed-free,
+buffer atas, batas slope dan hysteresis. Perkiraan pucuk adalah pengamatan
+batang, bukan bunga terdeteksi. Camera target SCAN disamakan ke perkiraan itu.
+XY nominal tetap melingkar; A* boleh menyimpang bila diperlukan keselamatan.
+
+Gerakan Z masuk ke kurva/timing dan limit dinamika yang sama dengan XY, bukan
+offset setpoint setelah planner. Map baru memeriksa curve suffix + buffer;
+obstacle baru memicu brake/replan. Ruang tambahan dipakai pada chunk baru,
+bukan moving replan instan. Batas antar-chunk tetap stop-to-stop; dicatat
+agar tidak dianggap orbit tanpa jeda sama sekali. Unknown dan occupied
+tidak dilonggarkan, radius tidak diperkecil dan sektor tidak di-skip.
+
+83 tes regresi lolos, termasuk 6 tes baru untuk naik sambil berputar, atap
+daun dengan udara bebas di atas, unknown overhead, pemanfaatan headroom baru,
+buffer curve/suffix dan derivative bounds. Config hover menonaktifkan fitur
+scan. Hasil penerbangan setelah perubahan ini belum diklaim di entri ini.
 

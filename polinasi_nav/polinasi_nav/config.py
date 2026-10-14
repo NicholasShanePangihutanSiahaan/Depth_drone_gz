@@ -24,6 +24,20 @@ def load_config(path=None):
     if c.get('sensor_rolling_localisation') and not (c.get('simulation_continuous_roll')
             and c.get('sensor_gimbals_enabled') and c.get('simulation_visual_model')=='polinasi_visual_50cm'):
         raise ValueError('sensor rolling localisation requires isolated visual50 rolling simulation')
+    if c.get('scan_adaptive_height'):
+        if c['scan_adaptive_height'] is not True or not c.get('scan_target_repair'):
+            raise ValueError('adaptive scan height requires scan target repair')
+        for key,low,high in (('scan_height_max_slope',.05,1.),('scan_height_hysteresis',0.,.3),('scan_stem_top_offset',0.,1.)):
+            value=c.get(key)
+            if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not low<=value<=high:
+                raise ValueError('invalid '+key)
+    if c.get('scan_target_repair'):
+        if c['scan_target_repair'] is not True or not c.get('continuous_tree_scanning'):
+            raise ValueError('scan target repair requires continuous tree scanning')
+        for key,maximum in (('scan_target_max_outward',1.5),('scan_target_max_descent',.8)):
+            value=c.get(key)
+            if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not 0<=value<=maximum:
+                raise ValueError('invalid bounded '+key)
     if c.get('smooth_approach_ascent'):
         if c['smooth_approach_ascent'] is not True or not c.get('continuous_tree_scanning') or not c.get('rolling_canopy_ascent'):
             raise ValueError('smooth approach ascent requires continuous scan and guarded ascent')

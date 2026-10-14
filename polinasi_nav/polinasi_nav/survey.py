@@ -251,7 +251,12 @@ class SurveyController(MissionController):
                     'subgoal_diagnostics'):
             if hasattr(clone,key):
                 setattr(self,key,getattr(clone,key))
+        self._accept_plan_auxiliary(clone,ready)
         return ready
+
+    def _accept_plan_auxiliary(self,clone,ready):
+        """Subclass planner state, adopted only after the common live checks."""
+        pass
 
     def _plan_route(self, start, goal):
         route = super()._plan_route(start, goal)

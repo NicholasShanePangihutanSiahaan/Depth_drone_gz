@@ -109,3 +109,74 @@ def test_rolling_ascent_uses_bounded_live_reference_and_keeps_xy_fixed():
         np.testing.assert_allclose(ctl.command[:2],[2.,0.])
         assert not ctl.failure and ctl.tree_phase=='ASCEND'
     assert ctl.command[2]>2.1
+
+
+def blocked_scan_controller():
+    from polinasi_nav.mapping import OCCUPIED
+    ctl=controller()
+    ctl.c.update(scan_target_repair=True,scan_target_max_outward=1.,scan_target_max_descent=.6)
+    ctl._begin_continuous_scan(np.array([2.,0.,3.2]))
+    ctl.waypoint_index=15
+    target=ctl.waypoints[15].copy()
+    leaf=target+np.array([0.,0.,.7])
+    ctl.grid.state[tuple(ctl.grid.indices(leaf))]=OCCUPIED
+    ctl.grid.rebuild(0.)
+    ctl.command=ctl.waypoints[12].copy()
+    assert ctl.grid.occupied_goal(target)
+    return ctl,target
+
+
+def test_occupied_scan_anchor_is_resampled_without_skipping_or_cutting_radius():
+    ctl,target=blocked_scan_controller()
+    assert ctl._choose_goal(ctl.command)
+    assert ctl.grid.safe(ctl.goal) and ctl.waypoint_index==15
+    assert np.linalg.norm(ctl.goal[:2])>=np.linalg.norm(target[:2])-1e-8
+    np.testing.assert_allclose(ctl.goal[:2]/np.linalg.norm(ctl.goal[:2]),target[:2]/2.)
+    assert ctl.goal[2]<=target[2]
+    assert not ctl.scan_records and not ctl.completed_trees
+    assert not ctl.scan_target_diagnostics['sector_skipped']
+
+
+def test_lower_scan_repair_never_reclimbs_remaining_ring_or_exceeds_total_descent():
+    ctl,target=blocked_scan_controller()
+    ctl.c['scan_target_max_outward']=0.
+    assert ctl._choose_goal(ctl.command)
+    assert target[2]-.6-1e-8<=ctl.goal[2]<target[2]
+    np.testing.assert_allclose(ctl.waypoints[15:,2],ctl.goal[2])
+    np.testing.assert_allclose(ctl.waypoints[:15,2],target[2])
+    np.testing.assert_allclose(ctl.scan_nominal_waypoints[:,2],target[2])
+
+
+def test_unknown_alternatives_never_repair_a_blocked_scan_anchor():
+    from polinasi_nav.mapping import UNKNOWN, OCCUPIED
+    ctl,target=blocked_scan_controller()
+    ctl.grid.state[:]=UNKNOWN
+    ctl.grid.state[tuple(ctl.grid.indices(target))]=OCCUPIED
+    ctl.grid.rebuild(0.)
+    assert not ctl._choose_goal(ctl.command)
+    assert not ctl.scan_target_repairs
+    assert ctl.scan_target_diagnostics['result']=='no_observed_safe_candidate'
+    assert ctl.waypoint_index==15
+
+
+def test_async_scan_repair_waypoints_adopted_only_with_safe_plan():
+    from concurrent.futures import Future
+    from polinasi_nav.survey import prepare_survey_snapshot
+    ctl,target=blocked_scan_controller()
+    clone=ctl._planning_clone()
+    clone,ready=prepare_survey_snapshot(clone,0.,ctl.command,None,None)
+    assert ready and not clone.failure
+    assert clone.trajectory.safe(ctl.grid)
+    assert not np.allclose(clone.waypoints[15],target)
+    np.testing.assert_allclose(ctl.waypoints[15],target)
+    ctl.pending_plan=Future();ctl.pending_plan.set_result((clone,ready))
+    ctl.scan_start_aligned=True
+    # Select the async adoption path with a sentinel, no actual worker needed.
+    ctl.executor=object()
+    assert ctl._prepare_trajectory(0.,ctl.command)
+    np.testing.assert_allclose(ctl.waypoints,clone.waypoints)
+    assert ctl.scan_target_repairs
+    rejected=ctl._planning_clone();rejected.waypoints[:]=0.
+    accepted=ctl.waypoints.copy()
+    ctl._accept_plan_auxiliary(rejected,False)
+    np.testing.assert_allclose(ctl.waypoints,accepted)

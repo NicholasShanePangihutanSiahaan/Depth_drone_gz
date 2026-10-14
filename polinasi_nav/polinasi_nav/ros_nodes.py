@@ -951,6 +951,9 @@ class NavigationNode(ConfigNode):
                 target = [*tree['xy'],max(tree['observed_stem_top']-.4,self.pose[2]+.5)
                     if self.c.get('inspection_transit_camera') and self.controller.inspection_hover()
                     else tree['observed_stem_top']-.4]
+                if self.c.get('scan_adaptive_height') and getattr(self.controller,'tree_phase',None)=='SCAN':
+                    from .canopy_scan import stem_target_height
+                    target[2]=stem_target_height(tree,self.c)
                 if self.c.get('depth_camera_enabled') and self.controller.camera_navigation_view():
                     from .depth_mapping import approach_camera_target
                     hint = self.controller.command+self.controller.command_v*2.
