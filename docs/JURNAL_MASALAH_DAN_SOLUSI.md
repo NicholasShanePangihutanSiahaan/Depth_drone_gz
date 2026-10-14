@@ -1713,3 +1713,8 @@ berkurang dan apakah misi bisa berlanjut; belum klaim selesai.
 Rujukan primer profil ROS 2 Humble:
 https://github.com/ros2/rmw/blob/humble/rmw/include/rmw/qos_profiles.h
 
+Uji ROS menemukan bahwa `deepcopy(QoSProfile)` tidak didukung oleh objek
+duration native Humble. Sebelum simulasi diluncurkan, konstruksi diganti
+menjadi QoSProfile baru dengan history/reliability/durability yang sama.
+Tidak ada penerbangan yang dijalankan dengan konstruktor yang gagal itu.
+

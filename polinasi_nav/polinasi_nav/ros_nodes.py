@@ -40,9 +40,9 @@ from .coverage_mapping import rolling_input
 
 
 def localisation_imu_qos():
-    profile=copy.deepcopy(qos_profile_sensor_data)
-    profile.depth=256
-    return profile
+    return QoSProfile(depth=256,history=qos_profile_sensor_data.history,
+        reliability=qos_profile_sensor_data.reliability,
+        durability=qos_profile_sensor_data.durability)
 
 
 def seconds(stamp):
