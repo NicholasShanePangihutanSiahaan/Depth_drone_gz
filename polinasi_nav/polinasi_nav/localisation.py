@@ -19,7 +19,8 @@ def voxel_downsample(points, resolution=0.18):
 
 
 class LidarImuOdometry:
-    def __init__(self, mount, origin=(0., 0., 0.), body_imu=False, bootstrap_duration=0.):
+    def __init__(self, mount, origin=(0., 0., 0.), body_imu=False, bootstrap_duration=0., robust_planes=False):
+        self.robust_planes = robust_planes
         self.mount_p = np.asarray(mount[:3])
         self.mount_r = Rotation.from_euler('xyz', mount[3:]).as_matrix()
         self.body_imu = body_imu
@@ -186,6 +187,13 @@ class LidarImuOdometry:
                     self.ok,self.reason=False,'insufficient_plane_constraints'
                     return False
                 residual=np.einsum('ij,ij->i',normals,a-b)
+                if self.robust_planes:
+                    valid=np.abs(residual)<=.12
+                    if np.count_nonzero(valid)<80 or np.mean(valid)<.6:
+                        self.ok,self.reason=False,'insufficient_consistent_planes'
+                        return False
+                    a,b,normals,residual=a[valid],b[valid],normals[valid],residual[valid]
+                    self.translation_information=np.linalg.eigvalsh(normals.T@normals/len(normals)).tolist()
                 jac=np.column_stack((np.cross(a-p,normals),normals))
                 weights=np.minimum(1.,.08/np.maximum(np.abs(residual),1e-9))
                 # IMU orientation prior prevents sparse raster correspondences
@@ -214,6 +222,8 @@ class LidarImuOdometry:
         self.point_rmse = float(np.sqrt(np.mean(distances[inliers]**2)))
         self.rmse=self.point_rmse
         plane_count=0
+        consistent_fraction=1.
+        raw_plane_rmse=None
         if self.body_imu:
             good=inliers & self.normal_valid[ids]
             plane_count=int(np.count_nonzero(good))
@@ -221,12 +231,24 @@ class LidarImuOdometry:
                 self.ok,self.reason=False,'insufficient_plane_constraints'
                 return False
             errors=np.einsum('ij,ij->i',self.normals[ids[good]],transformed[good]-self.reference[ids[good]])
+            raw_plane_rmse=float(np.sqrt(np.mean(errors**2)))
+            if self.robust_planes:
+                valid=np.abs(errors)<=.12
+                consistent_fraction=float(np.mean(valid))
+                plane_count=int(np.count_nonzero(valid))
+                if plane_count<80 or consistent_fraction<.6:
+                    self.ok,self.reason=False,'insufficient_consistent_planes'
+                    return False
+                normals=self.normals[ids[good]][valid]
+                self.translation_information=np.linalg.eigvalsh(normals.T@normals/plane_count).tolist()
+                errors=errors[valid]
             self.rmse=float(np.sqrt(np.mean(errors**2)))
         angle_error = np.linalg.norm(Rotation.from_matrix(predicted_r.T@r).as_rotvec())
         shift_error=float(np.linalg.norm(p-predicted_p))
         self.last_registration=dict(point_rmse_m=self.point_rmse,residual_rmse_m=self.rmse,
             metric='point_to_plane' if self.body_imu else 'point_to_point',
             plane_count=plane_count,inlier_fraction=float(np.mean(inliers)),
+            consistent_plane_fraction=consistent_fraction,raw_plane_rmse_m=raw_plane_rmse,
             translation_correction_m=shift_error,rotation_correction_rad=float(angle_error))
         if (self.body_imu and min(self.translation_information,default=0.)<.003):
             self.ok,self.reason=False,'translation_degeneracy'

@@ -4,6 +4,27 @@ from scipy.spatial.transform import Rotation
 from polinasi_nav.localisation import LidarImuOdometry
 
 
+def test_robust_planes_accept_minor_outliers_but_reject_missing_consensus():
+    def estimator():
+        e=LidarImuOdometry([0,0,0,0,0,0],body_imu=True,robust_planes=True)
+        for i in range(50):e.imu([0,0,0],[0,0,9.81],i*.005)
+        x,y=np.meshgrid(np.linspace(-4,4,25),np.linspace(-4,4,25));x,y=x.ravel(),y.ravel()
+        p=np.vstack((np.column_stack((x,y,np.zeros_like(x))),
+                     np.column_stack((np.full_like(x,5.),x,y+5)),
+                     np.column_stack((x,np.full_like(x,5.),y+5))))
+        assert e.scan(p,.245)
+        for j in range(20):e.imu([0,0,0],[0,0,9.81],.25+j*.005)
+        return e,p
+    e,p=estimator()
+    noisy=p.copy();noisy[::8]+=[.20,.20,.20]
+    assert e.scan(noisy,.345)
+    assert np.linalg.norm(e.p)<.03
+    assert e.last_registration['consistent_plane_fraction']>=.6
+    e,p=estimator()
+    assert not e.scan(p+[.25,.25,.25],.345)
+    assert e.reason=='insufficient_consistent_planes'
+
+
 def test_stationary_body_remains_stationary_when_lidar_rolls():
     e=LidarImuOdometry([.205,0,.085,0,0,0],body_imu=True)
     for i in range(50):e.imu([0,0,0],[0,0,9.81],i*.005)

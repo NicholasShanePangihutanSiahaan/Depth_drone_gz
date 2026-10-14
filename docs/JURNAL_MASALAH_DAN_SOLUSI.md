@@ -1406,3 +1406,21 @@ benar-benar mati walau auditor mengirim stop. Bash yang diluncurkan dengan
 trap cleanup TERM launcher dan tetap menutup hanya kelompok proses miliknya.
 Tidak memakai pkill global. Run kedua yang ditolak tidak mengirim arming.
 
+# 14 Oktober 2026 — Fixed run 3 mengungkap penolakan pasangan permukaan
+
+Run `082233_13607` setup lulus dan takeoff diterima, lalu berhenti pada 13,4
+detik. Log scan gagal menunjukkan `registration_rejected`: residual plane
+naik 0,0713 -> 0,0824 -> 0,0837 m ketika badan mulai pitch sekitar 0,01 rad.
+Masih ada 1283 pasangan plane, tetapi seluruh pasangan tetangga terdekat
+dimasukkan ke RMSE meskipun sebagian merupakan permukaan tidak cocok.
+Ini diagnosis quality-gate estimator, bukan bukti semua pasangan salah atau
+semua kegagalan sebelumnya bersumber dari LiDAR fixed.
+
+Untuk fixture fixed ditambahkan seleksi residual plane <=0,12 m pada fit
+dan pemeriksaan akhir, minimal 80 pasangan, minimal 60% pasangan konsisten,
+serta pemeriksaan informasi translasi pada pasangan yang dipertahankan.
+RMSE akhir tetap <=0,08 m; koreksi posisi/rotasi, freshness, dan auditor
+ground-truth tetap aktif. Raw RMSE dan fraksi konsisten ikut dicatat agar
+outlier tidak disembunyikan. Tes sintetis harus menerima sedikit outlier
+namun menolak cloud tanpa konsensus; penerbangan berikutnya diperlukan.
+
