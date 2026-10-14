@@ -86,15 +86,11 @@ def generate_launch_description():
             parameters=[config], output='screen'),
         Node(
             package='beehive_drone', executable='flight_manager',
-            # Pada ROS 2 Humble yang dipakai sistem ini, nilai parameter
-            # duplikat dari file pertama dipertahankan. Letakkan override
-            # launch lebih dahulu agar simulasi dapat memilih local_position,
-            # sementara parameter lain tetap dibaca dari real.yaml.
-            parameters=[{
-                'altitude_source': altitude_source,
-                'hover_tolerance': ParameterValue(
+            parameters=[config, {
+                'runtime_altitude_source': altitude_source,
+                'runtime_hover_tolerance': ParameterValue(
                     hover_tolerance, value_type=float),
-            }, config], output='screen'),
+            }], output='screen'),
         Node(
             package='beehive_drone', executable='mission_safety_monitor',
             parameters=[config], output='screen'),
@@ -109,10 +105,11 @@ def generate_launch_description():
         Node(
             package='beehive_drone', executable='mission_state_machine',
             parameters=[config, {
-                'auto_start': ParameterValue(auto_start, value_type=bool),
-                'mission_type': mission_type,
-                'mission_mode': mission_mode,
-                'max_trees': ParameterValue(max_trees, value_type=int),
+                'runtime_auto_start': auto_start,
+                'runtime_mission_type': mission_type,
+                'runtime_mission_mode': mission_mode,
+                'runtime_max_trees': ParameterValue(
+                    max_trees, value_type=int),
             }],
             output='screen'),
         Node(
