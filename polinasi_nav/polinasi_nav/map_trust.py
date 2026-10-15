@@ -6,7 +6,7 @@ priors cannot manufacture stability. A changing/noisy region remains uncertain.
 import math
 import time
 import numpy as np
-from .mapping import FREE
+from .mapping import FREE,vertical_guard
 from .planning import Brake
 
 
@@ -75,7 +75,7 @@ class LocalMapTrust:
             return finish('fresh_base_limit')
         if speed>self.c['map_trust_max_speed']:
             return finish('speed_limit_for_extension')
-        guard=self.c.get('tree_ascent_observation_guard',0.) if ascending else 0.
+        guard=vertical_guard(self.c) if ascending else 0.
         reaction=max(self.c['reaction_time'],self.c.get('tree_ascent_reaction_time',.7) if ascending else 0.)
         braking=Brake(np.asarray(p)+np.asarray(v)*reaction,np.asarray(v),np.asarray(a),self.c)
         local=braking.coeff*braking.duration**np.arange(6)[:,None]

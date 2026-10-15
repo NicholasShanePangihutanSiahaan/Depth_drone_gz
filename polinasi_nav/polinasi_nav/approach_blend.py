@@ -2,7 +2,7 @@
 import math
 import numpy as np
 from .continuous import ContinuousTrajectory, curve_safe, evaluate
-from .mapping import OCCUPIED
+from .mapping import OCCUPIED,vertical_guard
 from .planning import brake_safe
 
 
@@ -32,7 +32,7 @@ class ApproachAscentTrajectory(ContinuousTrajectory):
         bv,ba,bj=self.bounds()
         self.slow(max(1.,bv/vmax,math.sqrt(ba/amax),np.cbrt(bj/jmax)))
         self.knot_speeds=np.array([0.,self.sample(self.duration)[1][2]])
-        self.guard=float(config.get('tree_ascent_observation_guard',0.))
+        self.guard=vertical_guard(config)
         if not math.isfinite(self.guard) or self.guard<0:
             raise ValueError('invalid observation guard')
         self.approach_ascent_blend=True
@@ -85,7 +85,7 @@ def build_approach_blend(grid,start,goal,tree,config):
     if not np.any(overhead):return None,dict(detail,reason='no_observed_overhead_surface')
     ceiling=float(np.min(centres[overhead,2])-grid.res/2)
     margin=(config['drone_dimensions'][2]/2+config['clearance']+config['tracking_margin']
-            +config.get('tree_ascent_observation_guard',0.))
+            +vertical_guard(config))
     cap=min(ceiling-margin,float(tree['observed_stem_top'])-.4)
     detail.update(observed_ceiling_z_m=ceiling,maximum_end_z_m=cap,
                   start=start.tolist(),original_approach_goal=goal.tolist())

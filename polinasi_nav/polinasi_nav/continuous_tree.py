@@ -321,7 +321,8 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         if not (getattr(self.trajectory,'approach_ascent_blend',False)
                 or self.c.get('smooth_approach_ascent') and self.tree_phase=='ASCEND'):
             return True
-        guarded=self.command+np.array([0.,0.,self.c.get('tree_ascent_observation_guard',0.)])
+        from .mapping import vertical_guard
+        guarded=self.command+np.array([0.,0.,vertical_guard(self.c)])
         detail={}
         safe=bool(self.grid.line_safe(self.command,guarded) and brake_safe(self.grid,guarded,
             self.command_v,self.final_braking_config(),acceleration,diagnostics=detail))

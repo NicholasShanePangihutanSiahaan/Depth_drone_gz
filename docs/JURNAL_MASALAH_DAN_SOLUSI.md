@@ -1810,3 +1810,26 @@ Tes sintetik menerima partial cylinder dan menolak slanted/short/upper-only
 clusters. Semua safety/unknown/braking tetap; tidak mengubah world/model.
 Loop dilanjutkan dengan pengamatan flight baru untuk memeriksa efeknya.
 
+# 15 Oktober 2026 — Guard 0,5 m berbeda pembulatan saat handoff ke scan
+
+Run `sensor_localisation_validation_20261015_120446` memilih batang ID1
+[8,7857;0,8420], sekitar .051 m dari model oil_palm_00 pada audit terpisah.
+Lima layer konsisten, false candidates ditolak. Takeoff/approach/ascent
+berhasil tanpa map pause; ascent berhenti observation_guard_limit pada
+reference [6,795;.651;2,2479]. Namun SCAN tidak dapat memulai: planner
+endpoint_not_safe, lalu auditor menghentikan blocked_route pada 87,5 s.
+784 pasangan audit RMSE .01364 m, max .04288 m; belum ada sektor valid.
+
+Rekonstruksi peta terukur menunjukkan reference dan reference+.5 m aman,
+tetapi reference+.6 m tidak aman (daun [5,9;1,3;3,7] masuk inflated margin).
+Planner canopy_guard_grid membulatkan .5 ke 3 voxel=.6 m, sedangkan ascent
+dan blend masih memakai .5 m persis. Ini bug konsistensi yang muncul setelah
+reserve ditambah, bukan alasan menghapus obstacle atau memperkecil margin.
+
+Ditambahkan vertical_guard bersama yang selalu membulatkan ke atas.
+Ascent, blend cap/curve, final guard, canopy trajectory dan trust corridor
+kini memakai reserve yang sama dengan planner. Raw occupancy tetap tidak
+berubah. Regression ascent ke ceiling menguji stopping handoff benar-benar
+safe pada guarded planner grid. 53 tes ascent/blend/canopy/trust/continuous
+tree lulus (11,14 s). Flight berikutnya tetap diperlukan.
+

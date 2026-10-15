@@ -5,6 +5,14 @@ from scipy.ndimage import binary_dilation, distance_transform_edt, maximum_filte
 UNKNOWN, FREE, OCCUPIED = -1, 0, 1
 
 
+def vertical_guard(config):
+    """One conservative voxel-rounded canopy reserve for every flight stage."""
+    value=float(config.get('tree_ascent_observation_guard',0.))
+    if not np.isfinite(value) or value<0:
+        raise ValueError('invalid observation guard')
+    return float(np.ceil(value/config['resolution']-1e-9)*config['resolution'])
+
+
 def select_rays(hits, sequence, surface_stride, free_stride):
     groups = (np.flatnonzero(hits), np.flatnonzero(~np.asarray(hits, bool)))
     selected = [ids[sequence % min(stride, len(ids))::stride]

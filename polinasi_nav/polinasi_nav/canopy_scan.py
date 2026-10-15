@@ -6,6 +6,7 @@ import math
 import copy
 import numpy as np
 from .continuous import ContinuousTrajectory
+from .mapping import vertical_guard
 
 
 def canopy_guard_grid(grid,guard):
@@ -26,7 +27,7 @@ class CanopyScanTrajectory(ContinuousTrajectory):
     """The full commanded 3D curve plus a reserved vertical canopy buffer."""
     def __init__(self,trajectory,guard):
         self.__dict__.update(trajectory.__dict__)
-        self.canopy_guard=float(guard)
+        self.canopy_guard=vertical_guard(dict(tree_ascent_observation_guard=guard,resolution=self.c['resolution']))
 
     def _shifted(self,offset):
         proxy=object.__new__(ContinuousTrajectory)

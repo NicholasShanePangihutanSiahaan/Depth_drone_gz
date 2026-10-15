@@ -85,7 +85,20 @@ def test_observation_guard_reserves_extra_space_without_weakening_footprint():
     ref,guarded = run_ascent(c,grid,5.)
     assert ref.reason=='observation_guard_limit'
     assert guarded[-1][0][2]<normal[-1][0][2]-.4
-    assert ref.diagnostics['observation_guard_m']==.5
+    from polinasi_nav.mapping import vertical_guard
+    assert ref.diagnostics['observation_guard_m']==vertical_guard(c)
+
+
+def test_fractional_voxel_guard_handoff_is_safe_for_scan_planner():
+    from polinasi_nav.mapping import OCCUPIED,vertical_guard
+    from polinasi_nav.canopy_scan import canopy_guard_grid
+    c,grid=fixture();c['tree_ascent_observation_guard']=.5
+    grid.state[:,:,grid.indices([0.,0.,4.])[2]]=OCCUPIED
+    grid.rebuild(1.)
+    ref,history=run_ascent(c,grid,5.)
+    assert vertical_guard(c)==.6 or abs(vertical_guard(c)-.6)<1e-8
+    assert canopy_guard_grid(grid,.5).safe(history[-1][0])
+    assert ref.reason=='observation_guard_limit'
 
 
 def test_camera_gate_requires_down_pitch_and_new_integrated_depth():
