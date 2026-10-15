@@ -387,3 +387,37 @@ status untuk rute awal dan moving handoff; **44 tes adaptasi/handoff lulus**
 (18.33 s), termasuk assertion diagnostik pada replay async. Log
 `/tmp/fixed_terminal_diagnostics_tests.log`. Tidak ada flight baru untuk kedua
 perbaikan ini. Perubahan teruji di-commit/push hanya ke fixed-lidar.
+
+
+## Run c684d4c headless dan riset lanjutan kegagalan SCAN
+
+Pengguna mengizinkan run baru, kemudian meminta perbandingan approach dan
+riset solusi. Run `reports/fixed_lidar_validation_20261015_214724`, session
+`.dependencies/ros_sensor_palm_farm_20261015_214726_17361_mapping`.
+Semua window off; domain96/partition polinasi_fixed_lidar/port9002,14650,5762
+terpisah dari proses lain. APPROACH tree3 20.65→59.40 s (38.75 s),
+ASCEND→SCAN70.95 s, failure71.35 s: survey_worker/ValueError/
+no robust route braking envelope. Tidak ada sektor inspeksi selesai.
+Altitude3.1254 m; ascent_stop_reason observation_guard_limit;
+tracking error .02548 m; localisation healthy/tracking. Audit623 pasangan,
+posisi RMSE .014188 m, maksimum .026264 m. Backup valid/executed/live_rechecked.
+Auditor stop; session.stopped=true, port/proses runtime sudah kosong.
+Tidak restart. Landing/disarm sebelum penghentian simulator tidak tervalidasi.
+
+Moving handoff31.20 s diterima, PVA jump [0,1.16e-14,2.03e-12].
+Satu handoff berikutnya ditolak planner_not_ready_at_boundary; ini bukan
+exception akhir. Run sebelum adaptasi SUPER 145348: approach tree5
+20.45→71.65 s=51.20 s; selisih12.45 s/24.3% tidak boleh dianggap peningkatan
+terkontrol karena pohon/rute berbeda. Baseline203415 tree3 gagal33.85 s
+sebelum approach selesai. Waktu di atas detik simulasi; targetRTF .15 berarti
+38.75 detik simulasi sekitar258.3 detik waktu nyata bila RTF tepat .15,
+bukan pengukuran durasi hardware atau pengukuran wall-clock persis.
+
+Riset primer: SUPER, TOPP-RA, Ruckig dan TOPPQuad. Audit menemukan lima
+kandidat scan hanya turun hingga .09 m/s; failure bukan bukti tidak ada speed
+lain yang feasible. Cadangan velocity/PID serta geometri tidak hilang ketika
+nominal speed diperkecil. Belum ada bukti witness untuk sumber blokade SCAN.
+Rekomendasi dan batas integrasi lengkap pada docs/SUPER_ADAPTATION.md bagian
+riset penolakan braking. Tidak ada perubahan algoritma, tes baru, atau flight
+baru pada tahap riset; perhitungan numerik offline menggunakan Brake yang
+sudah ada. Dokumentasi riset disimpan/di-commit/push ke fixed-lidar.

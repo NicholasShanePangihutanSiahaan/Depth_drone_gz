@@ -120,3 +120,87 @@ sertifikasi braking .05 s setelah dua upaya retiming. Exception worker asli
 tidak menyimpan detail, sehingga kesamaan dengan penyebab run asli masih
 inferensi. Sekarang type/message exception worker dicatat. Tidak ada restart
 simulasi setelah fault; perbaikan terminal baru diuji offline.
+
+
+## Riset penolakan braking pada awal SCAN (15 Oktober 2026)
+
+Run c684d4c: approach 20.65→59.40 s = 38.75 s, ASCEND→SCAN pada
+70.95 s, survey_planner_error pada 71.35 s. Log worker membuktikan
+ValueError: no robust route braking envelope. Belum ada witness titik/ruas
+untuk membuktikan occupied, unknown, canopy guard, atau batas dinamis sebagai
+penyebab spesifik. Tidak memulai ulang simulasi untuk riset ini.
+
+Temuan kode terkonfirmasi:
+
+- route_speed_limits hanya mencoba faktor 1,.85,.7,.5,.3. Batas scan .3 m/s
+  berarti kandidat terendah .09 m/s; penolakan bukan bukti semua speed infeasible.
+- Skenario feedback_brake_safe menambahkan uncertainty velocity .03 m/s dan
+  PID acceleration .15 m/s² searah gerak. Memperlambat nominal bukan berarti
+  stopping envelope menyusut ke nol. Pada nominal tepat nol ada cabang khusus
+  stationary; itu bukan bukti transisi dari gerak ke diam aman.
+- Dengan implementasi Brake saat ini, reaction .35 s: nominal .09 membutuhkan
+  sekitar .132 m searah gerak pada skenario tambahan tersebut; nominal .01
+  membutuhkan .04307 m; nominal 1e-6 membutuhkan .03332 m. Ini jarak model
+  sebelum inflasi badan/clearance/voxel, bukan stopping distance hardware.
+- Pre-profile memakai arah chord setiap ruas dan nominal acceleration nol,
+  bukan PVA aktual quintic hasil smoothing. Penolakan chord belum membuktikan
+  kurva akhir atau seluruh lintasan alternatif infeasible.
+- Exception muncul sebelum loop fallback smoothing dan sertifikasi kurva;
+  kegagalan pencarian kandidat biasa berubah menjadi fatal survey_planner_error.
+
+Sumber primer dan implikasi (hasil paper dibedakan dari usulan lokal):
+
+1. SUPER (Science Robotics 2025): exploration trajectory disertai backup pada
+   known-free space. Kode BackupTrajOpt mengoptimalkan time allocation,
+   waypoint dan split time; endpoint mempunyai turunan nol. Ini mendukung
+   optimasi backup/switch, bukan klaim speed minimum selalu aman. Implementasi
+   lokal belum joint MINCO; prior FOV pengguna tetap conditional, bukan
+   known-free hasil pengukuran. Sumber:
+   https://doi.org/10.1126/scirobotics.ado6187
+   https://github.com/hku-mars/SUPER/blob/master/super_planner/src/traj_opt/backup_traj_optimizer_s4.cpp
+2. TOPP-RA (Pham & Pham, T-RO 2018): backward controllable sets dari kondisi
+   akhir, kemudian forward pass memilih kontrol tercepat yang masih mencapai
+   kondisi akhir. Menawarkan pemeriksaan kelayakan sepanjang path, bukan
+   lima faktor. Jaminan berlaku pada model/constraints/discretization paper;
+   vanilla TOPPRA bukan sertifikat langsung untuk jerk dan collision-aware
+   braking/PID kita yang bergantung pada state/lingkungan.
+   https://arxiv.org/abs/1707.07239
+   https://hungpham2511.github.io/toppra/index.html
+3. Ruckig (Berscheid & Kroeger, RSS 2021): trajectory generation dari PVA ke
+   target PVA dengan batas velocity/acceleration/jerk. Kandidat pembanding
+   backup stop, bukan obstacle planner; keluaran multi-axis perlu cek norm
+   3D, peta/canopy, PVA dan timing sebelum digunakan.
+   https://arxiv.org/abs/2105.04830
+   https://docs.ruckig.com/md_pages_2example__01.html
+4. TOPPQuad (Mao et al.): retiming quadrotor dengan dinamika rigid-body dan
+   batas thrust masing-masing motor. Kandidat jangka lanjut setelah parameter
+   massa/inersia/motor/controller sesuai; bukan perbaikan pertama fault ini.
+   https://arxiv.org/abs/2309.11637
+
+Rekomendasi rekayasa lokal, BELUM diimplementasikan/diuji flight:
+
+1. Simpan segment/sample, waktu/PVA, speed percobaan, alasan dan witness voxel,
+   source occupied/unknown/inflation/guard pada kegagalan. Replay snapshot yang
+   benar-benar dipakai worker, bukan hanya ekspor peta sesudahnya.
+2. Pisahkan geometry/body obstruction dari dynamic braking failure. Bangun
+   kandidat kurva PVA; retime dan sertifikasi kurva sebenarnya. Pre-profile
+   chord tidak boleh menjadi satu-satunya bukti infeasibility global.
+3. Pencarian speed/durasi adaptif bounded, mencakup nilai di bawah .09 m/s,
+   dengan PVA awal dan terminal dipertahankan. Tidak mengasumsikan safe(speed)
+   selalu monoton untuk semua state/kurva; bisection hanya pada bracket yang
+   mendukung asumsi tersebut, selainnya bounded refinement. Tidak memaksa
+   speed nol saat masih bergerak atau menghapus uncertainty agar lolos.
+4. Jika kandidat gagal, pertahankan prefix/backup yang masih lolos live map
+   dan freshness. Hold hanya bila stationary envelope aman; replan lokal
+   atau detour 3D yang tersertifikasi dalam batas misi. Jika tidak ada backup
+   aman, atau sensor dropout/bahaya aktual, fail/abort tetap tersedia.
+   Retry punya budget waktu/jumlah dan timeout lama tidak dilonggarkan.
+5. Regresi: feasible hanya di bawah .09; stationary-safe tetapi semua gerak
+   tidak layak; corner/chord berbeda; unknown/occupied/canopy; moving boundary
+   acceleration; dropout; planner deadline; invalidasi backup. Jangan
+   menganggap penurunan speed monoton atau slew limiter sebagai bukti aman.
+
+Kriteria memilih solusi: durasi misi simulasi dan waktu CPU dicatat terpisah,
+jumlah hold/replan, tracking error, clearance, backup validity dan alasan
+penolakan. RTF .15 bukan speed fisik drone. Perbandingan approach 38.75 vs
+51.20 s lama hanya indikatif karena tree ID/route berbeda.
