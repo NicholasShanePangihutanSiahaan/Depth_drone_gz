@@ -1854,3 +1854,27 @@ scan disimpan saat IMU tertinggal dan hanya diproses setelah IMU waktunya
 tersedia. Ini memperbaiki urutan waktu; belum klaim mengatasi semua scheduling
 delay. Ketahanan flight dan handoff guard masih perlu run ulang.
 
+# 15 Oktober 2026 — Dua sektor scan tercapai; transient IMU freshness memicu abort
+
+Run `sensor_localisation_validation_20261015_122718` lolos setup, takeoff,
+approach ke batang benar ID1, ascent dan handoff ke SCAN. Tidak mengulang
+endpoint_not_safe pada awal scan; direct route ditemukan dan drone bergerak
+sampai anchor11 dengan dua dari enam sektor valid. Height sempat turun
+sekitar2,27 lalu naik kembali2,54 sesuai ruang atas. Dua map pause pulih;
+extension umur peta belum dibuktikan efektif pada flight ini.
+
+Pada 121,064 s debug healthy=False, reason waiting_for_scan_time_imu:
+received_imu_stamp120,955 (umur .109 s > gate .1 s), last accepted scan120,9
+(umur .164 s, masih <pose_timeout .3). Pada 121,1 s estimator kembali
+healthy=True/tracking, scan121 diterima, tetapi navigasi sudah menerima
+health false dan melatch localisation_loss. Jadi bukan bukti drift posisi
+atau ICP gagal permanen. Penyebab packet/callback terlambat .109 s belum
+dipisahkan; tidak menjalankan pytest paralel selama flight ini.
+
+1116 pasangan audit RMSE .011615 m, max .033119 m. Last registration residual
+.03760 m dan consistent plane fraction .9768. Auditor menghentikan run,
+session stopped=true. Pengguna saat run memperbarui instruksi: jika simulasi
+gagal, hentikan dan keluar loop. Karena itu tidak memperbaiki health gate,
+tidak melonggarkan timeout, dan tidak menjalankan ulang. Misi dua pohon dan
+landing pada flower world masih BELUM selesai.
+
