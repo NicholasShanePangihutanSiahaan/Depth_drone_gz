@@ -421,3 +421,35 @@ Rekomendasi dan batas integrasi lengkap pada docs/SUPER_ADAPTATION.md bagian
 riset penolakan braking. Tidak ada perubahan algoritma, tes baru, atau flight
 baru pada tahap riset; perhitungan numerik offline menggunakan Brake yang
 sudah ada. Dokumentasi riset disimpan/di-commit/push ke fixed-lidar.
+
+
+## Loop otomatis diizinkan — iterasi pemulihan planner
+
+Pengguna menginstruksikan implementasi→simulasi→stop bila fault→riset→perbaikan
+dan ulangi sampai selesai atau perlu keputusan baru. Ini menggantikan batas
+sebelumnya yang tidak mengulang simulasi setelah satu fault. Tetap headless,
+stop hanya run terdaftar, tanpa hardware dan tanpa mengubah rotating-lidar.
+
+Implementasi berdasarkan riset sebelumnya: refinement faktor speed sampai
+.01 dari cap, bukan hanya .3; witness tiap penolakan dan exception bertipe
+RouteSpeedEnvelopeError. Penolakan chord tidak langsung fatal: planner
+membangun kurva PVA dan harus lolos gate geometri/braking sebenarnya. Full
+curve braking juga memakai canopy guard pada scan/ascent sebagaimana backup.
+Kegagalan kandidat menjadi hold/retry hanya jika stop command masih safe;
+timeout blocked_timeout yang lama tetap dihitung sampai sukses, tidak reset
+tiap retry. Jika hold tidak aman atau timeout habis, fault tetap terjadi.
+Moving clone yang gagal tidak mengganti lintasan committed.
+
+Snapshot worker numerik menyimpan state/seen, mask FOV, blocked/actual mask,
+origin/shape, config, PVA dan points/controls/durations pada subdir
+map_3d/planner_failures; maksimum delapan snapshot per run. Path tersedia
+pada diagnostik. Mapping terpisah tetap menulis audit pada direktori run yang
+sama melalui subdir tersendiri. Tes awal snapshot mengungkap numpy.int64
+belum serializable; diperbaiki sebelum flight.
+
+Build tiga paket dan **409 tes lulus**, 0 error/failure/skipped, 82.13 s.
+Log `/tmp/fixed_recovery_build.log`. Empat regresi baru mencakup speed lebih
+rendah dari .09, fallback chord tetap disertifikasi, timeout/unsafe hold,
+dan snapshot exact serta bounded. Belum flight pada saat commit ini.
+Ini refinement bounded lokal, bukan implementasi TOPP-RA/Ruckig/MINCO penuh.
+Tidak mengubah sensor timeout, clearance, mounting atau kebijakan FOV.

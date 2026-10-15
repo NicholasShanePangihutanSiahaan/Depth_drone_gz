@@ -415,9 +415,6 @@ class MissionController:
             if now-self.blocked_since > self.c['blocked_timeout']:
                 self.fail('blocked_route')
             return False
-        self.blocked_since = None
-        self.route_wait_started = None
-        self.route_wait_scans = 0
         if self.state != 'EXPLORE':
             self.exploration_started = None
             self.route_blockage = dict(reason='route_found', planner_reason=self.route_planner_reason)
@@ -428,9 +425,8 @@ class MissionController:
         stage_started = time.perf_counter()
         if not self.trajectory.safe(self.grid):
             self.planner_stages_ms['smoothed_collision_check'] = (time.perf_counter()-stage_started)*1000.
-            self.trajectory = None
-            self.fail('unsafe_smoothed_trajectory')
-            return False
+            from .planner_recovery import reject_candidate
+            return reject_candidate(self,now,dict(reason='unsafe_smoothed_trajectory'))
         if self.state == 'INSPECT' and self.c['inspection_mode'] == 'orbit' and self.view_index == 1:
             circuit = OrbitTrajectory(self.c['trees'][self.tree_index], self.c)
             if circuit.safe(self.grid) and np.linalg.norm(self.command-circuit.sample(0.)[0]) < 0.12:
@@ -440,27 +436,40 @@ class MissionController:
         self.planner_stages_ms['smoothed_collision_check'] = (time.perf_counter()-stage_started)*1000.
         # Certify the complete commanded trajectory, including safe stopping.
         stage_started = time.perf_counter()
+        from .super_policy import feedback_brake_safe,backup_grid
+        check_grid=backup_grid(self)
         checks = 0
         for _ in range(12):
             certified = True
             for elapsed in np.arange(0., self.trajectory.duration+0.05, 0.05):
                 checks += 1
                 p, v, a = self.trajectory.sample(elapsed)
-                from .super_policy import feedback_brake_safe
-                if (not brake_safe(self.grid,p,v,self.c,a) or
-                        (self.c.get('feedback_speed_envelope') and not feedback_brake_safe(self.grid,p,v,a,self.c))):
-                    certified = False
+                detail={}
+                nominal=brake_safe(check_grid,p,v,self.c,a,diagnostics=detail)
+                if nominal and self.c.get('feedback_speed_envelope'):
+                    nominal=feedback_brake_safe(check_grid,p,v,a,self.c,detail)
+                if not nominal:
+                    certified=False
+                    self.route_failure_diagnostics=dict(reason='curve_braking_rejected',
+                        elapsed_seconds=float(elapsed),attempt=_+1,position=p.tolist(),
+                        velocity=v.tolist(),acceleration=a.tolist(),check=detail)
                     break
             if certified:
                 break
-            self.trajectory.slow(1.4)
+            if _<11:
+                try:self.trajectory.slow(1.4)
+                except ValueError:
+                    break  # Fixed moving PVA cannot always be slowed safely.
         self.planner_stages_ms['braking_certification'] = (time.perf_counter()-stage_started)*1000.
         self.planner_stages_ms['braking_sample_checks'] = checks
         self.planner_stages_ms['braking_attempts'] = _+1
         if not certified or not self.trajectory.safe(self.grid):
-            self.trajectory = None
-            self.fail('no_safe_braking_trajectory')
-            return False
+            from .planner_recovery import reject_candidate
+            return reject_candidate(self,now,dict(getattr(self,'route_failure_diagnostics',{}),
+                reason='no_safe_braking_trajectory'))
+        self.blocked_since=None
+        self.route_wait_started=None
+        self.route_wait_scans=0
         self.paths.append(self.trajectory.points.copy())
         self.replans += 1
         self.elapsed = 0.

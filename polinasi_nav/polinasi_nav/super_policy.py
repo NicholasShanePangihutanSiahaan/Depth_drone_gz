@@ -72,16 +72,23 @@ def densify(points,spacing):
     return np.asarray(result),knots
 
 
+class RouteSpeedEnvelopeError(ValueError):
+    def __init__(self,diagnostics):
+        super().__init__('no robust route braking envelope')
+        self.diagnostics=diagnostics
+
+
 def route_speed_limits(grid,points,c,maximum):
     """Local pre-profile; whole-curve braking certification still follows."""
-    caps=[];reasons=[]
+    caps=[];reasons=[];attempts=[]
     for index,(p,q) in enumerate(zip(points[:-1],points[1:])):
         length=np.linalg.norm(q-p)
         direction=(q-p)/length
         terminal=index==len(points)-2
         cap=0.;rejected=[]
         samples=np.linspace(p,q,max(2,int(np.ceil(np.linalg.norm(q-p)/.5))+1))
-        for factor in (1.,.85,.7,.5,.3):
+        # Bounded refinement, without assuming global monotonicity in speed.
+        for factor in (1.,.85,.7,.5,.3,.15,.07,.03,.01):
             speed=maximum*factor
             for point in samples:
                 # A terminal knot stops. Requiring cruise speed at that knot
@@ -91,13 +98,18 @@ def route_speed_limits(grid,points,c,maximum):
                 trial=speed*(np.linalg.norm(q-point)/length if terminal else 1.)
                 detail={}
                 if not feedback_brake_safe(grid,point,direction*trial,np.zeros(3),c,detail):
-                    rejected.append(detail.get('reason'));break
+                    rejected.append(detail.get('reason'))
+                    attempts.append(dict(segment=index,point=point.tolist(),factor=factor,
+                        nominal_speed_mps=float(trial),check=detail))
+                    break
             else:
                 cap=speed;break
-        if cap==0.:raise ValueError('no robust route braking envelope')
+        if cap==0.:raise RouteSpeedEnvelopeError(dict(reason='chord_preprofile_exhausted',
+            segment=index,attempts=attempts,whole_curve_certificate=False,
+            global_infeasibility_proven=False))
         caps.append(cap);reasons.append(rejected)
     return np.asarray(caps),dict(policy='sampled_route_feedback_braking_then_full_curve_check',
-        segment_speed_limits_mps=caps,rejected_reasons=reasons,
+        segment_speed_limits_mps=caps,rejected_reasons=reasons,attempts=attempts,
         velocity_uncertainty_mps=c['velocity_uncertainty_mps'],
         whole_curve_certificate=False)
 

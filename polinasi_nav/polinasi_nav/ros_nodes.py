@@ -398,6 +398,8 @@ class NavigationNode(ConfigNode):
                 from .continuous_tree import ContinuousTreeInspectionController
                 controller_type=ContinuousTreeInspectionController
         self.controller = controller_type(self.c, self.grid, self.get_parameter('mode').value == 'sensor')
+        if self.get_parameter('map_log_dir').value:
+            self.controller.c['planner_audit_dir']=str(Path(self.get_parameter('map_log_dir').value)/'planner_failures')
         if self.c.get('history_route_enabled'):
             if not self.separate_mapping:raise ValueError('history routes require separate mapping process')
             self.create_subscription(String,'/mapping/history_route',self.history_route_cb,QoSProfile(depth=1))

@@ -238,3 +238,57 @@ def test_survey_worker_failure_retains_exception_reason():
     assert ctl.route_failure_diagnostics==dict(gate='survey_worker',
         exception_type='ValueError',message='no robust route braking envelope')
     ctl.executor.shutdown(wait=True)
+
+
+def test_speed_refinement_finds_candidate_below_old_scan_minimum(monkeypatch):
+    import polinasi_nav.super_policy as policy
+    c,g=fixture()
+    def check(grid,p,v,a,config,diagnostics=None):
+        if diagnostics is not None:diagnostics['reason']='safe' if np.linalg.norm(v)<=.05 else 'braking_box_blocked'
+        return np.linalg.norm(v)<=.05
+    monkeypatch.setattr(policy,'feedback_brake_safe',check)
+    caps,detail=route_speed_limits(g,np.array([[0.,0.,2.],[1.,0.,2.]]),c,.3)
+    assert 0<caps[0]<.09
+    assert detail['attempts'][0]['check']['reason']=='braking_box_blocked'
+
+
+def test_chord_preprofile_rejection_still_requires_actual_curve_certificate(monkeypatch):
+    import polinasi_nav.super_policy as policy
+    def reject(*args,**kwargs):
+        raise policy.RouteSpeedEnvelopeError(dict(reason='chord_preprofile_exhausted'))
+    monkeypatch.setattr(policy,'route_speed_limits',reject)
+    c,g=fixture();ctl=SurveyController(c,g,asynchronous=False)
+    ctl.state='SURVEY';ctl.command=np.array([0.,0.,2.])
+    assert ctl._prepare_trajectory(0.,ctl.command)
+    assert ctl.planner_stages_ms['braking_sample_checks']>0
+    assert ctl.trajectory.safe(g) and not ctl.failure
+    assert ctl.route_speed_profile['fallback']=='actual_PVA_curve_certification_required'
+
+
+def test_candidate_retry_keeps_existing_timeout_and_does_not_mask_unsafe_hold():
+    from polinasi_nav.planner_recovery import reject_candidate
+    c,g=fixture();c['blocked_timeout']=4.
+    ctl=SurveyController(c,g,asynchronous=False);ctl.state='SURVEY'
+    ctl.command=np.array([0.,0.,2.])
+    assert not reject_candidate(ctl,0.,dict(reason='no_safe_braking_trajectory'))
+    assert not ctl.failure and ctl.blocked_since==0.
+    assert not reject_candidate(ctl,5.,dict(reason='no_safe_braking_trajectory'))
+    assert ctl.failure=='blocked_route'
+    other=SurveyController(c,g,asynchronous=False);other.state='SURVEY';other.command=ctl.command.copy()
+    g.state[tuple(g.indices(other.command))]=UNKNOWN;g.rebuild(0.)
+    reject_candidate(other,0.,dict(reason='no_safe_braking_trajectory'))
+    assert other.failure=='no_safe_hold_after_planner_rejection'
+
+
+def test_failure_snapshot_is_exact_numeric_grid_and_bounded(tmp_path):
+    import json
+    from polinasi_nav.planner_recovery import save_failure_snapshot
+    c,g=fixture();c['planner_audit_dir']=str(tmp_path)
+    ctl=SurveyController(c,g,asynchronous=False);ctl.state='SURVEY'
+    ctl.command=np.array([0.,0.,2.])
+    for i in range(10):save_failure_snapshot(ctl,dict(reason='test'),[[0.,0.,2.],[1.,0.,2.]])
+    files=list(tmp_path.glob('*.npz'));assert len(files)==8
+    with np.load(files[0],allow_pickle=False) as snapshot:
+        np.testing.assert_array_equal(snapshot['blocked'],g.blocked)
+        np.testing.assert_array_equal(snapshot['state'],g.state)
+        assert json.loads(str(snapshot['metadata']))['provenance']=='exact_detached_planning_grid_not_ground_truth'

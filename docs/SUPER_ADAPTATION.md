@@ -204,3 +204,17 @@ Kriteria memilih solusi: durasi misi simulasi dan waktu CPU dicatat terpisah,
 jumlah hold/replan, tracking error, clearance, backup validity dan alasan
 penolakan. RTF .15 bukan speed fisik drone. Perbandingan approach 38.75 vs
 51.20 s lama hanya indikatif karena tree ID/route berbeda.
+
+
+## Implementasi iterasi pemulihan planner
+
+Setelah otorisasi loop, rekomendasi awal diimplementasikan: faktor speed
+ditambah sampai .01 cap; kegagalan chord membawa witness dan dapat berlanjut
+ke sertifikasi kurva PVA; gagal sertifikasi menjadi hold/retry dengan timeout
+lama dan stop check, bukan langsung exception worker fatal. Full braking
+memakai canopy guard dan mencatat PVA/titik/subreason. Exact snapshot numerik
+worker dibatasi delapan per run pada map_3d/planner_failures/*.npz (baca dengan
+numpy.load(..., allow_pickle=False)); metadata JSON disimpan dalam field
+metadata. Snapshot tidak memakai ground truth. Build dan 409 tes lulus;
+hasil flight berikut dicatat di jurnal. Belum TOPP-RA/Ruckig, belum pencarian
+durasi kontinu baru, dan belum jaminan semua kegagalan scanning selesai.

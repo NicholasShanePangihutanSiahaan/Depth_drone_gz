@@ -271,6 +271,7 @@ class SurveyController(MovingHandoff, MissionController):
         self.planner_job_id = clone.planner_submitted_ns
         self.planner_stages_ms['submit_to_result'] = (time.monotonic_ns()-clone.planner_submitted_ns)/1e6
         self.planner_wall_max_ms = clone.planner_wall_max_ms
+        self.route_failure_diagnostics=getattr(clone,'route_failure_diagnostics',{})
         if clone.failure:
             self._accept_plan_auxiliary(clone,False)
             self.fail(clone.failure)
@@ -349,9 +350,17 @@ class SurveyController(MovingHandoff, MissionController):
             self.batch_knots={index:knots[knot] for index,knot in self.batch_knots.items()}
         if (self.c.get('feedback_speed_envelope') and self.c.get('continuous_survey') and len(points)>1
                 and np.max(np.linalg.norm(np.diff(np.asarray(points),axis=0),axis=1),initial=0.)>1e-8):
-            from .super_policy import route_speed_limits,reference_speed
-            limits,self.route_speed_profile=route_speed_limits(self.grid,np.asarray(points),self.c,reference_speed(self.c,speed))
-            policy_config=dict(self.c,trajectory_segment_speed_limits=limits.tolist())
+            from .super_policy import route_speed_limits,reference_speed,RouteSpeedEnvelopeError
+            try:
+                limits,self.route_speed_profile=route_speed_limits(self.grid,np.asarray(points),self.c,reference_speed(self.c,speed))
+                policy_config=dict(self.c,trajectory_segment_speed_limits=limits.tolist())
+            except RouteSpeedEnvelopeError as exc:
+                # A rejected chord is not proof the smoothed PVA curve cannot
+                # stop. Build that curve and retain full geometry/braking gates.
+                self.route_speed_profile=exc.diagnostics
+                from .planner_recovery import save_failure_snapshot
+                save_failure_snapshot(self,exc.diagnostics,points)
+                self.route_speed_profile['fallback']='actual_PVA_curve_certification_required'
         self.phase = AdaptivePhase(self.c)
         if (not self.c.get('continuous_survey', False)
                 or np.max(np.linalg.norm(np.diff(np.asarray(points), axis=0), axis=1), initial=0.) < 1e-8):
