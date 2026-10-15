@@ -1833,3 +1833,24 @@ berubah. Regression ascent ke ceiling menguji stopping handoff benar-benar
 safe pada guarded planner grid. 53 tes ascent/blend/canopy/trust/continuous
 tree lulus (11,14 s). Flight berikutnya tetap diperlukan.
 
+# 15 Oktober 2026 — Scan-time IMU dan diagnosis kehilangan kesegaran
+
+Run `sensor_localisation_validation_20261015_121717` berhenti otomatis pada
+64 s saat approach ID1 karena localisation_loss. Last accepted scan63,8 s
+residual .0360 m, 97,8% plane konsisten, IMU gap5 ms. Debug terakhir menunggu
+timestamped encoder transform; belum membuktikan ICP divergence atau dropout
+sensor fisik. 548 pasangan RMSE .01071 m max .03293 m. Saat menjelang stop
+agen menjalankan regression suite paralel (154 passed,38,44 s), yang dapat
+menambah beban; belum bisa mengatribusikan failure itu ke beban tes saja.
+Run berikutnya tidak menjalankan pytest selama flight.
+
+Audit juga menunjukkan bug sinkronisasi independen: scan dapat dikoreksi
+pada waktu t walaupun e.last_imu masih t-45 ms, lalu paket IMU sebelum t
+diintegrasikan sesudah koreksi t. Rolling scan kini menunggu last received
+IMU mencapai timestamp scan, lalu mengonsumsi paket hingga t dengan toleransi
+numerik1 ns saja. Tidak memperpanjang timeout, tidak merestamp data. Debug
+menambahkan received_imu_stamp dan pending_imu_count. Regression memastikan
+scan disimpan saat IMU tertinggal dan hanya diproses setelah IMU waktunya
+tersedia. Ini memperbaiki urutan waktu; belum klaim mengatasi semua scheduling
+delay. Ketahanan flight dan handoff guard masih perlu run ulang.
+

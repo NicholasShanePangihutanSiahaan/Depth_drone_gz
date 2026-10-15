@@ -125,7 +125,7 @@ class LidarImuOdometry:
         self.last_imu = stamp
 
     def scan(self, points_sensor, stamp):
-        if not self.initialized or self.last_imu is None or not 0 <= stamp-self.last_imu < 0.1:
+        if not self.initialized or self.last_imu is None or not -1e-9 <= stamp-self.last_imu < 0.1:
             self.ok, self.reason = False, 'imu_not_ready'
             return False
         if self.last_scan is not None and stamp <= self.last_scan:

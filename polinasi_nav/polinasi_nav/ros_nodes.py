@@ -240,6 +240,11 @@ class LocalisationNode(ConfigNode):
             self.pending_scan.clear()
             self.mount_rejection='scan_too_old_or_out_of_order'
             return
+        if self.last_imu+1e-9<seconds(msg.header.stamp):
+            # Do not correct the state at scan time then integrate leftover
+            # pre-scan IMU packets as if they belonged AFTER the correction.
+            self.mount_rejection='waiting_for_scan_time_imu'
+            return
         try:
             transform=self.mount_buffer.lookup_transform('base_link','mid360',Time.from_msg(msg.header.stamp))
         except TransformException:
@@ -260,7 +265,7 @@ class LocalisationNode(ConfigNode):
         input_r=self.estimator.r.copy()
         integrated=[]
         imu_intervals=[]
-        while self.pending_imu and self.pending_imu[0][0] <= stamp:
+        while self.pending_imu and self.pending_imu[0][0] <= stamp+1e-9:
             imu_stamp, gyro, acceleration = self.pending_imu.popleft()
             if self.estimator.last_imu is not None:
                 imu_intervals.append(imu_stamp-self.estimator.last_imu)
@@ -303,6 +308,8 @@ class LocalisationNode(ConfigNode):
                 keyframes=len(e.keyframes),translation_information=e.translation_information,
                 registration=e.last_registration,
                 scan_inputs=self.scan_input_diagnostics,
+                received_imu_stamp=self.last_imu if math.isfinite(self.last_imu) else None,
+                pending_imu_count=len(self.pending_imu),
                 imu_shock_until=e.imu_shock_until if np.isfinite(e.imu_shock_until) else None,
                 registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
                 reference_points=0 if e.reference is None else len(e.reference),
