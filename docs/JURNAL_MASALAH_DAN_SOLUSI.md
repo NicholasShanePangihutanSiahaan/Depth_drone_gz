@@ -1777,3 +1777,36 @@ trust atau publisher kontrol pada proses mapping. Regression test memanggil
 MappingIONode.odom dengan controller minimal dan memeriksa pose, velocity,
 timestamp serta executed path tetap diperbarui tanpa atribut map_trust.
 
+# 15 Oktober 2026 — Scan terhalang karena kandidat daun dianggap batang
+
+Run `sensor_localisation_validation_20261015_114924` lolos setup, takeoff,
+approach dan ascent. Dua map pause (0,95 dan 1,155 s); trust menolak
+extension karena hanya ~89% corridor memiliki bukti cukup, walau seluruh
+corridor diketahui FREE. Tidak melonggarkan coverage untuk menyembunyikan
+ini. Pada SCAN ID13, satu sektor valid, anchor5 berikutnya occupied dan
+semua 24 kandidat repair ditolak. Run dihentikan untuk audit sebelum timeout,
+bukan klaim misi berhasil. Di peta terukur, same-XY height 2–3,8 m pun
+tidak aman dengan guard/margin yang sama.
+
+Audit terpisah memakai posisi model world (TIDAK menjadi input flight)
+menemukan kandidat ID13 [-1,9493;5,8324] berjarak 4,687 m dari batang model
+terdekat. Last_seen kandidat 25,3 s, hilang dari catalogue saat scan lanjut.
+Detektor lama hanya memproyeksikan seluruh band .6–2.8 m ke XY lalu fit
+satu circle; frond menggantung dapat lolos dan dikonfirmasi berulang.
+
+Perbaikan deteksi: perlu span vertikal >=1,2 m, >=3 irisan tinggi .5 m
+yang konsisten mencakup >=1 m dan dukungan batang bawah <ground+1,2 m.
+Circle per irisan perlu >=6 titik, centre difference <=.2 m, radius
+difference <=.15 m dan residual <=.12 m. Gate global lama residual .10
+dan radius .08–.7 tetap berlaku. Residual per irisan awal .08 menolak
+batang nyata berpermukaan kasar (residual .088–.103), sehingga digunakan
+.12 berdasarkan audit titik terukur; ini bukan perubahan margin obstacle.
+
+Replay regional dari saved point cloud: cluster salah 293 titik ditolak
+(span1,027 m, tidak ada low support); dua batang model yang diverifikasi
+terpisah memiliki 1249/1323 titik dan 5 layer konsisten, lolos helper.
+Itu bukan replay seluruh urutan sensor atau classifier pohon tervalidasi.
+Tes sintetik menerima partial cylinder dan menolak slanted/short/upper-only
+clusters. Semua safety/unknown/braking tetap; tidak mengubah world/model.
+Loop dilanjutkan dengan pengamatan flight baru untuk memeriksa efeknya.
+

@@ -237,7 +237,7 @@ class TreeInspectionController(SurveyController):
         self.perception_statistics = {k:data.get(k) for k in (
             'wall_ms','retained_points','stem_points','reason','ground_reference_m',
             'ground_reference_stamp','recent_ground_percentile_m','ground_policy',
-            'stem_height_band_m','detections_count')}
+            'stem_height_band_m','detections_count','rejected_inconsistent_columns')}
         self.catalog = [t for t in data['tracks'] if t.get('confirmed')]
 
     def candidates(self):
