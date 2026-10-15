@@ -1750,3 +1750,20 @@ Sebelum flight: 139 tes gabungan lulus (15,48 s), lalu 30 tes ROS/controller
 terpilih lulus (3,23 s), compileall dan diff --check bersih. Bukti trust
 tidak disalin ke worker planning; tetap dimiliki proses kontrol live.
 
+Run headless `sensor_localisation_validation_20261015_114121` GAGAL setup,
+tanpa arm/start command. `mapping_io` memakai ulang NavigationNode.odom,
+tetapi controller-nya hanya SimpleNamespace tanpa atribut map_trust. Akses
+langsung yang baru ditambahkan pada ros_nodes.py:525 memicu AttributeError,
+mapping_io mati, tidak ada navigation snapshot. Setup lalu menolak
+mapping_io_running, one_navigation_snapshot_producer dan snapshot_fresh;
+alignment FCU juga belum terselesaikan. Ini bug integrasi perubahan baru,
+bukan noise LiDAR atau bukti ambang adaptif tidak sesuai. Tes yang lulus
+belum mencakup reuse odom callback pada MappingIONode.
+
+Session tercatat stopped=true. Sesuai instruksi stop-on-problem, tidak
+memperbaiki kode atau meluncurkan ulang. Perbaikan berikutnya yang diperlukan:
+batasi akses trust ke controller navigasi yang benar (atau getattr default)
+dan tambahkan regression test callback odom MappingIONode sebelum flight.
+Algoritma adaptif BELUM tervalidasi terbang; commit implementasi 1c6a466
+masih memiliki bug tersebut sampai ada instruksi melanjutkan.
+
