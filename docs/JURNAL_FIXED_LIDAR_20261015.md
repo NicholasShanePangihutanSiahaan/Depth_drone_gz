@@ -230,3 +230,62 @@ Hasil final: build tiga paket berhasil (2.39 s); **385 tes lulus**, 0 error,
 0 failure, 0 skipped, pytest 69.88 s. Log build lokal:
 `/tmp/fixed_navigation_build_final_20261015.log`; hasil XML:
 `build_ros/polinasi_nav/pytest.xml`. Tidak ada simulator dijalankan.
+
+
+## Flight d3f578b: penghentian pada prediksi kecepatan pengereman
+
+Pengguna mengizinkan satu run dan meminta berhenti serta menjelaskan masalah
+jika gagal. Run headless `reports/fixed_lidar_validation_20261015_203415`,
+session `.dependencies/ros_sensor_palm_farm_20261015_203417_3904_mapping`.
+Isolasi domain 96, partition polinasi_fixed_lidar, UDP MAVROS 14650; tidak ada
+simulator/konflik port sebelum launch, tidak membuka window. Setup, GPS-off
+origin/home, takeoff 2 m dan pemilihan kandidat pertama ID3 berhasil.
+
+Handoff bergerak diterima t=32.7 s pada v=.391831 m/s. Selisih P/V/A reference
+di batas adalah [0,1.60e-15,1.56e-12]. Dua kandidat disubmit, satu diterima,
+satu ditolak; rejection kandidat bukan fault misi. Belum mencapai ascent/scan.
+
+Fault pertama t=33.85 s: mission BRAKE, failure insufficient_stopping_clearance,
+health_reason kosong, tracking error .02414 m, measured speed .398997 m/s.
+Auditor otomatis meminta penghentian session. Verifikasi sesudah cleanup:
+session stopped=true; tidak ada proses simulator/SITL/run ini atau port
+9002/14650/5762 aktif. Tidak restart, tidak memperbaiki kode flight pada turn
+ini, sesuai instruksi berhenti dan menjelaskan.
+
+Audit kode: guard actual-body di control.py menggabungkan grid.safe dan
+brake_safe ke nama fault yang sama. brake_safe dapat menolak predicted_speed_limit
+sebelum memeriksa kurva pengereman terhadap obstacle. PID menulis percepatan
+akhirnya kembali ke controller.command_a, sehingga guard tick berikutnya
+menggunakan percepatan terbit terakhir, bukan hanya feedforward nominal.
+
+Rekonstruksi offline memakai velocity bertimestamp 33.8 yang normanya persis
+sama dengan measured_speed pada fault, dan output PID t=33.8:
+[.0499195080,-.0088991403,.0006690415] m/s². Dengan implementasi Brake yang
+sama, pada stub peta SELURUHNYA bebas, brake_safe menolak dengan alasan
+predicted_speed_limit: prediksi puncak .401588908 m/s > batas .400000 m/s,
+durasi pengereman 2.393981 s, reaction_time .35 s. Bukti numerik tersimpan di
+braking_reconstruction.json pada direktori validasi. Ini membuktikan penolakan
+dinamis tersebut dapat terjadi tanpa obstacle. Guard live tidak merekam
+subreason/witness voxel, sehingga tidak mengklaim rekonstruksi seluruh peta
+atau tabrakan fisik. Nama fault clearance saja tidak cukup untuk menyimpulkan
+ada daun/unknown yang menutup jalur.
+
+Konfigurasi transit .4 sama dengan batas umum speed .4, sehingga cadangan
+terhadap koreksi PID dan variasi velocity sensor sangat kecil. Reference
+braking sebelumnya lolos; actual velocity baru bersama percepatan terakhir
+menghasilkan prediksi melewati batas. Unit/replay sebelumnya belum membuktikan
+ketahanan kombinasi sensor velocity baru + output PID sebelumnya di dekat cap.
+Rencana perbaikan: diagnosis subreason actual-body, profil speed dengan cadangan
+dinamis PID/braking, dan regresi input rekaman. Tidak melonggarkan clearance,
+health timeout, atau klasifikasi unknown agar lolos. Belum diimplementasikan.
+
+Lokalisasi tetap healthy/tracking pada sampel akhir; IMU 20 sampel/scan dengan
+interval maksimum .005 s. Audit 250 pasangan: RMSE posisi .01406 m, maksimum
+.03159 m. Tidak ada bukti localisation_loss atau overspeed terukur sebagai
+penyebab fault ini. Traceback KeyboardInterrupt muncul SESUDAH permintaan
+stop saat worker sedang menunggu antrean, bukan exception planner awal.
+
+Map tersimpan: `reports/ros_sensor_palm_farm_20261015_203417_3904_mapping/map_3d/`
+berisi map.json (~15 MB), map.html (~15 MB), mission_status.json dan
+navigation_debug.jsonl. Belum ada inspeksi sektor, return, landing, atau disarm
+yang selesai pada run ini. Penerbangan sensor ini bukan validasi FAST-LIO.
