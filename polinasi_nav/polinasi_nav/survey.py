@@ -339,6 +339,16 @@ class SurveyController(MovingHandoff, MissionController):
                  'navigation_transit_speed' if self.state in ('SURVEY','RETURN') else
                  'navigation_default_speed')
             speed=self.c.get(key)
+        policy_config=self.c
+        if self.c.get('duration_optimisation') and self.c.get('continuous_survey'):
+            from .super_policy import densify
+            points,knots=densify(np.asarray(points),self.c['trajectory_spacing_m'])
+            self.batch_knots={index:knots[knot] for index,knot in self.batch_knots.items()}
+        if (self.c.get('feedback_speed_envelope') and self.c.get('continuous_survey') and len(points)>1
+                and np.max(np.linalg.norm(np.diff(np.asarray(points),axis=0),axis=1),initial=0.)>1e-8):
+            from .super_policy import route_speed_limits,reference_speed
+            limits,self.route_speed_profile=route_speed_limits(self.grid,np.asarray(points),self.c,reference_speed(self.c,speed))
+            policy_config=dict(self.c,trajectory_segment_speed_limits=limits.tolist())
         self.phase = AdaptivePhase(self.c)
         if (not self.c.get('continuous_survey', False)
                 or np.max(np.linalg.norm(np.diff(np.asarray(points), axis=0), axis=1), initial=0.) < 1e-8):
@@ -347,11 +357,14 @@ class SurveyController(MovingHandoff, MissionController):
             try:
                 if hasattr(self,'moving_boundary'):
                     from .moving_trajectory import BoundaryTrajectory
-                    trajectory=BoundaryTrajectory(points,self.c,*self.moving_boundary,scale,speed)
-                else:trajectory = ContinuousTrajectory(points, self.c, scale, speed)
+                    trajectory=BoundaryTrajectory(points,policy_config,*self.moving_boundary,scale,speed)
+                else:trajectory = ContinuousTrajectory(points, policy_config, scale, speed)
             except ValueError:
                 continue  # A bounded failed retiming attempt never escapes into flight.
             if trajectory.safe(self.grid):
+                if self.c.get('duration_optimisation'):
+                    from .super_policy import optimise_durations
+                    optimise_durations(trajectory,self.grid,self.c)
                 if hasattr(trajectory,'prefix_controls') and trajectory.prefix_controls:
                     self.batch_knots={index:knot+1 for index,knot in self.batch_knots.items()}
                 return trajectory

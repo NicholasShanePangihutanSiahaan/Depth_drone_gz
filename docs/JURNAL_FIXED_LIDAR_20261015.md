@@ -289,3 +289,39 @@ Map tersimpan: `reports/ros_sensor_palm_farm_20261015_203417_3904_mapping/map_3d
 berisi map.json (~15 MB), map.html (~15 MB), mission_status.json dan
 navigation_debug.jsonl. Belum ada inspeksi sektor, return, landing, atau disarm
 yang selesai pada run ini. Penerbangan sensor ini bukan validasi FAST-LIO.
+
+
+## Implementasi lima bagian adaptasi SUPER setelah audit braking
+
+Pengguna meminta kelima pekerjaan dilaksanakan. Baseline 9d53448 bersih;
+rotating-lidar tetap 6779baf. Ditambahkan super_policy.py dan evaluator offline,
+integrasi ke continuous/BoundaryTrajectory, PID, fail/BRAKE, handoff, config,
+generator fixed dan status ROS. Tidak ada perubahan mounting, FOV, timeout,
+clearance, final publisher MAVROS, atau pemakaian GT pada estimator sensor.
+
+Cadangan kecepatan dihitung dari Brake + uncertainty velocity .03 m/s + ekstra
+koreksi PID .15 m/s². Tes input rekaman mereproduksi predicted_speed_limit
+.401589 m/s; reference cap baru .34897 m/s. Tes awal replay masih melambat
+seluruh kurva 1.4x karena peak prediksi .400096 m/s lolos sampling pre-profile
+namun tertangkap sertifikasi .05 s. Ditambahkan scenario check pada retiming
+lokal dan cadangan numerik konservatif; sertifikasi akhir tetap sama.
+
+17 tes baru lulus: reproduksi input fault, PVA retiming, profil sebelum wall,
+occupied/unknown pada hull, backup PVA/akhir diam, invalidasi cache, tiga fase
+approach/scan/return, dropout tetap abort, controller PID dengan noise, dan
+async moving handoff bersama seluruh kebijakan baru. Targeted legacy 51 lulus.
+Targeted ROS adapters sempat 72/73 karena import approach_viewer pada pengujian
+terisolasi tidak memiliki tools di sys.path; ini masalah harness/order import,
+bukan exception node runtime. Suite lengkap dipakai untuk verifikasi akhir.
+
+Evaluasi sintetis reference: straight 21.49→15.02 s, turn 32.24→23.93 s,
+vertical path 32.24→25.51 s; bukan flight. CIRI belum diport, dievaluasi melalui
+kode primer dan baseline voxel convex box. MPC lama menolak envelope
+command_speed saat ini; PID dipertahankan sampai ada alasan flight dan model
+baru yang cocok. Detail/provenance: docs/SUPER_ADAPTATION.md dan output numerik
+reports/super_adaptation_evaluation.json. Hasil build/flight dicatat berikut.
+
+Build final: tiga paket berhasil; **402 tes lulus**, 0 error/failure/skipped,
+80.30 s pytest. Tes tambahan buffer canopy backup scan: **1 lulus**.
+Log build lokal `/tmp/fixed_super_adaptation_build.log`. Commit/push sebelum
+flight baru; tidak menjalankan suite berat bersamaan dengan flight.

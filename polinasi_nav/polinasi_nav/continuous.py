@@ -65,7 +65,8 @@ class ContinuousTrajectory:
             raise ValueError('continuous trajectory needs two distinct points')
         self.points = points
         self.c = config
-        vmax = min(config['speed'], config['command_speed'], speed or config['speed'])
+        from .super_policy import reference_speed
+        vmax = reference_speed(config,speed)
         alpha = config.get('adaptive_rate_limit', .25)
         beta = config.get('adaptive_rate_acceleration', .4)
         # Reserve derivative headroom for the *actually commanded* time dilation.
@@ -106,9 +107,12 @@ class ContinuousTrajectory:
         keep C2 continuity. Each difficult piece is lengthened locally rather
         than applying its worst scaling factor to every straight piece.
         """
+        self.segment_speed_limits=np.minimum(vmax,np.asarray(self.c.get('trajectory_segment_speed_limits',np.full(len(distance),vmax))))
+        if self.segment_speed_limits.shape!=distance.shape or np.any(self.segment_speed_limits<=0):raise ValueError('invalid segment speed limits')
         directions = np.zeros_like(self.points)
         caps = np.full(len(self.points), vmax*tangent_scale)
         caps[[0, -1]] = 0.
+        for i in range(1,len(caps)-1):caps[i]=min(caps[i],self.segment_speed_limits[i-1],self.segment_speed_limits[i])
         for i in range(1, len(self.points)-1):
             before = (self.points[i]-self.points[i-1])/distance[i-1]
             after = (self.points[i+1]-self.points[i])/distance[i]
@@ -125,7 +129,7 @@ class ContinuousTrajectory:
             caps[i] = min(caps[i], math.sqrt(caps[i-1]**2+amax*distance[i-1]))
         for i in range(len(caps)-2, -1, -1):
             caps[i] = min(caps[i], math.sqrt(caps[i+1]**2+amax*distance[i]))
-        durations = np.maximum(.2, distance/vmax)
+        durations = np.maximum(.2, distance/self.segment_speed_limits)
         for iteration in range(64):
             # Limit tangent lengths locally; otherwise stretching a short
             # segment while retaining a large knot velocity can overshoot it.
@@ -146,7 +150,11 @@ class ContinuousTrajectory:
                 for order in range(1, 4):
                     derivative = (6-order)*np.diff(derivative, axis=0)/duration
                     bound.append(derivative_bound(derivative, depth=2))
-                factors.append(max(bound[0]/vmax, math.sqrt(bound[1]/amax), np.cbrt(bound[2]/jmax)))
+                factor=max(bound[0]/self.segment_speed_limits[i], math.sqrt(bound[1]/amax), np.cbrt(bound[2]/jmax))
+                if factor<=1.+1e-9 and self.c.get('feedback_speed_envelope'):
+                    from .super_policy import feedback_curve_peak
+                    factor=max(factor,feedback_curve_peak(control,duration,self.c)/(.995*self.c['speed']))
+                factors.append(factor)
             factors = np.asarray(factors)
             if np.max(factors) <= 1.+1e-10:
                 self.controls, self.durations = controls, durations

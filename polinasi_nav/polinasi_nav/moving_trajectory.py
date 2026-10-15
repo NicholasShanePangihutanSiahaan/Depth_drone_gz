@@ -16,7 +16,8 @@ class BoundaryTrajectory(ContinuousTrajectory):
         if (self.initial_velocity.shape!=(3,) or self.initial_acceleration.shape!=(3,)
                 or not np.all(np.isfinite(np.r_[self.initial_velocity,self.initial_acceleration]))):
             raise ValueError('invalid moving boundary')
-        self.vmax=min(config['speed'],config['command_speed'],speed or config['speed'])
+        from .super_policy import reference_speed
+        self.vmax=reference_speed(config,speed)
         alpha=config.get('adaptive_rate_limit',.25);beta=config.get('adaptive_rate_acceleration',.4)
         self.amax=config['acceleration']-self.vmax*alpha
         self.jmax=config['jerk']-3*self.amax*alpha-self.vmax*beta
@@ -41,6 +42,8 @@ class BoundaryTrajectory(ContinuousTrajectory):
             self.points=np.vstack([p,self.core_points])
             core_velocity=w
             base=ContinuousTrajectory(self.core_points,config,tangent_scale,speed)
+        self.core_speed_limits=np.asarray(getattr(base,'segment_speed_limits',np.full(len(base.durations),self.vmax)))
+        self.segment_speed_limits=np.r_[np.full(len(self.prefix_controls),self.vmax),self.core_speed_limits]
         self.core_velocity=core_velocity
         velocities=np.vstack([core_velocity,*[base.sample(t)[1] for t in base.ends]])
         durations=base.durations.copy()
@@ -64,7 +67,11 @@ class BoundaryTrajectory(ContinuousTrajectory):
                 for order in range(1,4):
                     derivative=(6-order)*np.diff(derivative,axis=0)/t
                     bound.append(derivative_bound(derivative,depth=2))
-                factors.append(max(bound[0]/self.vmax,np.sqrt(bound[1]/self.amax),np.cbrt(bound[2]/self.jmax)))
+                factor=max(bound[0]/self.core_speed_limits[i],np.sqrt(bound[1]/self.amax),np.cbrt(bound[2]/self.jmax))
+                if factor<=1.+1e-9 and self.c.get('feedback_speed_envelope'):
+                    from .super_policy import feedback_curve_peak
+                    factor=max(factor,feedback_curve_peak(control,t,self.c)/(.995*self.c['speed']))
+                factors.append(factor)
                 controls.append(control)
             if max(factors)<=1.+1e-9:
                 self.controls=self.prefix_controls+controls;self.durations=np.r_[self.prefix_durations,durations]

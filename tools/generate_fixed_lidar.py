@@ -27,7 +27,9 @@ def main():
             shapes.append(dict(kind='sphere', size=[radius], pose=[*mount[:3], 0., 0., 0.]))
         c['self_filter_shapes'] = shapes
         if stage == 'inspection':
-            c.update(command_speed=.4,navigation_transit_speed=.4,navigation_scan_speed=.3,
+            c.update(feedback_speed_envelope=True,velocity_uncertainty_mps=.03,
+                     duration_optimisation=True,trajectory_spacing_m=1.,explicit_backup_enabled=True,
+                     command_speed=.4,navigation_transit_speed=.4,navigation_scan_speed=.3,
                      navigation_default_speed=.3,
                      scan_adaptive_height=True,scan_target_repair=True,
                      scan_height_max_slope=.45,scan_height_hysteresis=.08,

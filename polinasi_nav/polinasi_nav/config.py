@@ -61,10 +61,10 @@ def load_config(path=None):
             raise ValueError('navigation_window_size must contain three finite positive values')
         if c.get('map_timeout', 0) <= 0:
             raise ValueError('rolling navigation requires a positive map_timeout')
-    for key in ('history_route_enabled','moving_handoff_enabled'):
+    for key in ('history_route_enabled','moving_handoff_enabled','feedback_speed_envelope','duration_optimisation','explicit_backup_enabled'):
         if key in c and not isinstance(c[key],bool):raise ValueError(key+' must be boolean')
     for key in ('history_route_margin','history_route_max_age','history_route_local_lookahead',
-                'moving_handoff_lead','moving_result_max_age','moving_replan_interval'):
+                'moving_handoff_lead','moving_result_max_age','moving_replan_interval','velocity_uncertainty_mps','trajectory_spacing_m'):
         if key in c:
             value=c[key]
             if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value<=0:
@@ -78,6 +78,11 @@ def load_config(path=None):
             if (isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value)
                     or not 0<value<=min(c['command_speed'],c['speed'])):
                 raise ValueError(key+' must fit the command and vehicle speed limits')
+    if c.get('feedback_speed_envelope') and (not c.get('pid_enabled') or
+            not 0<c.get('velocity_uncertainty_mps',0)<c['speed']):
+        raise ValueError('feedback envelope requires PID and bounded declared velocity uncertainty')
+    if c.get('duration_optimisation') and (not c.get('continuous_survey') or c.get('trajectory_spacing_m',0)<=0):
+        raise ValueError('duration optimization requires continuous trajectories and positive spacing')
     if c.get('moving_handoff_enabled') and not c.get('continuous_survey'):
         raise ValueError('moving handoff requires continuous trajectories')
     if c.get('moving_handoff_enabled') and c.get('moving_result_max_age',1.)<c.get('moving_handoff_lead',.75):

@@ -59,6 +59,8 @@ class MissionController:
         self.route_blockage = {}
         self.route_planner_reason = ''
         self.route_failure_diagnostics={}
+        self.certified_backup=None
+        self.backup_diagnostics={}
 
     def flower_event(self, confirmed):
         # An event only counts while settled at an inspection view with visibility.
@@ -80,7 +82,19 @@ class MissionController:
             self.resume_state = self.state
             self.failure_history.append(reason)
             self.failure, self.state = reason, 'BRAKE'
-            self.brake = Brake(self.command, self.command_v, self.command_a, self.c)
+            from .super_policy import backup_grid
+            backup=self.certified_backup
+            compatible=(backup is not None and np.linalg.norm(backup.p-self.command)<1e-7
+                and np.linalg.norm(backup.v-self.command_v)<1e-7
+                and np.linalg.norm(backup.a-self.command_a)<1e-7)
+            if compatible and backup.path_safe(backup_grid(self)):
+                self.brake=backup
+                self.backup_diagnostics.update(executed=True,trigger=reason,live_rechecked=True)
+            else:
+                self.brake = Brake(self.command, self.command_v, self.command_a, self.c)
+                if self.c.get('explicit_backup_enabled'):
+                    self.backup_diagnostics.update(executed=False,fallback='fresh_emergency_Brake',trigger=reason)
+            self.certified_backup=None
             self.trajectory = None
 
     def _braking(self, dt):
@@ -273,7 +287,13 @@ class MissionController:
         if np.linalg.norm(velocity) > self.c['speed']+0.05:
             self.fail('measured_overspeed')
             return self._braking(dt)
-        if not self.grid.safe(position, actual=True) or not brake_safe(self.grid, position, velocity, self.c, self.command_a, actual=True):
+        actual_detail={}
+        body_safe=self.grid.safe(position,actual=True)
+        stop_safe=body_safe and brake_safe(self.grid,position,velocity,self.c,self.command_a,actual=True,diagnostics=actual_detail)
+        if not stop_safe:
+            self.route_failure_diagnostics=dict(gate='actual_body_and_stopping',body_safe=bool(body_safe),
+                stopping=actual_detail,simulation_time=float(now),
+                previous_published_acceleration=self.command_a.tolist())
             self.fail('insufficient_stopping_clearance')
             return self._braking(dt)
         if np.linalg.norm(position-self.command) > self.c['tracking_limit']:
@@ -426,7 +446,9 @@ class MissionController:
             for elapsed in np.arange(0., self.trajectory.duration+0.05, 0.05):
                 checks += 1
                 p, v, a = self.trajectory.sample(elapsed)
-                if not brake_safe(self.grid, p, v, self.c, a):
+                from .super_policy import feedback_brake_safe
+                if (not brake_safe(self.grid,p,v,self.c,a) or
+                        (self.c.get('feedback_speed_envelope') and not feedback_brake_safe(self.grid,p,v,a,self.c))):
                     certified = False
                     break
             if certified:

@@ -88,6 +88,17 @@ yang sama. Replay ini tidak memodelkan dinamika Iris, latensi kamera/estimator,
 MAVROS atau FCU. Belum ada flight untuk perubahan ini; bukan implementasi
 optimasi waktu minimum global dan belum ada bukti pengurangan durasi misi nyata.
 
+## Adaptasi lanjutan dari paper SUPER
+
+Preset inspection sekarang menambahkan feedback speed envelope (reference cap
+sekitar .34897 m/s dengan batas fisik tetap .4), profil braking per ruas,
+densifikasi knot cruise, pencarian durasi, dan backup eksplisit dari output
+PID. Angka transit .4 pada bagian sebelumnya adalah ceiling konfigurasi,
+bukan target yang selalu dikirim setelah envelope. Kebijakan FOV tetap.
+Lihat [implementasi dan evaluasi SUPER](SUPER_ADAPTATION.md) untuk batas,
+benchmark, dan alasan belum mengganti voxel backend dengan CIRI atau PID
+dengan MPC. Hasil flight ditulis di jurnal, terpisah dari replay/unit.
+
 ## Perintah worktree sesi ini
 
 Dependency ROS 2 Humble/Gazebo Harmonic sudah terpasang. Bila belum tersedia,

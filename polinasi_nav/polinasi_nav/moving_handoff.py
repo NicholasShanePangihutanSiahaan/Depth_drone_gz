@@ -111,6 +111,13 @@ class MovingHandoff:
         step=.05
         lead=math.ceil(self.c.get('moving_handoff_lead',.75)/step)*step
         elapsed=self.elapsed+lead
+        if self.c.get('explicit_backup_enabled'):
+            from .super_policy import select_backup_switch,backup_grid
+            elapsed,detail=select_backup_switch(self.trajectory,self.elapsed,lead,backup_grid(self),self.c)
+            self.moving_status['switch_backup']=detail
+            if elapsed is None:
+                self.moving_last_submit=now
+                return
         if elapsed>=self.trajectory.duration-.3:return
         p,v,a=self.trajectory.sample(elapsed)
         if np.linalg.norm(v)<.04:return

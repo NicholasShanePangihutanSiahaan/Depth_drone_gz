@@ -1111,7 +1111,9 @@ class NavigationNode(ConfigNode):
                        prefetch_used=getattr(self.controller, 'prefetch_used', 0),
                        prefetch_rejected=getattr(self.controller, 'prefetch_rejected', 0),
                        prefetch_reason=getattr(self.controller, 'prefetch_reason', ''),
-                       handoff='certified_stop_to_stop; moving_handoff_not_enabled'),
+                       duration_optimisation=getattr(self.controller.trajectory,'duration_optimisation',{}),
+                       final_duration_seconds=getattr(self.controller.trajectory,'duration',None),
+                       handoff='scheduled_C2_or_stopping_endpoint' if self.c.get('moving_handoff_enabled') else 'certified_stop_to_stop'),
                    'processing_pipeline': self.pipeline_timing.status() if hasattr(self, 'pipeline_timing') else None,
                    'timing_gap_previous_callback': self.timing_gap_context,
                    'setpoint_interface': self.final_interface,
@@ -1171,6 +1173,8 @@ class NavigationNode(ConfigNode):
             status['history_route_request']=(dict(start=self.controller.command.tolist(),goal=destination.tolist()) if destination is not None else None)
             status['history_route']=self.controller.global_route_diagnostics
         status['moving_handoff']=getattr(self.controller,'moving_status',{})
+        status['explicit_backup']=getattr(self.controller,'backup_diagnostics',{})
+        status['route_speed_profile']=getattr(self.controller,'route_speed_profile',{})
         status.update(self.extra_status())
         if self.pid is not None:
             status.update(self.pid.status())

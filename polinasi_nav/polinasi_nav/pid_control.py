@@ -82,6 +82,18 @@ class PositionPID:
                                         self.c, output, diagnostics=reference_check)
             safe = bool(np.linalg.norm(output) <= self.c['acceleration']+1e-8
                         and actual_safe and reference_safe)
+            if safe and self.c.get('feedback_speed_envelope'):
+                from .super_policy import feedback_brake_safe
+                robust={}
+                safe=feedback_brake_safe(controller.grid,controller.command,controller.command_v,output,
+                    dict(self.c,pid_correction_acceleration=0.),robust)
+                reference_check['velocity_uncertainty_check']=robust
+            backup=None;backup_detail={}
+            if safe and self.c.get('explicit_backup_enabled'):
+                from .super_policy import explicit_backup,backup_grid
+                backup,backup_detail=explicit_backup(backup_grid(controller),controller.command,controller.command_v,output,self.c)
+                safe=backup is not None
+                reference_check['explicit_backup']=backup_detail
             checks.append(dict(correction_scale=scale, actual=actual_check, reference=reference_check))
             if safe:
                 break
@@ -100,6 +112,9 @@ class PositionPID:
             self.last.update(active=False, reason='pid_final_safety')
             return controller._braking(dt)
         controller.command_a = output
+        if self.c.get('explicit_backup_enabled'):
+            controller.certified_backup=backup
+            controller.backup_diagnostics=backup_detail
         self.previous_acceleration = output.copy()
         return controller.command.copy(), controller.command_v.copy()
 
