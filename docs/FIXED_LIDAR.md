@@ -63,7 +63,7 @@ bash tools/run_fixed_lidar_validation.sh hover
 ```
 
 Runner fixed bawaan: ROS domain 96, Gazebo partition polinasi_fixed_lidar,
-RTF .15. Pengguna dapat mengganti POLINASI_ROS_DOMAIN_ID/POLINASI_GZ_PARTITION
+MAVROS UDP 14650 (`POLINASI_MAVROS_UDP_PORT`), RTF .15. Pengguna dapat mengganti POLINASI_ROS_DOMAIN_ID/POLINASI_GZ_PARTITION
 secara konsisten di semua terminal. Untuk probe manual:
 
 ```bash
@@ -71,7 +71,7 @@ export POLINASI_ROS_DOMAIN_ID=96 POLINASI_GZ_PARTITION=polinasi_fixed_lidar
 source /home/abin/polinasi_lidar_fixed/tools/ros_environment.sh
 ```
 
-Port UDP 9002/14550 dan TCP 5762 masih bersama, sehingga **jangan menjalankan
+Port fixed UDP 9002/14650 dan TCP 5762 masih bersama, sehingga **jangan menjalankan
 simulator kedua**, meski domain/partition berbeda. Launcher menolak port sibuk.
 Gazebo GUI dan window kamera tidak dibuka. RViz milik auditor ditutup pada
 akhir run; tidak menutup viewer/simulator sesi lain.

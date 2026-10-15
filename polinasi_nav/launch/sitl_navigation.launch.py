@@ -1,5 +1,6 @@
 """ROS side of the isolated loopback-only Gazebo/SITL simulation."""
 import os
+from polinasi_nav.simulation_ports import mavros_endpoint
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, RegisterEventHandler, EmitEvent
@@ -66,7 +67,8 @@ def nodes(context):
         # mavros_node creates its own UAS node named "mavros". Adding a
         # namespace here would produce /mavros/mavros/* instead of /mavros/*.
         Node(package='mavros', executable='mavros_node',
-             parameters=[os.path.join(share, 'config/mavros_mapping.yaml' if isolated else 'config/mavros.yaml')], output='screen'),
+             parameters=[os.path.join(share, 'config/mavros_mapping.yaml' if isolated else 'config/mavros.yaml'),
+                         {'fcu_url':mavros_endpoint()}], output='screen'),
         Node(package='polinasi_nav', executable='localisation', parameters=[params, {'mode': mode}], output='screen'),
         Node(package='polinasi_nav', executable='externalnav', parameters=[params], output='screen'),
         Node(package='beehive_drone', executable='flight_manager',

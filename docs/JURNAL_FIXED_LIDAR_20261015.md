@@ -146,3 +146,16 @@ Build tiga paket berhasil. **344 tes lulus, 0 failure/error/skipped**, 60,82 s
 pytest, domain tes 87; 26 tes terarah perbaikan/visual juga lulus. Shell syntax,
 syntax auditor dan diff whitespace bersih. Implementasi adaptasi misi/FOV/RViz
 sudah diuji unit; hasil flight kode baru masih menunggu run berikutnya.
+
+## Konflik QGroundControl sebelum launch baru
+
+Setelah commit 97d045b dipush, host ss -lunp menunjukkan UDP 14550 dimiliki
+QGroundControl PID 15502. Tidak ada Gazebo/SITL aktif; QGC tidak dihentikan.
+Fixed runner sekarang memilih UDP 14650, diterapkan konsisten pada SITL,
+URL loopback MAVROS, guard startup dan manifest session. Default launcher
+umum tetap 14550. UDP 9002/TCP 5762 tetap eksklusif; ini bukan izin menjalankan
+dua simulator. Perubahan diuji sebelum commit/push dan flight berikutnya.
+
+Regresi port + adapter ROS + inspection loop: **37 lulus**, 0 gagal. Shell
+syntax dan diff whitespace lulus. Endpoint 14650 tetap loopback-only; input
+port invalid ditolak. Validasi koneksi aktual menunggu setup run berikutnya.

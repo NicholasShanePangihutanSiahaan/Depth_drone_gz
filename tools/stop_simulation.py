@@ -81,7 +81,7 @@ def main():
                     ros_domain_id=os.environ.get('ROS_DOMAIN_ID'),
                     gazebo_partition=os.environ.get('GZ_PARTITION'),
                     ros_log_dir=os.environ.get('ROS_LOG_DIR'),
-                    ports={'gazebo_sitl_udp':9002,'mavros_udp':14550,'sitl_tcp':5762})
+                    ports={'gazebo_sitl_udp':9002,'mavros_udp':int(os.environ.get('POLINASI_MAVROS_UDP_PORT','14550')),'sitl_tcp':5762})
         if not live(data):
             raise RuntimeError('refusing to register a non-project launcher')
         (args.register/'session.json').write_text(json.dumps(data, indent=2)+'\n')

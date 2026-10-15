@@ -4,6 +4,7 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
 export POLINASI_ROS_DOMAIN_ID="${POLINASI_ROS_DOMAIN_ID:-96}"
 export POLINASI_GZ_PARTITION="${POLINASI_GZ_PARTITION:-polinasi_fixed_lidar}"
+export POLINASI_MAVROS_UDP_PORT="${POLINASI_MAVROS_UDP_PORT:-14650}"
 source tools/ros_environment.sh
 stage="${1:-hover}"
 case "$stage" in hover|inspection) ;; *) exit 2 ;; esac

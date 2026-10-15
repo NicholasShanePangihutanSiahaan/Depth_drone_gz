@@ -18,8 +18,12 @@ if pgrep -f "$project_dir/install_ros/polinasi_nav/lib/polinasi_nav/(mapping_nav
   printf 'An existing navigation process is still running. Stop that simulation first; starting another could create duplicate control publishers.\n' >&2
   exit 1
 fi
-if ss -H -lun 'sport = :9002 or sport = :14550' | grep -q .; then
-  printf 'A process already uses simulation port 9002 or 14550. Stop that instance first.\n' >&2
+mavros_port="${POLINASI_MAVROS_UDP_PORT:-14550}"
+if [[ ! "$mavros_port" =~ ^[0-9]+$ ]] || (( mavros_port < 1024 || mavros_port > 65535 )); then
+  echo "Invalid simulation MAVROS UDP port" >&2; exit 2
+fi
+if ss -H -lun "sport = :9002 or sport = :$mavros_port" | grep -q .; then
+  printf 'Simulation UDP port 9002 or %s is occupied; refusing duplicate launch.\n' "$mavros_port" >&2
   exit 1
 fi
 if ss -H -ltn 'sport = :5762' | grep -q .; then
