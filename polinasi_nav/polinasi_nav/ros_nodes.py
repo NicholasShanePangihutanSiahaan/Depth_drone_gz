@@ -522,7 +522,7 @@ class NavigationNode(ConfigNode):
             return
         self.estimated_yaw = math.atan2(matrix[1, 0], matrix[0, 0])
         self.body_rotation = matrix
-        if self.controller.map_trust is not None:
+        if getattr(self.controller,'map_trust',None) is not None:
             covariance=np.asarray(msg.pose.covariance,float).reshape(6,6)
             diagonal=np.diag(covariance)
             quality=bool(np.all(np.isfinite(covariance)) and np.all(diagonal>0.) and

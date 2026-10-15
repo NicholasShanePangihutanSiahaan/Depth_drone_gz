@@ -1767,3 +1767,13 @@ dan tambahkan regression test callback odom MappingIONode sebelum flight.
 Algoritma adaptif BELUM tervalidasi terbang; commit implementasi 1c6a466
 masih memiliki bug tersebut sampai ada instruksi melanjutkan.
 
+# 15 Oktober 2026 — Loop dilanjutkan; perbaikan reuse callback pemetaan
+
+Pengguna menegaskan stop-on-problem hanya berlaku pada sesi kemarin, bukan
+perintah loop terbaru. Loop dilanjutkan. Akses map_trust pada callback odom
+dibatasi menggunakan getattr default None sehingga MappingIONode dengan
+SimpleNamespace tidak membutuhkan flight controller. Tidak menambahkan
+trust atau publisher kontrol pada proses mapping. Regression test memanggil
+MappingIONode.odom dengan controller minimal dan memeriksa pose, velocity,
+timestamp serta executed path tetap diperbarui tanpa atribut map_trust.
+
