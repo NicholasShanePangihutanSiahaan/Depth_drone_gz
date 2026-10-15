@@ -1718,3 +1718,35 @@ duration native Humble. Sebelum simulasi diluncurkan, konstruksi diganti
 menjadi QoSProfile baru dengan history/reliability/durability yang sama.
 Tidak ada penerbangan yang dijalankan dengan konstruktor yang gagal itu.
 
+# 15 Oktober 2026 — Bukti pengamatan ulang untuk toleransi umur peta
+
+Run terakhir `sensor_localisation_validation_20261014_223803` berhasil
+takeoff/approach, naik lalu masuk SCAN. Namun ascent jeda 5 kali pada
+69,35–74,25 s: umur map 0,45 s melewati batas 0,4 s. Masing-masing
+brake/wait/resume 0,5–1,05 s. Tidak ada HOLD ABORT; simulasi dihentikan
+atas instruksi pengguna. 743 pasangan audit RMSE posisi 0,01168 m,
+maksimum 0,03046 m. IMU interval terbesar tercatat 5 ms dan localisation
+tracking. Ascent berakhir pada observation_guard_limit; belum menyelesaikan
+dua pohon pada world bunga. Akar bottleneck mapping belum dipastikan.
+
+Pengguna mengusulkan memperlonggar umur map jika area stabil, lalu meminta
+diterapkan untuk semua fase. Ditambahkan LocalMapTrust dan bit observed
+per scan: history/pad tidak bisa menciptakan bukti re-observation. Cube
+lokal dengan world keys memerlukan seluruh corridor FREE serta pengamatan
+berulang >=4 s, >=3 kali dan revisit <=2,5 s. Area berubah/noisy tetap
+uncertain, bukan klasifikasi gerak pasti. Extension bounded 1->1,5 s untuk
+gate umum dan 0,4->0,8 s ascent, health dan pose quality tetap wajib,
+kecepatan <=0,3 m/s. Semua unknown/occupied dan braking checks dipertahankan.
+Gate dipakai juga sebelum takeoff dan fase GUIDED/ARM/TAKEOFF; ini bukan
+penggantian kontrol landing ArduPilot. Detail/limitasi dan rujukan paper
+ada di docs/ADAPTIVE_MAP_FRESHNESS.md. Belum klaim validasi flight.
+
+Tes baru meliputi unchanged-without-rays, hard expiry, obstacle/unknown,
+noise flips, dropout/pose quality, measured speed, rolling origin,
+transport dan prior. Pelonggaran boleh tidak aktif bila coverage kurang;
+tidak akan mengurangi syarat evidence hanya untuk membuat run berhasil.
+
+Sebelum flight: 139 tes gabungan lulus (15,48 s), lalu 30 tes ROS/controller
+terpilih lulus (3,23 s), compileall dan diff --check bersih. Bukti trust
+tidak disalin ke worker planning; tetap dimiliki proses kontrol live.
+

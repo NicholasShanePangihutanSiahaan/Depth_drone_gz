@@ -64,11 +64,12 @@ class SurveyController(MissionController):
 
     def _planning_clone(self):
         clone = object.__new__(type(self))
-        excluded = ('executor', 'pending_plan', 'prefetched_plan', 'prefetch_key')
+        excluded = ('executor', 'pending_plan', 'prefetched_plan', 'prefetch_key','map_trust')
         for key, value in self.__dict__.items():
             if key not in excluded:
                 setattr(clone, key, copy.deepcopy(value))
         clone.executor = clone.pending_plan = clone.prefetched_plan = clone.prefetch_key = None
+        clone.map_trust=None  # Live evidence stays in the control process, not planning jobs.
         clone.planner_submitted_ns = time.monotonic_ns()
         if clone.c.get('history_route_enabled') and clone.route_destination() is not None:
             clone.goal=None

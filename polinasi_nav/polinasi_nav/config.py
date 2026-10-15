@@ -27,6 +27,16 @@ def load_config(path=None):
     if c.get('localisation_robust_planes'):
         if c['localisation_robust_planes'] is not True or not c.get('sensor_rolling_localisation'):
             raise ValueError('robust plane matching requires the rolling sensor estimator')
+    if c.get('adaptive_map_age'):
+        if c['adaptive_map_age'] is not True or not c.get('navigation_window_size'):
+            raise ValueError('adaptive map age requires measured rolling snapshots')
+        for key,low,high in (('map_trust_max_age',c.get('map_timeout',1.),2.),
+                ('map_trust_ascent_max_age',c.get('tree_ascent_max_map_age',.35),1.),
+                ('map_trust_stable_seconds',4.,20.),('map_trust_revisit_seconds',2.,4.),
+                ('map_trust_max_speed',.01,.3)):
+            v=c.get(key)
+            if isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or not low<=v<=high:
+                raise ValueError('invalid '+key)
     if c.get('history_route_enabled'):
         if c['history_route_enabled'] is not True or not c.get('navigation_window_size'):
             raise ValueError('history routes require a rolling navigation window')

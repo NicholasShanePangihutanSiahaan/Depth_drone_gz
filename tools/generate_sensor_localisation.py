@@ -15,6 +15,8 @@ def main():
              approach_blend_max_descent=.4)
     # A full LiDAR roll takes 2s; reserve room for late angular observations.
     c.update(tree_ascent_speed=.08,tree_ascent_observation_guard=.5)
+    c.update(adaptive_map_age=True,map_trust_max_age=1.5,map_trust_ascent_max_age=.8,
+             map_trust_stable_seconds=4.,map_trust_revisit_seconds=2.5,map_trust_max_speed=.3)
     c.update(scan_target_repair=True,scan_target_max_outward=1.,scan_target_max_descent=.6)
     c.update(scan_adaptive_height=True,scan_height_max_slope=.45,
              scan_height_hysteresis=.08,scan_stem_top_offset=0.,survey_batch_points=6)

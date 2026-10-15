@@ -108,7 +108,7 @@ class TreeInspectionController(SurveyController):
             self.ascent_nominal_acceleration = np.zeros(3)
             self.view_target = np.array([*self.command[:2],height])
         ref = self.ascent_reference
-        map_fresh = -1e-9 <= now-self.grid.last_observation_stamp <= self.c.get('tree_ascent_max_map_age',.35)+1e-9
+        map_fresh = self.map_age_safe(now,position,velocity,ascending=True)
         if not map_fresh and ref.stop is None:
             from .planning import Brake
             ref.stop = Brake(self.command,self.command_v,self.ascent_nominal_acceleration,ref.c)

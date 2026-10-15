@@ -59,6 +59,21 @@ class MissionController:
         self.route_blockage = {}
         self.route_planner_reason = ''
         self.route_failure_diagnostics={}
+        self.map_trust=None
+        self.localisation_quality_ok=False
+        self.localisation_previous=None
+        if config.get('adaptive_map_age'):
+            from .map_trust import LocalMapTrust
+            self.map_trust=LocalMapTrust(config)
+
+    def map_age_safe(self,now,position,velocity,ascending=False):
+        base=(self.c.get('tree_ascent_max_map_age',.35) if ascending else self.c.get('map_timeout',1.))
+        if self.map_trust is None:
+            return -1e-9<=now-self.grid.last_observation_stamp<=base+1e-9
+        self.map_trust.observe(self.grid,self.command)
+        healthy=not self.health.reason(now,self.c,self.sensor_mode)
+        return self.map_trust.assess(self.grid,now,self.command,self.command_v,
+            self.command_a,position,base,healthy,self.localisation_quality_ok,ascending,velocity)
 
     def flower_event(self, confirmed):
         # An event only counts while settled at an inspection view with visibility.

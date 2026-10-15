@@ -54,6 +54,7 @@ class SparseHistory:
         return changed
 
     def integrate(self, origin, points, hits, stamp, roi=None):
+        self.last_measured_ids=np.empty((0,3),dtype=int)
         self.last_integration_stats = dict(ray_samples_considered=0,
             ray_samples_retained=0, updated_voxels=0, retained_fraction=0., region=roi)
         points = np.asarray(points).reshape(-1, 3)
@@ -87,6 +88,10 @@ class SparseHistory:
         if roi is not None:
             hit_points = hit_points[contains(hit_points, roi)]
         changed.extend(self.update(self.indices(hit_points), OCCUPIED, stamp))
+        # Raw per-scan ray evidence is separate from sticky occupancy and priors.
+        keys=np.asarray(list(set(changed)),dtype=np.int64)
+        self.last_measured_ids=(np.column_stack(np.unravel_index(keys,self.shape))
+            if len(keys) else np.empty((0,3),dtype=int))
         self.last_integration_stats = dict(ray_samples_considered=considered,
             ray_samples_retained=retained, updated_voxels=len(set(changed)),
             retained_fraction=retained/max(1, considered), region=roi, clipping=clipping)
@@ -178,6 +183,7 @@ class RollingMapper:
     def integrate(self, grid, origin, points, hits, stamp, pad, now, centre, roi=None, auxiliary=()):
         started = time.perf_counter()
         changed = self.history.integrate(origin, points, hits, stamp, roi)
+        measured_ids=getattr(self.history,'last_measured_ids',np.empty((0,3),dtype=int))
         lidar_stats = copy.deepcopy(self.history.last_integration_stats)
         lidar_finished = time.perf_counter()
         depth_stats = []
@@ -189,6 +195,11 @@ class RollingMapper:
         depth_finished = time.perf_counter()
         updated = navigation_window(self.config, centre)
         self.history.restore(updated, now)
+        if len(measured_ids):
+            points=self.history.lo+(measured_ids+.5)*self.history.res
+            ids=updated.indices(points)
+            ids=ids[updated.inside(ids)]
+            updated.observed[tuple(ids.T)]=True
         if pad is not None:
             updated.seed_launch_pad(*pad, stamp)
             ids = np.argwhere((updated.state == FREE) & (updated.seen == stamp))

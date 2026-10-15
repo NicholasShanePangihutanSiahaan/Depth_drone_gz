@@ -10,6 +10,7 @@ import zipfile
 import numpy as np
 
 ARRAYS = {'state': np.dtype('int8'), 'seen': np.dtype('float64'),
+          'observed': np.dtype('bool'),
           'blocked': np.dtype('bool'), 'blocked_actual': np.dtype('bool'),
           'distance': np.dtype('float64'), 'free_distance': np.dtype('float64')}
 

@@ -522,6 +522,20 @@ class NavigationNode(ConfigNode):
             return
         self.estimated_yaw = math.atan2(matrix[1, 0], matrix[0, 0])
         self.body_rotation = matrix
+        if self.controller.map_trust is not None:
+            covariance=np.asarray(msg.pose.covariance,float).reshape(6,6)
+            diagonal=np.diag(covariance)
+            quality=bool(np.all(np.isfinite(covariance)) and np.all(diagonal>0.) and
+                np.max(diagonal[:3])<=.1**2 and np.max(diagonal[3:])<=.1**2)
+            previous=self.controller.localisation_previous
+            if previous is not None:
+                t,p,v=previous
+                if np.linalg.norm(self.pose-(p+v*(stamp-t)))>.15:
+                    quality=False
+            if not quality:
+                self.controller.map_trust.reset()
+            self.controller.localisation_quality_ok=quality
+            self.controller.localisation_previous=(stamp,self.pose.copy(),self.velocity.copy())
         self.controller.health.pose_stamp = stamp
         if getattr(self, 'predictive', None) is not None:
             if not hasattr(self, 'predictive_pose_samples'):
@@ -662,7 +676,8 @@ class NavigationNode(ConfigNode):
         try:
             grid, statistics = decode_window(bytes(msg.data), self.grid)
             if (grid.last_observation_stamp <= self.last_integrated_cloud or
-                    not 0 <= self.now()-grid.last_observation_stamp < self.c['map_timeout']):
+                    not 0 <= self.now()-grid.last_observation_stamp < (self.c.get('map_trust_max_age',self.c['map_timeout'])
+                        if self.c.get('adaptive_map_age') else self.c['map_timeout'])):
                 return
             # Numeric origin changes with the rolling window; never relabel frames.
             lo, hi = np.asarray(self.c['bounds_min']), np.asarray(self.c['bounds_max'])
@@ -671,6 +686,8 @@ class NavigationNode(ConfigNode):
             self.grid = self.controller.grid = grid
             self.last_integrated_cloud = grid.last_observation_stamp
             self.map_statistics = statistics
+            if self.controller.map_trust is not None:
+                self.controller.map_trust.observe(grid,self.controller.command)
             self.pipeline_trace = dict(statistics.get('pipeline_trace', {}))
             self.pipeline_trace['navigation_received_ns'] = time.monotonic_ns()
         except (ValueError, KeyError, TypeError, OSError) as exc:
@@ -896,7 +913,9 @@ class NavigationNode(ConfigNode):
                 health_reason = health_reason or 'stale_depth_camera'
         else:
             self.controller.depth_navigation_paused = False
-        if self.rolling_map and self.flight_stage == 'MISSION' and now-self.last_integrated_cloud > self.c.get('map_timeout', 1.):
+        map_gate_active=(self.flight_stage=='MISSION' or (self.c.get('adaptive_map_age')
+            and self.flight_stage in ('WAIT_EXTERNALNAV','GUIDED','ARM','TAKEOFF')))
+        if self.rolling_map and map_gate_active and not self.controller.map_age_safe(now,self.pose,self.velocity):
             health_reason = health_reason or 'stale_integrated_map'
         aligned_fcu=pose_at(self.fcu_pose_history,self.controller.health.pose_stamp)
         if (self.mission_kind == 'mapping' and self.fcu_alignment is None
@@ -1091,6 +1110,7 @@ class NavigationNode(ConfigNode):
         status = {'simulation_time': float(now), 'mode': self.get_parameter('mode').value, 'flight': self.flight_stage,
                    'route_blockage': self.controller.route_blockage,
                    'speed_diagnostics': getattr(self.controller, 'speed_diagnostics', {}),
+                   'map_freshness': self.controller.map_trust.diagnostics if self.controller.map_trust is not None else {},
                    'predictive_alignment': getattr(self, 'predictive_alignment', {}),
                    'callback_wall_max_ms': dict(self.callback_timing.max_ms),
                    'control_step_timing': getattr(self,'control_step_timing',{}),

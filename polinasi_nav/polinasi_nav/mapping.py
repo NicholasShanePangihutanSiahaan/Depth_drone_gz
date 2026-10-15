@@ -29,6 +29,8 @@ class VoxelMap:
         self.shape = tuple(np.ceil((np.array(config['bounds_max']) - self.lo) / self.res).astype(int))
         self.state = np.full(self.shape, UNKNOWN, dtype=np.int8)
         self.seen = np.full(self.shape, -np.inf)
+        # Evidence from THIS real ray integration, never restored history/pad.
+        self.observed = np.zeros(self.shape, dtype=bool)
         self.version = 0
         self.last_observation_stamp = -np.inf
         self.blocked = np.ones(self.shape, dtype=bool)
