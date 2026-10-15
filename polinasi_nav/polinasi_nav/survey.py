@@ -8,6 +8,7 @@ import numpy as np
 from .control import MissionController
 from .continuous import ContinuousTrajectory, AdaptivePhase
 from .planning import brake_safe
+from .moving_handoff import MovingHandoff
 
 
 def prepare_survey_snapshot(clone, now, position, range_value, range_stamp):
@@ -19,7 +20,7 @@ def prepare_survey_snapshot(clone, now, position, range_value, range_stamp):
     return clone, ready
 
 
-class SurveyController(MissionController):
+class SurveyController(MovingHandoff, MissionController):
     def __init__(self, config, grid, sensor_mode=False, asynchronous=True):
         config = copy.deepcopy(config)
         points = np.asarray(config.get('survey_waypoints', []), dtype=float)
@@ -58,16 +59,36 @@ class SurveyController(MissionController):
         self.prefetch_submitted = self.prefetch_used = self.prefetch_rejected = 0
         self.prefetch_reason = ''
         self.skipped_targets = []
+        self.global_route={}
+        self.global_route_diagnostics={}
+        self.global_route_wait_since=None
+        self._moving_init()
 
     def _planning_clone(self):
         clone = object.__new__(type(self))
-        excluded = ('executor', 'pending_plan', 'prefetched_plan', 'prefetch_key')
+        excluded = ('executor', 'pending_plan', 'prefetched_plan', 'prefetch_key', 'moving_future', 'moving_key')
         for key, value in self.__dict__.items():
             if key not in excluded:
                 setattr(clone, key, copy.deepcopy(value))
         clone.executor = clone.pending_plan = clone.prefetched_plan = clone.prefetch_key = None
+        clone.moving_future=clone.moving_key=None
         clone.planner_submitted_ns = time.monotonic_ns()
         return clone
+
+    def route_destination(self):
+        if self.state=='RETURN':
+            return np.array([*self.c['home'][:2],self.c['takeoff_altitude']])
+        if self.state=='SURVEY' and self.waypoint_index<len(self.waypoints):
+            return self.waypoints[self.waypoint_index].copy()
+        return None
+
+
+    def _history_goal(self,current,destination):
+        from .global_route import local_route_goal
+        goal,self.global_route_diagnostics=local_route_goal(self.grid,current,destination,
+            self.global_route,self.survey_now,self.c)
+        return goal
+
 
     def _prefetch_next(self, now):
         if (not self.c.get('survey_prefetch', False) or self.executor is None or self.failure
@@ -98,7 +119,7 @@ class SurveyController(MissionController):
     def _choose_goal(self, current):
         if self.state == 'RETURN':
             self.goal = self._return_goal(current)
-            return self.grid.safe(self.goal)
+            return self.goal is not None and self.grid.safe(self.goal)
         if self.state != 'SURVEY':
             return super()._choose_goal(current)
         while (self.waypoint_index < len(self.waypoints)
@@ -111,7 +132,11 @@ class SurveyController(MissionController):
         if self.waypoint_index >= len(self.waypoints):
             self.state = 'RETURN'
             return self._choose_goal(current)
-        self.goal = self.waypoints[self.waypoint_index].copy()
+        destination=self.waypoints[self.waypoint_index].copy()
+        if self.c.get('history_route_enabled'):
+            self.goal=self._history_goal(current,destination)
+            if self.goal is None:return False
+        else:self.goal=destination
         delta = self.goal-np.asarray(current)
         self.goal_yaw = math.atan2(delta[1], delta[0]) if np.linalg.norm(delta[:2]) > .05 else self.yaw
         self.desired_pitch = 0.
@@ -119,6 +144,9 @@ class SurveyController(MissionController):
 
     def _return_goal(self, current):
         home = np.array([*self.c['home'][:2], self.c['takeoff_altitude']])
+        if self.c.get('history_route_enabled'):
+            goal=self._history_goal(current,home)
+            return goal
         delta = home-np.asarray(current)
         distance = np.linalg.norm(delta)
         # Home may lie outside the rolling local map. Replan bounded legs;
@@ -130,6 +158,8 @@ class SurveyController(MissionController):
         if self.state == 'SURVEY':
             return self.waypoints[self.waypoint_index].copy()
         if self.state == 'RETURN':
+            if self.c.get('history_route_enabled'):
+                return np.array([*self.c['home'][:2],self.c['takeoff_altitude']])
             return self._return_goal(current)
         return super()._mission_hint(current)
 
@@ -145,6 +175,12 @@ class SurveyController(MissionController):
             super()._advance()
             self.state = 'SURVEY'
         elif self.state == 'SURVEY':
+            destination=self.route_destination()
+            if (self.c.get('history_route_enabled') and destination is not None
+                    and self.goal is not None and np.linalg.norm(self.goal-destination)>.12):
+                # A locally certified prefix is not an inspected waypoint.
+                self.goal=None;self.dwell=0.
+                return
             # Do not count a survey point until a newly integrated scan arrives
             # AFTER settling there. Packet traffic alone is insufficient.
             self.wait_for_scan = self.survey_now
@@ -157,11 +193,24 @@ class SurveyController(MissionController):
             self.survey_started = now if self.survey_started is None else self.survey_started
             if now-self.survey_started > self.c.get('survey_max_duration', float('inf')):
                 self.fail('survey_duration_limit')
+        self._moving_update(now)
         result = super().tick(now, dt, position, velocity, range_value, range_stamp)
         self._prefetch_next(now)
         return result
 
     def _prepare_trajectory(self, now, position, range_value=None, range_stamp=None):
+        destination=self.route_destination()
+        if self.c.get('history_route_enabled') and destination is not None:
+            if self._history_goal(self.command,destination) is None:
+                self.global_route_wait_since=now if self.global_route_wait_since is None else self.global_route_wait_since
+                if now-self.global_route_wait_since>self.c.get('history_route_wait_timeout',self.c['blocked_timeout']):self.fail('global_route_unavailable')
+                reason=self.global_route_diagnostics.get('reason')
+                if reason not in ('no_known_progress','observed_frontier_reached','live_prefix_blocked'):
+                    return False
+                # The history frontier needs NEW observations, using the existing
+                # certified exploration planner; no straight-line free shortcut.
+                self.goal=None
+            else:self.global_route_wait_since=None
         if self.wait_for_scan is not None:
             if self.grid.last_observation_stamp > self.wait_for_scan:
                 self.wait_for_scan = None
@@ -263,6 +312,11 @@ class SurveyController(MissionController):
         route = super()._plan_route(start, goal)
         if not self.c.get('continuous_survey', False) or self.state != 'SURVEY' or route is None:
             return route
+        destination=self.route_destination()
+        if (self.c.get('history_route_enabled') and destination is not None
+                and np.linalg.norm(self.goal-destination)>.12):
+            self.batch_end_index=None;self.batch_knots={}
+            return route
         self.batch_end_index = self.waypoint_index
         self.batch_knots = {self.waypoint_index: len(route)-1}
         for index in range(self.waypoint_index+1,
@@ -279,17 +333,29 @@ class SurveyController(MissionController):
         return route
 
     def _trajectory_from_points(self, points, speed=None):
+        if speed is None:
+            phase=getattr(self,'tree_phase',None)
+            key=('navigation_scan_speed' if phase=='SCAN' and self.state=='SURVEY' else
+                 'navigation_transit_speed' if self.state in ('SURVEY','RETURN') else
+                 'navigation_default_speed')
+            speed=self.c.get(key)
         self.phase = AdaptivePhase(self.c)
         if (not self.c.get('continuous_survey', False)
                 or np.max(np.linalg.norm(np.diff(np.asarray(points), axis=0), axis=1), initial=0.) < 1e-8):
             return super()._trajectory_from_points(points, speed)
         for scale in (1., .5, .25, 0.):
             try:
-                trajectory = ContinuousTrajectory(points, self.c, scale, speed)
+                if hasattr(self,'moving_boundary'):
+                    from .moving_trajectory import BoundaryTrajectory
+                    trajectory=BoundaryTrajectory(points,self.c,*self.moving_boundary,scale,speed)
+                else:trajectory = ContinuousTrajectory(points, self.c, scale, speed)
             except ValueError:
                 continue  # A bounded failed retiming attempt never escapes into flight.
             if trajectory.safe(self.grid):
+                if hasattr(trajectory,'prefix_controls') and trajectory.prefix_controls:
+                    self.batch_knots={index:knot+1 for index,knot in self.batch_knots.items()}
                 return trajectory
+        if hasattr(self,'moving_boundary'):raise ValueError('no safe C2 moving trajectory')
         # No rounding is accepted without a complete curve certificate.
         return super()._trajectory_from_points(points, speed)
 
@@ -355,6 +421,7 @@ class SurveyController(MissionController):
             policy='directional_braking' if self.c.get('adaptive_directional_clearance', False) else 'nearest_boundary')
         advance = self.phase.step(dt, target)
         next_elapsed = min(self.elapsed+advance, self.trajectory.duration)
+        next_elapsed=self._moving_crossing(next_elapsed,self.survey_now)
         p, v, a, j = self.trajectory.derivatives(next_elapsed)
         r, rd, rdd = self.phase.rate, self.phase.rate_dot, self.phase.rate_ddot
         commanded_v = v*r

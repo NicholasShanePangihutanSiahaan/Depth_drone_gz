@@ -41,9 +41,52 @@ bukan validasi keselamatan ruang yang tidak pernah diukur.
 Lokalisasi memakai LiDAR+IMU badan, estimator ICP eksperimental; bukan
 FAST-LIO. Ground truth hanya masuk auditor. Depth RGBD sintetis dipakai
 pemetaan inspection; tidak meniru seluruh kesalahan stereo ZED asli.
-Mekanisme umur peta adaptif, smooth approach/ascent, dan global-route baru
-rotating tidak disalin secara menyeluruh. Riwayat voxel terukur tetap ada;
+Mekanisme umur peta adaptif rotating tidak disalin. Guidance A* riwayat
+diadaptasi selektif dan memulihkan prior FOV fixed secara terpisah. Riwayat voxel terukur tetap ada;
 TTL free warisan 21.600 s bukan bukti kestabilan lingkungan dinamis.
+
+## Lintasan berkelanjutan dan kecepatan per fase
+
+Konfigurasi inspection hasil `python3 tools/generate_fixed_lidar.py` kini memakai
+guidance A* dari memori peta menuju tujuan approach/antarpohon/home. Worker
+terpisah memperbarui guidance tiap 2 s simulasi, dengan maksimum 800.000 voxel
+dan 30.000 ekspansi. Guidance berumur maksimum 8 s bukan izin menjalankan
+lintasan pada peta basi: gate umur sensor/pose/peta lokal tetap berlaku.
+Prefix hingga 4 m dipilih dari rute tersebut lalu direncanakan dan diperiksa
+pada window lokal terbaru. Unknown tetap memerlukan observasi atau prior FOV
+eksplisit yang telah diotorisasi. Batas history frontier memakai planner
+exploration lama yang tetap memerlukan scan baru; bukan jalan pintas free.
+
+Pergantian saat bergerak berlaku pada approach, transit antarpohon, return,
+survey waypoint, dan kelanjutan scan parsial. Worker memakai batas posisi,
+kecepatan, dan percepatan reference masa depan (lead .75 s). Kurva baru memiliki
+transisi percepatan dengan jerk terbatas lalu quintic tersambung C2. Interval
+kontrol yang melintasi batas pergantian dibagi secara matematis pada reference,
+sehingga jitter dt tidak perlu menyebabkan lompatan. Hasil >1 s, terlambat,
+fase/rate berubah, progress anchor berbeda, perubahan obstacle/unknown pada
+kurva, atau bukti kamera tidak memenuhi syarat membuat kandidat ditolak.
+Lintasan lama tetap berakhir dengan kecepatan nol. Kandidat diperiksa braking
+pada snapshot worker, geometri pada peta live saat adopsi, serta command akhir
+dan stopping corridor pada setiap tick melalui kontrol bersama/PID yang ada.
+Ini bukan bukti seluruh stopping corridor masa depan tersertifikasi ulang
+seketika pada setiap versi peta. Tidak ada publisher setpoint tambahan.
+
+Scan mencoba seluruh 24 anchor jika koridor lokal sudah aman, tetap mengikuti
+profil bawah daun dan validasi enam sektor kamera depan. Anchor tidak boleh
+dilewati hanya agar penerbangan cepat. Ascent sudah memakai reference kontinu
+reaktif dan tetap .12 m/s; takeoff, observasi kamera, serta landing/disarm
+mempertahankan titik berhenti yang diperlukan. Takeoff/default .30 m/s,
+transit hingga .40 m/s, scan hingga .30 m/s. Batas umum speed tetap .40 m/s,
+acceleration .50 m/s², jerk 1.0 m/s³, tracking limit/margin .20 m. Ambang
+perlambatan tracking, timeout dan clearance tidak dilonggarkan.
+
+Log `history_route` mencatat alasan pemilihan/penolakan prefix; `moving_handoff`
+mencatat jumlah kandidat/adopsi/penolakan, alasan, waktu, kecepatan dan selisih
+PVA di sambungan. Replay matematis controller membuktikan adopsi bergerak dan
+mencapai tujuan 6 m lebih cepat daripada tiga leg stop-to-stop 2 m pada fixture
+yang sama. Replay ini tidak memodelkan dinamika Iris, latensi kamera/estimator,
+MAVROS atau FCU. Belum ada flight untuk perubahan ini; bukan implementasi
+optimasi waktu minimum global dan belum ada bukti pengurangan durasi misi nyata.
 
 ## Perintah worktree sesi ini
 
@@ -56,6 +99,7 @@ build/install/run/log fixed-lidar dibuat terpisah.
 ```bash
 cd /home/abin/polinasi_lidar_fixed
 bash tools/build_ros.sh
+# Jalankan HANYA setelah instruksi pengguna untuk mulai simulasi.
 # Awal headless; RViz dibuka sekali SETELAH approach pertama selesai:
 POLINASI_RVIZ_AFTER_APPROACH=1 bash tools/run_fixed_lidar_validation.sh inspection
 # Alternatif reproduksi hover:

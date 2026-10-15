@@ -159,3 +159,74 @@ dua simulator. Perubahan diuji sebelum commit/push dan flight berikutnya.
 Regresi port + adapter ROS + inspection loop: **37 lulus**, 0 gagal. Shell
 syntax dan diff whitespace lulus. Endpoint 14650 tetap loopback-only; input
 port invalid ditolak. Validasi koneksi aktual menunggu setup run berikutnya.
+
+
+## Run inspection 1949191 dihentikan atas instruksi pengguna
+
+Run `reports/fixed_lidar_validation_20261015_145348`, session
+`.dependencies/ros_sensor_palm_farm_20261015_145350_19898_mapping` mencapai
+enam sektor valid pohon ID5 sekitar [9,0], kemudian approach pohon ID3.
+RViz dibuka setelah approach pertama lalu ditutup sesuai permintaan. Run
+dipause pada waktu simulasi 266.802 s, kemudian dihentikan melalui session
+terdaftar. Tidak ada klaim dua pohon/return/landing/disarm selesai pada run ini.
+
+## Guidance memori dan penyambungan lintasan untuk seluruh fase yang relevan
+
+Pengguna meminta mengurangi waktu misi, bukan hanya mengubah approach. Audit
+kode menemukan approach/return masih memilih target geometris 2 m dan kurva
+baru mulai dari kecepatan nol. Guidance history rotating pada revisi 6779baf
+dibaca dan diadaptasi tanpa mengganti mounting/estimator fixed. Worker baru
+mempertahankan bukti FOV terpisah dari free terukur. Local planner tetap
+mengesahkan prefix; unknown/occupied, kurva, braking dan gate kesehatan tetap.
+
+Penyambungan async menggunakan reference PVA terjadwal, termasuk dt yang
+melintasi sambungan, dengan fallback pada stopping endpoint lama. Scan mencoba
+24 anchor dan tetap mempertahankan evidence kamera per sektor. Intermediate
+history endpoint tidak dihitung sebagai waypoint inspeksi yang selesai.
+Profil transit .40 m/s, scan/default .30 m/s, ascent .12 m/s. Batas tracking
+tidak dinaikkan; menaikkannya mengurangi cadangan clearance dan bukan cara
+langsung menaikkan reference speed.
+
+Tes baru semula gagal 18/26: retiming satu quintic dengan kecepatan awal dekat
+limit dan percepatan positif tidak konvergen meskipun durasi terus bertambah.
+Ini terbukti pada fixture v=.29403 m/s, a=.019008 m/s²; batas kecepatan kurva
+masih sekitar .318 m/s pada durasi 20 s. Ditambahkan bridge jerk terbatas
+menuju percepatan nol, kemudian quintic core dengan seed durasi lebih pendek
+dan sertifikasi batas turunan. Batas PVA awal dipertahankan saat retiming.
+
+33 tes baru/terarah lulus, termasuk rejection stale/late/worker exception,
+unknown/occupied baru, mismatch anchor, perubahan adaptive rate/fase,
+profile kecepatan, full control tick dengan jitter, serta replay controller
+6 m yang menyambung sambil bergerak dan lebih cepat daripada tiga leg 2 m.
+Build pertama: 384/385 lulus; satu regresi hint return pada mode history-off
+terdeteksi dan diperbaiki dengan mempertahankan perilaku legacy ketika flag
+nonaktif. Regresi terarah sesudahnya: 47 lulus. Validasi config juga menangkap
+cek salah terhadap separate_mapping (sebenarnya parameter ROS, bukan JSON);
+cek tetap dilakukan di node sesuai parameter runtime. Generator hover dan
+inspection berhasil diload sesudah koreksi. Hasil suite final dicatat berikut.
+
+Pengguna secara eksplisit meminta simulasi jangan dimulai. Tidak ada flight
+baru selama perubahan ini. Klaim minimum waktu global atau keberhasilan misi
+dua pohon belum tervalidasi. Rencana ini adalah konstruksi engineering lokal.
+
+## Riset SUPER atas permintaan pengguna
+
+Sumber primer yang diperiksa: [paper Science Robotics](https://doi.org/10.1126/scirobotics.ado6187),
+[PDF pada repository penulis](https://github.com/hku-mars/SUPER/blob/master/misc/scirobotics.ado6187.pdf),
+[kode planner](https://github.com/hku-mars/SUPER),
+[CAD/BOM hardware](https://github.com/hku-mars/SUPER-Hardware),
+[diskusi author tentang MPC](https://github.com/hku-mars/SUPER/issues/5), dan
+[status/reproduksi MPC 2026](https://github.com/hku-mars/SUPER/issues/57).
+SUPER adalah proyek HKU MaRS yang ditampilkan Livox. Planner dan optimizer
+backup tersedia; controller MPC asli belum ditemukan dirilis pada sumber
+resmi yang diperiksa. Foto menunjukkan MID-360 di atas badan; extrinsic
+identik dengan konfigurasi kita belum dibuktikan dari CAD. Paper membedakan
+exploratory trajectory dan committed trajectory dengan backup berhenti pada
+known-free, termasuk pemotongan koridor oleh FOV. Ini tidak membenarkan
+asumsi bahwa seluruh ruang di luar FOV aman. Belum mengimpor kode SUPER atau
+mengklaim planner kita sebagai SUPER.
+
+Hasil final: build tiga paket berhasil (2.39 s); **385 tes lulus**, 0 error,
+0 failure, 0 skipped, pytest 69.88 s. Log build lokal:
+`/tmp/fixed_navigation_build_final_20261015.log`; hasil XML:
+`build_ros/polinasi_nav/pytest.xml`. Tidak ada simulator dijalankan.

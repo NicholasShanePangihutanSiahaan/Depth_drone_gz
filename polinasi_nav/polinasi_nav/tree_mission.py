@@ -257,6 +257,11 @@ class TreeInspectionController(SurveyController):
 
     def _mission_hint(self,current):
         if self.state == 'SURVEY' and self.view_target is not None:
+            if self.c.get('history_route_enabled') and self.tree_phase=='APPROACH':
+                goal=self._history_goal(current,self.view_target)
+                if goal is not None:return goal
+                from .local_subgoal import geometric_hint
+                return geometric_hint(current,self.view_target)  # observation direction only
             from .local_subgoal import inspection_hint, geometric_hint
             if self.executor is not None:
                 # Camera preparation needs a direction, not a costly detour search.
@@ -266,6 +271,11 @@ class TreeInspectionController(SurveyController):
                 allow_vertical=self.tree_phase=='APPROACH')
             return hint
         return super()._mission_hint(current)
+
+    def route_destination(self):
+        if self.state=='SURVEY' and self.tree_phase=='APPROACH' and self.view_target is not None:return self.view_target.copy()
+        if self.state=='RETURN':return super().route_destination()
+        return None  # Scan follows ordered inspection anchors; ascent has its own continuous reference.
 
     def _planning_clone(self):
         clone = super()._planning_clone()
@@ -333,7 +343,10 @@ class TreeInspectionController(SurveyController):
                 radius = max(self.c['tree_view_distances'])
                 self.view_target = np.array([tree['xy'][0]+radius*math.cos(angle),
                                              tree['xy'][1]+radius*math.sin(angle),top])
-        self.goal = self._mission_hint(current)
+        if self.c.get('history_route_enabled') and self.tree_phase=='APPROACH':
+            self.goal=self._history_goal(current,self.view_target)
+            if self.goal is None:return False
+        else:self.goal = self._mission_hint(current)
         self.waypoints = np.asarray([self.goal.copy()])
         self.waypoint_index = 0
         delta = np.asarray(tree['xy'])-np.asarray(current)[:2]
@@ -346,6 +359,8 @@ class TreeInspectionController(SurveyController):
         return self.grid.safe(self.goal)
 
     def _prepare_trajectory(self,now,position,range_value=None,range_stamp=None):
+        if self.c.get('history_route_enabled') and self.state=='SURVEY' and self.tree_phase=='SEARCH' and self.active_tree is None:
+            self._choose_goal(position)
         if getattr(self,'depth_navigation_paused',False):
             return False  # Keep the certified hold; do not accept pending plans.
         if self.auto_mounts() and self.state=='SURVEY' and self.tree_phase in ('ORIENT','UPWARD_OBSERVE','NORMALIZE'):

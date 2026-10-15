@@ -122,3 +122,10 @@ def canopy_profile(grid,waypoints,index,current,tree,config,initial_height):
         map_version=int(grid.version),map_stamp=float(grid.last_observation_stamp)
         if math.isfinite(grid.last_observation_stamp) else None,
         planning_at_rest=True,online_height_setpoint_override=False,anchors=entries)
+
+
+from .moving_trajectory import BoundaryTrajectory
+
+
+class BoundaryCanopyTrajectory(CanopyScanTrajectory,BoundaryTrajectory):
+    """Retain initial PVA while retiming a canopy-guarded moving join."""

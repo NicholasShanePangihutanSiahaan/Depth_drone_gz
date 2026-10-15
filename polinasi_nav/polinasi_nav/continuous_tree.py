@@ -279,8 +279,10 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         if self.tree_phase=='SCAN' and not isinstance(trajectory,ContinuousTrajectory):
             raise ValueError('continuous scan smoothing not certified')
         if self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height'):
-            from .canopy_scan import CanopyScanTrajectory
-            trajectory=CanopyScanTrajectory(trajectory,self.c.get('tree_ascent_observation_guard',.2))
+            from .canopy_scan import CanopyScanTrajectory,BoundaryCanopyTrajectory
+            from .moving_trajectory import BoundaryTrajectory
+            wrapper=BoundaryCanopyTrajectory if isinstance(trajectory,BoundaryTrajectory) else CanopyScanTrajectory
+            trajectory=wrapper(trajectory,self.c.get('tree_ascent_observation_guard',.2))
             trajectory.safe(self.grid)
             self.scan_curve_diagnostics=trajectory.canopy_certificate
         return trajectory

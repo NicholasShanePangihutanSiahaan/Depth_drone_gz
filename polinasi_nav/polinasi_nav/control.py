@@ -435,7 +435,7 @@ class MissionController:
         self.planner_stages_ms['braking_certification'] = (time.perf_counter()-stage_started)*1000.
         self.planner_stages_ms['braking_sample_checks'] = checks
         self.planner_stages_ms['braking_attempts'] = _+1
-        if not certified:
+        if not certified or not self.trajectory.safe(self.grid):
             self.trajectory = None
             self.fail('no_safe_braking_trajectory')
             return False

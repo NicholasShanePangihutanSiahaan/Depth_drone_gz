@@ -61,6 +61,11 @@ class MappingIONode(ConfigNode):
         self.map_worker = ProcessPoolExecutor(max_workers=1, mp_context=context,
             initializer=initialise_rolling_mapper, initargs=(self.c,))
         self.visual_worker = ProcessPoolExecutor(max_workers=1, mp_context=context)
+        self.route_worker=ProcessPoolExecutor(max_workers=1,mp_context=context) if self.c.get('history_route_enabled') else None
+        self.route_future=None
+        self.route_request_id=0
+        self.last_route_submit=-math.inf
+        self.route_pub=self.create_publisher(String,'/mapping/history_route',QoSProfile(depth=1)) if self.route_worker else None
         directory = self.get_parameter('map_log_dir').value
         self.map_log = MapLog(directory, max_points=int(self.c.get('map_log_max_points', 100000))) if directory else None
         self.log_worker = ProcessPoolExecutor(max_workers=1, mp_context=context) if directory else None
@@ -215,6 +220,7 @@ class MappingIONode(ConfigNode):
         if self.pose is None:
             return
         self.map_pending()
+        if getattr(self,'route_worker',None) is not None:self.update_history_route()
         if self.grid.version == self.last_snapshot_version or not math.isfinite(self.last_integrated_cloud):
             return
         statistics = dict(global_known_voxels=len(self.history.cells),
@@ -237,6 +243,34 @@ class MappingIONode(ConfigNode):
         self.snapshot_pub.publish(UInt8MultiArray(data=array('B', payload)))
         self.last_snapshot_version = self.grid.version
 
+    def update_history_route(self):
+        if self.route_worker is None:return
+        request=self.last_status.get('history_route_request')
+        if self.route_future is not None:
+            if not self.route_future.done():return
+            try:
+                route=self.route_future.result()
+            except Exception as exc:
+                self.get_logger().error(f'History route worker failed: {exc}')
+                route=None
+            self.route_future=None
+            if route is not None and request is not None and np.linalg.norm(np.asarray(route['goal'])-request['goal'])<1e-4:
+                self.route_pub.publish(String(data=json.dumps(route,allow_nan=False)))
+        if request is None or not math.isfinite(self.last_integrated_cloud) or self.now()-self.last_route_submit<2.:return
+        from .global_route import plan_history_route
+        history=copy.copy(self.history)
+        history.cells=self.history.cells.copy()
+        history.prior=self.history.prior.copy()
+        history.assumptions=self.history.assumptions.copy()
+        history.occupied_keys=set()
+        history.observed_columns=set()
+        history.last_observation_stamp=self.last_integrated_cloud
+        self.route_request_id+=1
+        request=dict(request,request_id=self.route_request_id)
+        self.route_future=self.route_worker.submit(plan_history_route,history,request,self.now())
+        self.last_route_submit=self.now()
+
+
     @measured('local_visual_handoff')
     def visualise(self):
         if 'local' in self.visual_futures and not self.visual_futures['local'].done():
@@ -252,6 +286,7 @@ class MappingIONode(ConfigNode):
         return self.map_log.flight_paths(np.vstack((self.c['home'], self.controller.waypoints)), self.planned)
 
     def destroy_node(self):
+        if self.route_worker:self.route_worker.shutdown(wait=True,cancel_futures=True)
         self.map_worker.shutdown(wait=True, cancel_futures=True)
         self.visual_worker.shutdown(wait=True, cancel_futures=True)
         if self.map_log:
