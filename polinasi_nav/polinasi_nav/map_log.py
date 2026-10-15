@@ -101,6 +101,8 @@ class MapLog:
                 'occupied': np.argwhere(grid.state == 1).tolist(),
                 'free': np.argwhere(grid.state == 0).tolist(),
                 'unknown': np.argwhere(grid.state == -1).tolist(),
+                'assumed_free': np.argwhere((grid.state == -1) & grid.assumed_free).tolist(),
+                'assumed_occupied': np.argwhere((grid.state == -1) & grid.assumed_occupied).tolist(),
                 'note': 'Accumulated downsampled surface hits; current uninflated occupancy. '
                         'Free cells may include the surveyed launch-pad prior. '
                         'Unknown is NOT empty. This is not localisation validation.'}
@@ -133,6 +135,8 @@ p{margin:8px 0}button{padding:5px 12px} #details{font-size:12px;color:#aebdce}
 <label><input id="occupied" type="checkbox" checked> Red: occupied</label>
 <label><input id="free" type="checkbox"> Green: observed free</label>
 <label><input id="unknown" type="checkbox"> Grey: unknown</label>
+<label><input id="assumed_free" type="checkbox"> Ungu: asumsi aman</label>
+<label><input id="assumed_occupied" type="checkbox"> Oranye: batas virtual</label>
 <button id="reset">Reset view</button></p>
 <p><label><input id="nominalRoute" type="checkbox"> Kuning: rute rencana (bukan jaminan aman)</label>
 <label><input id="plannedPath" type="checkbox"> Biru: lintasan perintah terakhir</label>
@@ -179,9 +183,9 @@ function draw(){
  for(const [axis,color] of [[0,'#ff6d6d'],[1,'#70ef99'],[2,'#73aaff']]){
   const end=lo.slice();end[axis]+=2;line(lo,end,color);const p=project(end);ctx.fillStyle=color;ctx.font=`${14*devicePixelRatio}px system-ui`;ctx.fillText('XYZ'[axis],p[0],p[1]);
  }
- for(const [name,color] of [['unknown','#657181'],['free','#43b97b'],['occupied','#ff604c']]){
+ for(const [name,color] of [['unknown','#657181'],['free','#43b97b'],['occupied','#ff604c'],['assumed_free','#bd8dff'],['assumed_occupied','#ffbc50']]){
   if(!document.getElementById(name).checked)continue;
-  const ids=data[name].filter(id=>lo[2]+(id[2]+0.5)*data.resolution<=Number(height.value));
+  const ids=(data[name] || []).filter(id=>lo[2]+(id[2]+0.5)*data.resolution<=Number(height.value));
   const stride=Math.max(1,Math.ceil(ids.length/6000));ctx.globalAlpha=name==='occupied'?0.8:0.25;
   for(let i=0;i<ids.length;i+=stride){
    const p=ids[i].map((v,k)=>lo[k]+(v+0.5)*data.resolution);
@@ -207,7 +211,7 @@ canvas.onpointerdown=e=>{drag=[e.clientX,e.clientY];canvas.setPointerCapture(e.p
 canvas.onpointermove=e=>{if(!drag)return;az+=(e.clientX-drag[0])*0.008;el=Math.max(-1.5,Math.min(1.5,el+(e.clientY-drag[1])*0.008));drag=[e.clientX,e.clientY];draw()};
 canvas.onpointerup=canvas.onpointercancel=()=>drag=null;
 canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.2,Math.min(12,zoom*Math.exp(-e.deltaY*.001)));draw()},{passive:false});
-for(const id of ['points','occupied','free','unknown','height','nominalRoute','plannedPath','executedPath'])document.getElementById(id).oninput=draw;
+for(const id of ['points','occupied','free','unknown','assumed_free','assumed_occupied','height','nominalRoute','plannedPath','executedPath'])document.getElementById(id).oninput=draw;
 document.getElementById('reset').onclick=()=>{az=-.7;el=.6;zoom=1;draw()};
 window.onresize=draw;draw();
 </script></html>'''

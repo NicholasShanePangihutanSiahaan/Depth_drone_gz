@@ -150,4 +150,6 @@ def load_config(path=None):
             value = c.get(key, 2 if key.endswith('scans') else 1)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f'{key} must be a positive integer')
+    if c.get('fixed_fov_assumptions') and not (c.get('lidar_fixed') and c.get('sensor_fixed_localisation')):
+        raise ValueError('FOV assumptions require explicit fixed LiDAR configuration')
     return c

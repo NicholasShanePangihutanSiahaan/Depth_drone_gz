@@ -11,7 +11,7 @@ __pycache__/
 .idea/
 *~
 .dependencies/
-.venv/
+.venv
 reports/*.csv
 reports/**
 !reports/CORRIDOR_RESULTS.md

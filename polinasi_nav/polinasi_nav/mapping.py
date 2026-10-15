@@ -1,8 +1,17 @@
-"""Bounded three-state voxel map. Unknown space is never navigable."""
+"""Measured three-state map, with separately labelled optional FOV priors."""
 import numpy as np
 from scipy.ndimage import binary_dilation, distance_transform_edt, maximum_filter1d
 
 UNKNOWN, FREE, OCCUPIED = -1, 0, 1
+
+
+def vertical_guard(config):
+    """One conservative voxel-rounded canopy reserve for every flight stage."""
+    value=float(config.get('tree_ascent_observation_guard',0.))
+    if not np.isfinite(value) or value<0:
+        raise ValueError('invalid observation guard')
+    return float(np.ceil(value/config['resolution']-1e-9)*config['resolution'])
+
 
 
 def select_rays(hits, sequence, surface_stride, free_stride):
@@ -29,6 +38,8 @@ class VoxelMap:
         self.shape = tuple(np.ceil((np.array(config['bounds_max']) - self.lo) / self.res).astype(int))
         self.state = np.full(self.shape, UNKNOWN, dtype=np.int8)
         self.seen = np.full(self.shape, -np.inf)
+        self.assumed_free = np.zeros(self.shape,dtype=bool)
+        self.assumed_occupied = np.zeros(self.shape,dtype=bool)
         self.version = 0
         self.last_observation_stamp = -np.inf
         self.blocked = np.ones(self.shape, dtype=bool)
@@ -99,8 +110,10 @@ class VoxelMap:
         if np.any(stale):
             self.state[stale] = UNKNOWN
             self.version += 1
-        self.blocked = self.inflate(self.state != FREE, self.kernel)
-        self.blocked_actual = self.inflate(self.state != FREE, self.actual_kernel)
+        source = (self.state != FREE) & ~((self.state == UNKNOWN) & self.assumed_free)
+        source |= (self.state == UNKNOWN) & self.assumed_occupied
+        self.blocked = self.inflate(source, self.kernel)
+        self.blocked_actual = self.inflate(source, self.actual_kernel)
         # Conservative distance to occupied voxel surfaces (unknown checked separately).
         self.distance = distance_transform_edt(self.state != OCCUPIED) * self.res - np.sqrt(3)*self.res
         # Distance to the inflated occupied/unknown boundary for adaptive speed.
@@ -116,8 +129,9 @@ class VoxelMap:
         if np.any(stale):
             self.state[stale] = UNKNOWN
             self.version += 1
-            self.blocked |= self.inflate(stale, self.kernel)
-            self.blocked_actual |= self.inflate(stale, self.actual_kernel)
+            blocking = stale & (~self.assumed_free | self.assumed_occupied)
+            self.blocked |= self.inflate(blocking, self.kernel)
+            self.blocked_actual |= self.inflate(blocking, self.actual_kernel)
             self.free_distance = distance_transform_edt(~self.blocked)*self.res-np.sqrt(3)*self.res
 
     @staticmethod
@@ -152,9 +166,15 @@ class VoxelMap:
         inside = self.inside(ids)
         valid = ids[inside]
         states = self.state[tuple(valid.T)]
-        unknown, occupied = valid[states == UNKNOWN], valid[states == OCCUPIED]
+        prior_free = self.assumed_free[tuple(valid.T)]
+        prior_occupied = self.assumed_occupied[tuple(valid.T)]
+        unknown = valid[(states == UNKNOWN) & ~prior_free & ~prior_occupied]
+        virtual = valid[(states == UNKNOWN) & prior_occupied]
+        occupied = valid[states == OCCUPIED]
         outside = int(np.count_nonzero(~inside))
         causes = []
+        if len(virtual):
+            causes.append('assumed_virtual_ceiling')
         if len(occupied):
             causes.append('occupied')
         if len(unknown):
@@ -167,6 +187,8 @@ class VoxelMap:
             blocked_cell_centre=self.centers(index).tolist(), actual_margin=bool(actual),
             causes=causes, footprint_unknown_cells=int(len(unknown)),
             footprint_occupied_cells=int(len(occupied)), footprint_outside_cells=outside,
+            footprint_virtual_ceiling_cells=int(len(virtual)),
+            footprint_assumed_free_cells=int(np.count_nonzero((states == UNKNOWN) & prior_free)),
             unknown_samples=self.centers(unknown[:8]).tolist(),
             occupied_samples=self.centers(occupied[:8]).tolist(),
             samples_truncated=bool(len(unknown)>8 or len(occupied)>8),
@@ -230,7 +252,7 @@ class VoxelMap:
         mask[tuple(indices[inside].T)] = True
         # Dilation here selects a volume; outside is NOT an occupied source.
         volume = binary_dilation(mask, structure=self.kernel, border_value=0)
-        unknown = np.argwhere(volume & (self.state == UNKNOWN))
+        unknown = np.argwhere(volume & (self.state == UNKNOWN) & ~self.assumed_free & ~self.assumed_occupied)
         occupied = np.argwhere(volume & (self.state == OCCUPIED))
         return dict(unknown=unknown, occupied=occupied,
                     outside=bool(not np.all(inside)))

@@ -38,6 +38,9 @@ if [[ "$mission" == identification ]]; then nav_config="$project_dir/polinasi_na
 if [[ -n "${4:-}" ]]; then nav_config="$4"; fi
 test -f "$nav_config"
 mkdir -p "$run_dir"
+export ROS_LOG_DIR="$run_dir/ros_logs"
+export ROS_HOME="$run_dir/ros_home"
+mkdir -p "$ROS_LOG_DIR" "$ROS_HOME"
 if [[ "${POLINASI_LIDAR_RENDER_FIX:-1}" == 1 ]]; then
   python3 "$project_dir/tools/prepare_lidar_rendering.py" "$run_dir/rendering_resources"
   export GZ_RENDERING_RESOURCE_PATH="$run_dir/rendering_resources"

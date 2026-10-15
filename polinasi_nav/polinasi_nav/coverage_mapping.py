@@ -29,6 +29,7 @@ class SparseHistory:
         self.res = config['resolution']
         self.shape = tuple(np.ceil((np.asarray(config['bounds_max'])-self.lo)/self.res).astype(int))
         self.cells = {}  # flat global index -> (state, last measured timestamp)
+        self.assumptions = {}  # global index -> (FOV prior code, derivation stamp); not measured
         self.prior = set()  # Explicit fixed surveyed launch pad only.
         self.occupied_keys = set()
         self.observed_columns = set()
@@ -111,16 +112,36 @@ class SparseHistory:
         grid.state[tuple(local[live].T)] = values[live, 0].astype(np.int8)
         grid.seen[tuple(local[live].T)] = np.where(prior[live], now, values[live, 1])
 
+    def fov_priors(self,grid,origin=None,rotation=None,profile=None,stamp=None):
+        local=np.indices(grid.shape).reshape(3,-1).T
+        keys=np.ravel_multi_index(self.indices(grid.centers(local)).T,self.shape)
+        values=np.asarray([self.assumptions.get(int(k),(0.,-np.inf))[0] for k in keys])
+        grid.assumed_free[:]=(values.reshape(grid.shape)==1)
+        grid.assumed_occupied[:]=(values.reshape(grid.shape)==2)
+        if origin is None:return None
+        from .fixed_fov import classify
+        ids,codes=classify(grid,origin,rotation,profile)
+        global_ids=self.indices(grid.centers(ids))
+        keys=np.ravel_multi_index(global_ids.T,self.shape) if len(ids) else []
+        self.assumptions.update((int(k),(int(code),float(stamp))) for k,code in zip(keys,codes))
+        grid.assumed_free[tuple(ids.T)]=codes==1
+        grid.assumed_occupied[tuple(ids.T)]=codes==2
+        return global_ids,codes,float(stamp)
+
     def delta(self, keys):
         keys = np.asarray(sorted(set(keys)), dtype=np.int64)
         ids = np.column_stack(np.unravel_index(keys, self.shape)) if len(keys) else np.empty((0, 3), dtype=int)
         states = np.array([self.cells[int(k)][0] for k in keys], dtype=np.int8)
         stamps = np.array([self.cells[int(k)][1] for k in keys])
-        priors = np.array([int(k) in self.prior for k in keys])
+        priors = np.array([int(k) in self.prior for k in keys], dtype=bool)
         return ids, states, stamps, priors
 
     def apply_delta(self, delta):
-        ids, states, stamps, priors = delta
+        ids, states, stamps, priors = delta[:4]
+        if len(delta)==5:
+            fov_ids,codes,derived_stamp=delta[4]
+            fov_keys=np.ravel_multi_index(fov_ids.T,self.shape) if len(fov_ids) else []
+            self.assumptions.update((int(k),(int(code),float(derived_stamp))) for k,code in zip(fov_keys,codes))
         keys = np.ravel_multi_index(ids.T, self.shape) if len(ids) else []
         self.cells.update(zip(np.asarray(keys).tolist(), zip(states.tolist(), stamps.tolist())))
         self.occupied_keys.update(np.asarray(keys)[states == OCCUPIED].tolist())
@@ -142,7 +163,16 @@ class SparseHistory:
         for key in range(0, total, max(1, int(np.ceil(total/6000)))):
             if key not in self.cells:
                 unknown_samples.append(list(map(int, np.unravel_index(key, self.shape))))
+        measured_keys=set(map(int,keys))
+        assumed_keys=[k for k in self.assumptions if k not in measured_keys]
+        assumed_free=[list(map(int,np.unravel_index(k,self.shape))) for k in assumed_keys if self.assumptions[k][0]==1]
+        virtual_occupied=[list(map(int,np.unravel_index(k,self.shape))) for k in assumed_keys if self.assumptions[k][0]==2]
         return dict(format_version=2, frame='map', localisation_mode=mode,
+            assumed_free=assumed_free,assumed_occupied=virtual_occupied,
+            assumption_policy='persistent_user_FOV_prior_not_measured',
+            assumption_cell_indices=[list(map(int,np.unravel_index(k,self.shape))) for k in self.assumptions],
+            assumption_derivation_times=[v[1] for v in self.assumptions.values()],
+            assumption_codes=[v[0] for v in self.assumptions.values()],
             simulation_time=float(stamp), map_observation_time=float(self.last_observation_stamp) if np.isfinite(self.last_observation_stamp) else None,
             resolution=self.res, origin=self.lo.tolist(), shape=list(map(int, self.shape)),
             points=points, point_resolution=.1, point_limit_reached=truncated,
@@ -175,7 +205,7 @@ class RollingMapper:
         self.config = copy.deepcopy(config)
         self.history = SparseHistory(config)
 
-    def integrate(self, grid, origin, points, hits, stamp, pad, now, centre, roi=None, auxiliary=()):
+    def integrate(self, grid, origin, points, hits, stamp, pad, now, centre, roi=None, auxiliary=(), fixed_fov=None):
         started = time.perf_counter()
         changed = self.history.integrate(origin, points, hits, stamp, roi)
         lidar_stats = copy.deepcopy(self.history.last_integration_stats)
@@ -203,12 +233,16 @@ class RollingMapper:
         # Reapply only the fixed previously surveyed pad, never a moving bubble.
         updated.last_observation_stamp = stamp
         updated.version = grid.version+1
+        fov_delta=None
+        if self.config.get('fixed_fov_assumptions'):
+            fov_delta=self.history.fov_priors(updated,**fixed_fov) if fixed_fov is not None else self.history.fov_priors(updated)
         updated.rebuild(now)
         updated.mapping_roi_stats = lidar_stats
         updated.depth_roi_stats = depth_stats
         updated.depth_integrated_stamp = max((o[2] for o in auxiliary),
             default=getattr(grid,'depth_integrated_stamp',None))
         delta = self.history.delta(changed)
+        if fov_delta is not None:delta=(*delta,fov_delta)
         finished = time.perf_counter()
         updated.mapping_worker_stages = dict(lidar_wall_ms=(lidar_finished-started)*1000,
             depth_wall_ms=(depth_finished-lidar_finished)*1000,

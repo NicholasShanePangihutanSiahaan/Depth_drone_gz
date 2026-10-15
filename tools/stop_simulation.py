@@ -43,7 +43,7 @@ def request_stop(path, data):
 
 def reap_orphan_sitl(run):
     """Exact registered run cwd + SITL executable; never signal real FCUs."""
-    executable=ROOT/'.dependencies/ardupilot/build/sitl/bin/arducopter'
+    executable=(ROOT/'.dependencies/ardupilot/build/sitl/bin/arducopter').resolve()
     found=False
     for proc in Path('/proc').iterdir():
         if not proc.name.isdigit():continue
@@ -77,7 +77,11 @@ def main():
         if args.launcher is None:
             parser.error('--register requires --launcher')
         data = dict(launcher_pid=args.launcher, launcher_start_ticks=process_start(args.launcher),
-                    stopped=False, run=str(args.register), scope='simulation_only')
+                    stopped=False, run=str(args.register), scope='simulation_only',
+                    ros_domain_id=os.environ.get('ROS_DOMAIN_ID'),
+                    gazebo_partition=os.environ.get('GZ_PARTITION'),
+                    ros_log_dir=os.environ.get('ROS_LOG_DIR'),
+                    ports={'gazebo_sitl_udp':9002,'mavros_udp':14550,'sitl_tcp':5762})
         if not live(data):
             raise RuntimeError('refusing to register a non-project launcher')
         (args.register/'session.json').write_text(json.dumps(data, indent=2)+'\n')

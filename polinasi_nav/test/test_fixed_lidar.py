@@ -18,6 +18,7 @@ def test_fixed_config_and_world(tmp_path):
     path = ROOT / 'reports/fixed_lidar/inspection.json'
     c = load_config(path)
     assert c['lidar_fixed'] and not c['simulation_continuous_roll']
+    assert c['fixed_fov_assumptions'] and c['scan_adaptive_height'] and c['scan_target_repair']
     assert c['camera_mount_yaw'] == 0 and not c['camera_yaw_enabled']
     assert c['depth_camera_enabled'] and c['tree_exploration_same_altitude']
     prepare(ROOT/'polinasi_nav/worlds/palm_farm.sdf',tmp_path/'world.sdf',.15,path)

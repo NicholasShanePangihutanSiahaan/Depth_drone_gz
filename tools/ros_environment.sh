@@ -20,6 +20,6 @@ fi
 export ROS_LOCALHOST_ONLY=1
 # Keep mission/control topics apart from unrelated ROS sessions on this host.
 export ROS_DOMAIN_ID="${POLINASI_ROS_DOMAIN_ID:-86}"
-export GZ_PARTITION=polinasi_lidar
+export GZ_PARTITION="${POLINASI_GZ_PARTITION:-polinasi_lidar}"
 export OPENBLAS_NUM_THREADS=1
 export OMP_NUM_THREADS=1

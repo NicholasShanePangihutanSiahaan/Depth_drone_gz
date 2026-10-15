@@ -10,6 +10,7 @@ import zipfile
 import numpy as np
 
 ARRAYS = {'state': np.dtype('int8'), 'seen': np.dtype('float64'),
+          'assumed_free': np.dtype('bool'), 'assumed_occupied': np.dtype('bool'),
           'blocked': np.dtype('bool'), 'blocked_actual': np.dtype('bool'),
           'distance': np.dtype('float64'), 'free_distance': np.dtype('float64')}
 
@@ -54,6 +55,10 @@ def decode_window(payload, template):
     for name in ('distance', 'free_distance'):
         if not np.all(np.isfinite(arrays[name])):
             raise ValueError('invalid navigation snapshot distance')
+    if np.any(arrays['assumed_free'] & arrays['assumed_occupied']):
+        raise ValueError('conflicting FOV assumption masks')
+    if not template.c.get('fixed_fov_assumptions') and any(np.any(arrays[k]) for k in ('assumed_free','assumed_occupied')):
+        raise ValueError('FOV assumption masks require explicit opt-in')
     grid = copy.copy(template)
     grid.lo, grid.version, grid.last_observation_stamp = lo, int(metadata['version']), stamp
     for name, values in arrays.items():

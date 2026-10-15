@@ -34,6 +34,11 @@ def build_visual_snapshot(data):
             ids = np.argwhere(grid.state == state)
             ids = ids[::max(1, int(np.ceil(len(ids)/6000)))]
             markers.append(marker(grid.lo+(ids+.5)*grid.res, grid.res, 'voxels', identifier, colour))
+        if hasattr(grid,'assumed_free'):
+            for identifier,name,colour in [(3,'assumed_free',[.7,.3,1.,.15]),(4,'assumed_occupied',[1.,.7,.1,.4])]:
+                ids=np.argwhere((grid.state == -1) & getattr(grid,name))
+                ids=ids[::max(1,int(np.ceil(len(ids)/6000)))]
+                markers.append(marker(grid.lo+(ids+.5)*grid.res,grid.res,'FOV_prior_not_measured',identifier,colour))
         output['map_pub'] = serialize_message(MarkerArray(markers=markers))
         routes = dict(data['routes'])
         if data['trajectory'] is not None:

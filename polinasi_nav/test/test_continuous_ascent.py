@@ -85,7 +85,7 @@ def test_observation_guard_reserves_extra_space_without_weakening_footprint():
     ref,guarded = run_ascent(c,grid,5.)
     assert ref.reason=='observation_guard_limit'
     assert guarded[-1][0][2]<normal[-1][0][2]-.4
-    assert ref.diagnostics['observation_guard_m']==.5
+    assert abs(ref.diagnostics['observation_guard_m']-.6)<1e-8  # .5 m reserve rounds up at .2 m voxels
 
 
 def test_camera_gate_requires_down_pitch_and_new_integrated_depth():

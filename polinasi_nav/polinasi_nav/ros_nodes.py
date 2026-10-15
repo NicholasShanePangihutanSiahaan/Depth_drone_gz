@@ -39,6 +39,13 @@ from .coverage_mapping import (navigation_window, SparseHistory, initialise_roll
 from .coverage_mapping import rolling_input
 
 
+def localisation_imu_qos():
+    return QoSProfile(depth=256,history=qos_profile_sensor_data.history,
+        reliability=qos_profile_sensor_data.reliability,
+        durability=qos_profile_sensor_data.durability)
+
+
+
 def seconds(stamp):
     return stamp.sec+stamp.nanosec*1e-9
 
@@ -127,6 +134,7 @@ class LocalisationNode(ConfigNode):
             bootstrap_duration=2.2 if self.rolling_sensor else 0.,
             robust_planes=bool(self.c.get('sensor_fixed_localisation')))
         self.pending_scan=deque(maxlen=1)
+        self.scan_input_diagnostics={}
         self.localisation_diagnostics=self.create_publisher(String,'/localisation/debug',10)
         self.mount_rejection=''
         if self.rolling_sensor:
@@ -141,7 +149,7 @@ class LocalisationNode(ConfigNode):
             self.create_subscription(Odometry, '/simulation/ground_truth/odom', self.truth, qos_profile_sensor_data)
             self.get_logger().warning('GROUND-TRUTH LOCALISATION: planner isolation only')
         else:
-            self.create_subscription(Imu, '/simulation/body_imu' if self.rolling_sensor else '/livox/imu', self.imu, qos_profile_sensor_data)
+            self.create_subscription(Imu, '/simulation/body_imu' if self.rolling_sensor else '/livox/imu', self.imu, localisation_imu_qos())
             self.create_subscription(PointCloud2, '/livox/lidar',self.pending_scan.append if self.rolling_sensor else self.scan, qos_profile_sensor_data)
             self.get_logger().warning('SENSOR LOCALISATION: experimental IMU-predicted ICP')
         self.create_timer(0.1, self.health)
@@ -230,6 +238,11 @@ class LocalisationNode(ConfigNode):
             self.pending_scan.clear()
             self.mount_rejection='scan_too_old_or_out_of_order'
             return
+        if self.last_imu+1e-9<seconds(msg.header.stamp):
+            # Do not correct the state at scan time then integrate leftover
+            # pre-scan IMU packets as if they belonged AFTER the correction.
+            self.mount_rejection='waiting_for_scan_time_imu'
+            return
         try:
             transform=self.mount_buffer.lookup_transform('base_link','mid360',Time.from_msg(msg.header.stamp))
         except TransformException:
@@ -247,9 +260,23 @@ class LocalisationNode(ConfigNode):
         if msg.header.frame_id != 'mid360' or not self.valid_time(msg.header.stamp):
             return
         stamp = seconds(msg.header.stamp)
-        while self.pending_imu and self.pending_imu[0][0] <= stamp:
+        input_r=self.estimator.r.copy()
+        integrated=[]
+        imu_intervals=[]
+        while self.pending_imu and self.pending_imu[0][0] <= stamp+1e-9:
             imu_stamp, gyro, acceleration = self.pending_imu.popleft()
+            if self.estimator.last_imu is not None:
+                imu_intervals.append(imu_stamp-self.estimator.last_imu)
             self.estimator.imu(gyro, acceleration, imu_stamp)
+            integrated.append((imu_stamp,float(np.linalg.norm(gyro)),float(np.linalg.norm(acceleration))))
+        self.scan_input_diagnostics=dict(scan_stamp=stamp,imu_samples=len(integrated),
+            first_imu_stamp=integrated[0][0] if integrated else None,
+            last_imu_stamp=integrated[-1][0] if integrated else None,
+            max_imu_interval_seconds=max(imu_intervals,default=0.),
+            peak_gyro_rad_s=max((s[1] for s in integrated),default=0.),
+            peak_acceleration_mps2=max((s[2] for s in integrated),default=0.),
+            predicted_rotation_delta_rad=float(np.linalg.norm(Rotation.from_matrix(self.estimator.r@input_r.T).as_rotvec())),
+            mount_rotation_rpy=Rotation.from_matrix(self.estimator.mount_r).as_euler('xyz').tolist())
         points = cloud_points(msg)
         ranges = np.linalg.norm(points, axis=1)
         points = points[(ranges >= self.c['lidar_min_range']) & (ranges < self.c['lidar_range']-0.05)]
@@ -278,6 +305,9 @@ class LocalisationNode(ConfigNode):
                 calibrated_gravity_mps2=e.gravity_magnitude,gyro_bias=e.gyro_bias.tolist(),
                 keyframes=len(e.keyframes),translation_information=e.translation_information,
                 registration=e.last_registration,
+                scan_inputs=getattr(self,'scan_input_diagnostics',{}),
+                received_imu_stamp=self.last_imu if math.isfinite(self.last_imu) else None,
+                pending_imu_count=len(getattr(self,'pending_imu',())),
                 imu_shock_until=e.imu_shock_until if np.isfinite(e.imu_shock_until) else None,
                 registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
                 reference_points=0 if e.reference is None else len(e.reference),
@@ -699,6 +729,10 @@ class NavigationNode(ConfigNode):
         from .mapping import select_rays
         selected = select_rays(hits, sequence, stride, free_stride)
         world_points, ray_hits = (points@matrix.T+origin)[selected], hits[selected]
+        fixed_fov=None
+        if self.c.get('fixed_fov_assumptions'):
+            from .fixed_fov import boundary_profile
+            fixed_fov=dict(origin=origin,rotation=matrix,profile=boundary_profile(points,hits),stamp=stamp)
         self.mapping_ray_counts = dict(surface_rays=int(ray_hits.sum()),
             no_return_rays=int((~ray_hits).sum()), surface_stride=stride,
             no_return_stride=free_stride, sequence=sequence)
@@ -721,7 +755,7 @@ class NavigationNode(ConfigNode):
             self.depth_job_trace = dict(submitted_sim_time=self.now(),
                 lidar_stamp=stamp, depth_stamps=[float(o[2]) for o in auxiliary])
             self.map_future = self.map_worker.submit(timed_job, integrate_rolling_snapshot, submitted, snapshot, origin,
-                world_points, ray_hits, stamp, pad, now, self.pose.copy(), roi, auxiliary)
+                world_points, ray_hits, stamp, pad, now, self.pose.copy(), roi, auxiliary, fixed_fov)
         else:
             self.map_future = self.map_worker.submit(timed_job, integrate_snapshot, submitted, snapshot, origin, world_points, ray_hits, stamp, pad, now)
 
@@ -1039,7 +1073,8 @@ class NavigationNode(ConfigNode):
         return result
 
     def publish_status(self, now, health_reason=''):
-        status = {'simulation_time': float(now), 'mode': self.get_parameter('mode').value, 'flight': self.flight_stage,
+        from .fixed_fov import status as fov_status
+        status = {'fixed_fov_assumptions':fov_status(self.grid),'simulation_time': float(now), 'mode': self.get_parameter('mode').value, 'flight': self.flight_stage,
                    'route_blockage': self.controller.route_blockage,
                    'speed_diagnostics': getattr(self.controller, 'speed_diagnostics', {}),
                    'predictive_alignment': getattr(self, 'predictive_alignment', {}),

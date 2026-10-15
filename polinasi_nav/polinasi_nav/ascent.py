@@ -2,6 +2,7 @@
 import math
 import numpy as np
 from .planning import Brake, brake_safe
+from .mapping import vertical_guard
 
 
 class ContinuousAscent:
@@ -12,7 +13,7 @@ class ContinuousAscent:
         self.speed = min(config['command_speed'],config.get('tree_ascent_speed',.12))
         # Additional observed buffer for foliage revealed during normalization.
         # Unknown stays blocked and the normal vehicle footprint is unchanged.
-        self.guard = float(config.get('tree_ascent_observation_guard',0.))
+        self.guard = vertical_guard(config)
         if not math.isfinite(self.guard) or self.guard<0:
             raise ValueError('invalid ascent observation guard')
         if not math.isfinite(self.height) or not math.isfinite(self.speed) or self.speed<=0 or not math.isfinite(self.c['reaction_time']):

@@ -3,6 +3,8 @@
 set -eo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
+export POLINASI_ROS_DOMAIN_ID="${POLINASI_ROS_DOMAIN_ID:-96}"
+export POLINASI_GZ_PARTITION="${POLINASI_GZ_PARTITION:-polinasi_fixed_lidar}"
 source tools/ros_environment.sh
 stage="${1:-hover}"
 folder="$project_dir/reports/fixed_lidar_validation_$(date +%Y%m%d_%H%M%S)"
@@ -45,7 +47,9 @@ for attempt in {1..3}; do
   fi
 done
 [[ "$setup_ready" == 1 ]] || { echo 'Setup failed; no arming command sent'; exit 1; }
-/usr/bin/python3 tools/audit_sensor_localisation.py --output "$folder/accuracy.jsonl" --seconds 5400 --stop-run "$run_dir" > "$folder/audit.log" 2>&1 &
+viewer_args=()
+if [[ "${POLINASI_RVIZ_AFTER_APPROACH:-0}" == 1 ]]; then viewer_args=(--rviz-after-approach); fi
+/usr/bin/python3 tools/audit_sensor_localisation.py "${viewer_args[@]}" --output "$folder/accuracy.jsonl" --seconds 5400 --stop-run "$run_dir" > "$folder/audit.log" 2>&1 &
 audit_pid=$!
 /usr/bin/python3 tools/start_mission.py --timeout 120 > "$folder/start.log" 2>&1
 echo "Mission started ($stage). Audit: $folder/audit.log"
