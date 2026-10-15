@@ -325,3 +325,65 @@ Build final: tiga paket berhasil; **402 tes lulus**, 0 error/failure/skipped,
 80.30 s pytest. Tes tambahan buffer canopy backup scan: **1 lulus**.
 Log build lokal `/tmp/fixed_super_adaptation_build.log`. Commit/push sebelum
 flight baru; tidak menjalankan suite berat bersamaan dengan flight.
+
+
+## Flight headless 3408675, fault planner dan penghentian
+
+Instruksi terbaru: simulasi tanpa window dan berhenti jika ada masalah.
+Run validasi `reports/fixed_lidar_validation_20261015_211854`; runtime
+`.dependencies/ros_sensor_palm_farm_20261015_211856_11929_mapping`.
+ROS domain 96, partition polinasi_fixed_lidar, UDP MAVROS 14650/GZ 9002,
+TCP SITL 5762. Tidak ada GUI dibuka. Auditor menghentikan run ketika fault;
+session.json stopped=true dan stop_requested=true. Stop ulang terdaftar
+tidak menemukan proses aktif; pemeriksaan port/proses tidak menunjukkan sisa
+run. Tidak mematikan proses sesi lain dan tidak menjalankan ulang simulasi.
+
+Pada t=22.8 s: SURVEY→BRAKE, tree_phase APPROACH, tree ID3,
+failure survey_planner_error, replans=0. Takeoff mencapai altitude
+1.996857 m; belum ada sektor inspeksi valid. Health lokalisasi tetap baik.
+138 pasangan audit posisi: RMSE .0103701 m, maksimum .026079 m.
+Reference speed .0004432 m/s, measured speed .01229 m/s, tracking error
+.02054 m. Backup eksplisit valid, executed=true, trigger survey_planner_error,
+live_rechecked=true, durasi .3 s; status ini tidak membuktikan keselamatan
+semua fault atau keberhasilan landing/disarm sebelum simulator dihentikan.
+
+Worker exception ditangkap generik sehingga type/message hilang. Tidak ada
+bukti dari traceback shutdown untuk menyimpulkan exception asal. Rekonstruksi
+offline peta ekspor t=22.811 s/observasi 22.6 s, window [-5,-5.2,-.6],
+shape 50×50×40, start [.0126238,-.0174908,1.9887571], endpoint
+[3.9017264,-.0192487,1.9950210], memunculkan ValueError
+no robust route braking envelope. Tiga ruas awal lolos; semua lima faktor
+speed pada ruas terminal gagal (braking_box_blocked/reaction_segment_blocked).
+Profil meminta speed maju pada endpoint, walau endpoint kurva harus diam.
+
+Perbaikan offline: pre-profile ruas terminal memakai taper ke nol; checker
+kurva/PID/live-map tetap utuh. Tidak mengubah occupied/unknown, FOV pengguna,
+clearance, batas speed/acc/jerk atau sensor timeout. Exception worker kini
+mencatat gate, exception_type, message dalam route_failure_diagnostics.
+Regresi dinding diperjelas untuk menguji perlambatan sebelum tikungan,
+terpisah dari terminal berhenti. Ditambahkan unknown frontier dengan terminal
+berhenti dan regresi penyimpanan detail exception.
+
+20 tes adaptasi lulus. Rekonstruksi baru: geometri safe, durasi awal
+14.603775 s, sertifikasi braking seluruh kurva .05 s lolos pada upaya kedua
+dengan durasi 20.445285 s. Angka ini lintasan offline, bukan flight. Data di
+`reports/fixed_lidar_validation_20261015_211854/terminal_profile_reconstruction.json`.
+Karena peta ekspor bukan snapshot worker, penyebab run asli tetap inferensi
+kuat; bug pre-profile terbukti lewat reproduksi dan regresi. Tidak ada klaim
+flight perbaikan baru berhasil. Build/suite akhir dicatat setelah selesai.
+
+Map/cloud/voxel tersimpan pada
+`reports/ros_sensor_palm_farm_20261015_211856_11929_mapping/map_3d/`
+(map.json, map.html, mission_status.json, navigation_debug.jsonl).
+Log numerik pada accuracy*.jsonl dan accuracy.summary.json di direktori
+validasi. Tidak ada dua pohon selesai, return, landing atau disarm tervalidasi.
+
+
+Verifikasi akhir perbaikan terminal: tiga paket berhasil build, seluruh
+**405 tes lulus**, 0 error/failure/skipped, 80.00 s. Log lokal
+`/tmp/fixed_terminal_build.log`. Setelah itu ditemukan status route_speed_profile
+belum disalin dari clone worker ke controller live. Ditambahkan penerusan
+status untuk rute awal dan moving handoff; **44 tes adaptasi/handoff lulus**
+(18.33 s), termasuk assertion diagnostik pada replay async. Log
+`/tmp/fixed_terminal_diagnostics_tests.log`. Tidak ada flight baru untuk kedua
+perbaikan ini. Perubahan teruji di-commit/push hanya ke fixed-lidar.

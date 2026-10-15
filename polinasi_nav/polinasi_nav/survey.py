@@ -260,7 +260,9 @@ class SurveyController(MovingHandoff, MissionController):
             return False
         try:
             clone, ready = self.pending_plan.result()
-        except Exception:
+        except Exception as exc:
+            self.route_failure_diagnostics = dict(gate='survey_worker',
+                exception_type=type(exc).__name__, message=str(exc))
             self.pending_plan = None
             self.fail('survey_planner_error')
             return False
@@ -301,6 +303,7 @@ class SurveyController(MovingHandoff, MissionController):
                     'subgoal_diagnostics'):
             if hasattr(clone,key):
                 setattr(self,key,getattr(clone,key))
+        self.route_speed_profile = getattr(clone, 'route_speed_profile', {})
         self._accept_plan_auxiliary(clone,ready)
         return ready
 

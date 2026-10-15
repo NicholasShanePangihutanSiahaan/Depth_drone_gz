@@ -75,16 +75,22 @@ def densify(points,spacing):
 def route_speed_limits(grid,points,c,maximum):
     """Local pre-profile; whole-curve braking certification still follows."""
     caps=[];reasons=[]
-    for p,q in zip(points[:-1],points[1:]):
-        direction=(q-p)/np.linalg.norm(q-p)
+    for index,(p,q) in enumerate(zip(points[:-1],points[1:])):
+        length=np.linalg.norm(q-p)
+        direction=(q-p)/length
+        terminal=index==len(points)-2
         cap=0.;rejected=[]
         samples=np.linspace(p,q,max(2,int(np.ceil(np.linalg.norm(q-p)/.5))+1))
         for factor in (1.,.85,.7,.5,.3):
             speed=maximum*factor
-            checks=[]
             for point in samples:
+                # A terminal knot stops. Requiring cruise speed at that knot
+                # asks for unused space BEYOND the route's destination.
+                # This taper is only a pre-profile; the actual PVA curve must
+                # still pass the unchanged whole-curve braking certificate.
+                trial=speed*(np.linalg.norm(q-point)/length if terminal else 1.)
                 detail={}
-                if not feedback_brake_safe(grid,point,direction*speed,np.zeros(3),c,detail):
+                if not feedback_brake_safe(grid,point,direction*trial,np.zeros(3),c,detail):
                     rejected.append(detail.get('reason'));break
             else:
                 cap=speed;break

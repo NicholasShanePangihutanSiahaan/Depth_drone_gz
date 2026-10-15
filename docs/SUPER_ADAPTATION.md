@@ -31,7 +31,8 @@ jerk 1.0, clearance, tracking limit, dan health timeout tidak dinaikkan.
 Ketidakpastian lebih besar dari skenario tersebut tetap dapat memicu stop.
 
 Profil per ruas mengecek sampel koridor menuju depan; hasilnya adalah
-pre-profile, bukan sertifikat seluruh kurva. Batas kurvatur dan propagasi
+pre-profile, bukan sertifikat seluruh kurva. Ruas terakhir memakai taper menuju
+kecepatan nol; titik berhenti tidak memerlukan ruang jelajah di luar tujuan. Batas kurvatur dan propagasi
 forward/backward membuat drone melambat sebelum ruas sulit. Pencarian waktu
 mempertahankan PVA setiap sambungan, memeriksa bound hull turunan dan geometri,
 lalu planner bersama memeriksa braking .05 s sepanjang hasil akhir. Buffer
@@ -101,3 +102,21 @@ Tidak menyalin implementasi rotating-lidar atau memasukkan GT ke mode sensor.
 Untuk build, launch headless, stop berdasarkan session, dan lokasi cloud/map,
 lihat [FIXED_LIDAR.md](FIXED_LIDAR.md). Jangan menjalankan suite tes berat saat
 flight mengukur timing.
+
+
+## Flight pertama dan perbaikan offline berikutnya
+
+Run `reports/fixed_lidar_validation_20261015_211854` memakai 3408675,
+headless. Takeoff mencapai sekitar 2 m, kemudian fault `survey_planner_error`
+pada t=22.8 s saat menyiapkan APPROACH. Auditor menghentikan run; session.json
+menandai stopped=true. Backup eksplisit tercatat valid dan executed dengan
+live_rechecked=true. Misi dua pohon/return/landing/disarm belum tercapai.
+
+Rekonstruksi memakai ekspor peta t=22.811 s (observasi terakhir 22.6 s),
+bukan snapshot worker persis. Profil lama gagal di ruas terakhir karena
+meminta kecepatan maju bahkan pada titik tujuan yang harus berhenti.
+Taper terminal memperbaiki reproduksi tersebut; kurva lolos geometri dan
+sertifikasi braking .05 s setelah dua upaya retiming. Exception worker asli
+tidak menyimpan detail, sehingga kesamaan dengan penyebab run asli masih
+inferensi. Sekarang type/message exception worker dicatat. Tidak ada restart
+simulasi setelah fault; perbaikan terminal baru diuji offline.

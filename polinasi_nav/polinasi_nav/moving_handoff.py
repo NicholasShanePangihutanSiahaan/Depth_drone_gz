@@ -92,6 +92,7 @@ class MovingHandoff:
             self.goal_yaw=clone.goal_yaw;self.batch_end_index=clone.batch_end_index;self.batch_knots=clone.batch_knots
             self.phase=AdaptivePhase(self.c);self.checked_map_version=-1
             self.paths.append(self.trajectory.points.copy());self.replans+=1
+            self.route_speed_profile=getattr(clone,'route_speed_profile',{})
             self._accept_plan_auxiliary(clone,True)
             self.moving_status.update(accepted=self.moving_status['accepted']+1,reason='accepted_C2_live_map_checked',
                 simulation_time=float(now),position=before[0].tolist(),speed_mps=float(np.linalg.norm(before[1])),

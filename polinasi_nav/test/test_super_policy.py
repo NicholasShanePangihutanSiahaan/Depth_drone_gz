@@ -70,11 +70,11 @@ def test_convex_voxel_corridor_rejects_unknown_and_occupied_hull(state):
 
 def test_route_profile_slows_before_forward_wall_and_rejects_fully_blocked_route():
     c,g=fixture()
-    points=np.array([[0.,0.,2.],[1.,0.,2.],[2.,0.,2.]])
+    points=np.array([[0.,0.,2.],[1.,0.,2.],[2.,0.,2.],[2.,2.,2.]])
     normal,_=route_speed_limits(g,points,c,reference_speed(c))
     g.state[tuple(g.indices([2.8,0.,2.]))]=OCCUPIED;g.rebuild(0.)
     reduced,diag=route_speed_limits(g,points,c,reference_speed(c))
-    assert reduced[-1]<normal[-1] and diag['rejected_reasons'][-1]
+    assert reduced[-2]<normal[-2] and diag['rejected_reasons'][-2]
     g.state[tuple(g.indices([1.,0.,2.]))]=OCCUPIED;g.rebuild(0.)
     with pytest.raises(ValueError):route_speed_limits(g,points,c,reference_speed(c))
 
@@ -187,6 +187,8 @@ def test_moving_replay_includes_PID_envelope_timing_and_async_backup_switch():
     assert ctl.moving_status['accepted']>=1
     assert max(ctl.moving_status['PVA_jump'])<1e-8
     assert ctl.moving_status['switch_backup']['stop']['valid']
+    assert ctl.route_speed_profile['segment_speed_limits_mps']
+    assert not ctl.route_speed_profile['whole_curve_certificate']
 
 
 def test_cached_backup_flag_does_not_suppress_new_occupied_or_unknown():
@@ -206,3 +208,33 @@ def test_scan_backup_retains_reserved_overhead_buffer():
     p=np.array([0.,0.,2.]);v=np.array([.2,0.,0.]);a=np.zeros(3)
     assert explicit_backup(g,p,v,a,c)[0] is not None
     assert explicit_backup(backup_grid(ctl),p,v,a,c)[0] is None
+
+
+def test_terminal_stop_does_not_require_cruise_space_past_destination():
+    c,g=fixture()
+    # Endpoint remains observed free; unknown immediately beyond its body
+    # envelope must stay blocked, rather than being relabelled free.
+    g.state[g.indices([2.6,0.,2.])[0]:,:,:]=UNKNOWN
+    g.rebuild(0.)
+    points=np.array([[0.,0.,2.],[1.,0.,2.],[2.,0.,2.]])
+    assert g.safe(points[-1])
+    assert not feedback_brake_safe(g,points[-1],[reference_speed(c),0.,0.],np.zeros(3),c)
+    caps,detail=route_speed_limits(g,points,c,reference_speed(c))
+    assert np.all(caps>0) and not detail['whole_curve_certificate']
+    assert g.state[tuple(g.indices([3.,0.,2.]))]==UNKNOWN
+    ctl=SurveyController(c,g,asynchronous=False);ctl.state='SURVEY'
+    tr=ctl._trajectory_from_points(points)
+    assert tr.safe(g)
+    np.testing.assert_allclose(tr.sample(tr.duration)[1:],0.,atol=1e-8)
+
+
+def test_survey_worker_failure_retains_exception_reason():
+    from concurrent.futures import Future
+    c,g=fixture();ctl=SurveyController(c,g,asynchronous=True)
+    job=Future();job.set_exception(ValueError('no robust route braking envelope'))
+    ctl.pending_plan=job
+    assert not ctl._prepare_trajectory(0.,np.array([0.,0.,2.]),None,None)
+    assert ctl.failure=='survey_planner_error'
+    assert ctl.route_failure_diagnostics==dict(gate='survey_worker',
+        exception_type='ValueError',message='no robust route braking envelope')
+    ctl.executor.shutdown(wait=True)

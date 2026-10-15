@@ -111,8 +111,8 @@ build/install/run/log fixed-lidar dibuat terpisah.
 cd /home/abin/polinasi_lidar_fixed
 bash tools/build_ros.sh
 # Jalankan HANYA setelah instruksi pengguna untuk mulai simulasi.
-# Awal headless; RViz dibuka sekali SETELAH approach pertama selesai:
-POLINASI_RVIZ_AFTER_APPROACH=1 bash tools/run_fixed_lidar_validation.sh inspection
+# Instruksi terbaru: seluruh run headless, berhenti bila terjadi fault.
+POLINASI_RVIZ_AFTER_APPROACH=0 bash tools/run_fixed_lidar_validation.sh inspection
 # Alternatif reproduksi hover:
 bash tools/run_fixed_lidar_validation.sh hover
 ```
