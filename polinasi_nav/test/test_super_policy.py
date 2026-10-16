@@ -189,6 +189,18 @@ def test_moving_replay_includes_PID_envelope_timing_and_async_backup_switch():
     assert ctl.moving_status['switch_backup']['stop']['valid']
     assert ctl.route_speed_profile['segment_speed_limits_mps']
     assert not ctl.route_speed_profile['whole_curve_certificate']
+    # Continue through the previously untested return transition with the
+    # same async/PID/profile stack, rather than stopping the test at RETURN.
+    for step in range(1600):
+        now+=.05;ctl.health=Health(now,now,now,True);g.last_observation_stamp=now
+        ctl.global_route=dict(goal=[0.,0.,2.],path=[ctl.command.tolist(),[0.,0.,2.]],
+                              stamp=now,partial=False,request_id=2000+step)
+        p=ctl.command.copy();v=ctl.command_v.copy()
+        ctl.tick(now,.05,p,v);pid.apply(.05,ctl,p,v)
+        if ctl.state!='RETURN' or ctl.failure:break
+    assert not ctl.failure and ctl.state=='DESCEND'
+    assert not ctl.batch_knots and ctl.batch_end_index is None
+    assert np.linalg.norm(ctl.command-np.array([0.,0.,2.]))<.12
 
 
 def test_cached_backup_flag_does_not_suppress_new_occupied_or_unknown():
@@ -235,8 +247,9 @@ def test_survey_worker_failure_retains_exception_reason():
     ctl.pending_plan=job
     assert not ctl._prepare_trajectory(0.,np.array([0.,0.,2.]),None,None)
     assert ctl.failure=='survey_planner_error'
-    assert ctl.route_failure_diagnostics==dict(gate='survey_worker',
-        exception_type='ValueError',message='no robust route braking envelope')
+    assert all(ctl.route_failure_diagnostics[k]==v for k,v in dict(gate='survey_worker',
+        exception_type='ValueError',message='no robust route braking envelope').items())
+    assert 'ValueError: no robust route braking envelope' in ctl.route_failure_diagnostics['exception_traceback']
     ctl.executor.shutdown(wait=True)
 
 
@@ -373,3 +386,36 @@ def test_backup_failure_keeps_mask_witness_and_critical_snapshot_beyond_budget(t
     for _ in range(8):save_failure_snapshot(ctl,dict(reason='ordinary'))
     critical=dict(reason='pid_final_safety');save_failure_snapshot(ctl,critical)
     assert (tmp_path/'failure_critical.npz').exists() and len(list(tmp_path.glob('*.npz')))==9
+
+
+
+def test_return_clears_scan_batch_indices_before_new_route_densification():
+    c,g=fixture();c.update(history_route_enabled=True,history_route_local_lookahead=4.)
+    ctl=SurveyController(c,g,asynchronous=False)
+    ctl.state='RETURN';ctl.command=np.array([3.,0.,2.])
+    ctl.global_route=dict(goal=[0.,0.,2.],path=[[3.,0.,2.],[0.,0.,2.]],stamp=0.,partial=False,request_id=1)
+    ctl.batch_end_index=23;ctl.batch_knots={16:3,23:9}
+    assert ctl._prepare_trajectory(0.,ctl.command)
+    assert not ctl.failure and ctl.trajectory.safe(g)
+    assert ctl.batch_knots=={} and ctl.batch_end_index is None
+    np.testing.assert_allclose(ctl.goal,c['home'])
+    np.testing.assert_allclose(ctl.trajectory.sample(ctl.trajectory.duration)[1:],0.,atol=1e-8)
+
+
+def test_direct_return_curve_does_not_remap_stale_scan_indices():
+    c,g=fixture();ctl=SurveyController(c,g,asynchronous=False)
+    ctl.state='RETURN';ctl.batch_knots={23:9};ctl.batch_end_index=23
+    tr=ctl._trajectory_from_points([[3.,0.,2.],[0.,0.,2.]])
+    assert tr.safe(g) and not ctl.batch_knots and ctl.batch_end_index is None
+
+
+def test_new_survey_route_preserves_correct_anchor_mapping_after_densification():
+    c,g=fixture();c.update(survey_waypoints=[[1.,0.,2.],[2.,0.,2.],[3.,0.,2.]],trajectory_spacing_m=.4)
+    ctl=SurveyController(c,g,asynchronous=False);ctl.state='SURVEY';ctl.command=np.array([0.,0.,2.])
+    ctl.batch_knots={23:99};ctl.batch_end_index=23
+    assert ctl._choose_goal(ctl.command)
+    points=ctl._plan_route(ctl.command,ctl.goal)
+    tr=ctl._trajectory_from_points(points)
+    assert set(ctl.batch_knots)=={0,1,2}
+    for anchor,knot in ctl.batch_knots.items():
+        np.testing.assert_allclose(tr.points[knot],ctl.waypoints[anchor])

@@ -3,6 +3,7 @@ import copy
 import math
 import multiprocessing
 import time
+import traceback
 from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 from .control import MissionController
@@ -266,7 +267,8 @@ class SurveyController(MovingHandoff, MissionController):
             clone, ready = self.pending_plan.result()
         except Exception as exc:
             self.route_failure_diagnostics = dict(gate='survey_worker',
-                exception_type=type(exc).__name__, message=str(exc))
+                exception_type=type(exc).__name__, message=str(exc),
+                exception_traceback=traceback.format_exc(limit=6))
             self.pending_plan = None
             self.fail('survey_planner_error')
             return False
@@ -317,6 +319,10 @@ class SurveyController(MovingHandoff, MissionController):
         pass
 
     def _plan_route(self, start, goal):
+        # Anchor->knot indices belong to ONE newly generated survey route.
+        # Return/exploration routes must never inherit the previous scan batch.
+        self.batch_end_index=None
+        self.batch_knots={}
         route = super()._plan_route(start, goal)
         if not self.c.get('continuous_survey', False) or self.state != 'SURVEY' or route is None:
             return route
@@ -348,6 +354,9 @@ class SurveyController(MovingHandoff, MissionController):
                  'navigation_default_speed')
             speed=self.c.get(key)
         policy_config=self.c
+        if self.state!='SURVEY':
+            self.batch_end_index=None
+            self.batch_knots={}
         if self.c.get('duration_optimisation') and self.c.get('continuous_survey'):
             from .super_policy import densify
             points,knots=densify(np.asarray(points),self.c['trajectory_spacing_m'])

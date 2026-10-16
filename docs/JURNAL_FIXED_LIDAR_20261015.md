@@ -589,3 +589,49 @@ akhir dicatat berikut sebelum push dan flight baru.
 
 Build tiga paket berhasil; **418 tes lulus**,0 error/failure/skipped,87.86 s.
 Log `/tmp/fixed_map_reserve_build.log`. Commit/push sebelum flight berikutnya.
+
+
+## 16 Oktober 2026 — dua pohon valid, bug metadata pada return
+
+Run879d89e `fixed_lidar_validation_20261016_120222`, session
+`.dependencies/ros_sensor_palm_farm_20261016_120224_11883_mapping`:
+TAKEOFF9.4; tree2 APPROACH20.65→65.75 s (45.10 s), ASCEND→SCAN75.45 s,
+tree2 complete154.25 s dengan6/6 sektor valid. Tree4 APPROACH154.30→202.25 s
+(47.95 s), ASCEND→SCAN223.10 s, complete304.35 s dengan6/6 sektor valid.
+RETURN304.40 s, worker fault305.30 s: KeyError '3', survey_planner_error.
+Auditor stop, session stopped=true, stop ulang tidak men-signal proses lain.
+2962 pasangan pose RMSE .0172643 m/max .0423100 m; sensor tracking.
+Tidak ada return/landing/disarm berhasil, meskipun dua inspeksi selesai.
+
+Cadangan planning bekerja pada kasus run ini: scan pertama31.2539 s setelah
+dua upaya/3.2091 s worker; scan kedua29.3012 s/dua upaya/3.8409 s worker.
+Initial approach16.6536 s/1.5653 s worker. Sembilan handoff diterima,11
+ditolak dalam kondisi guard/deadline/reference; bukan misi minimum waktu
+global atau jaminan statistik. Kamera continuous_front_tree dan12 sektor
+valid tersimpan pada tree_scan_records/accuracy.navigation.jsonl. Tidak
+menyimpulkan keberhasilan misi penuh dari orbit/coverage saja.
+
+Root cause direproduksi tanpa simulator: SurveyController stateRETURN,
+command[3,0,2], batch_end_index23 dan batch_knots{16:3,23:9};
+_prepare_trajectory→_trajectory_from_points→knots[knot] menghasilkan
+KeyError3 pada survey.py. _plan_route dulu mengembalikan return route
+sebelum mereset metadata batch scan; densify route baru memakai indeks
+route lama. Ini lifecycle data, bukan error koordinat, sensor, atau braking.
+
+Perbaikan: reset batch_end_index/batch_knots pada awal setiap _plan_route;
+_trajectory_from_points di luar SURVEY tidak membawa metadata anchor scan.
+Tidak memfilter indeks invalid diam-diam pada fase scan. Worker exception
+kini menyimpan traceback agar lokasi remote diketahui. Regresi mencakup
+return dengan metadata scan stale, direct return curve, dan anchor mapping
+SURVEY setelah densifikasi tetap benar. Replay async/PID yang tadinya selesai
+di stateRETURN diperpanjang sampai home/DESCEND.
+
+Tes awal salah mengharapkan home pada mode legacy yang memang memilih prefix
+2 m. Skenario diperbaiki ke history-route mode yang dipakai flight, bukan
+mengubah algoritma agar cocok tes. Suite lengkap awal420pass/1assertionfail;
+suite final diulang setelah koreksi fixture. Hasil dicatat sebelum push/run.
+Ini perbaikan invariant state; tidak memerlukan algoritma paper baru dan
+tidak mengubah clearance/timeout/FOV/controller/publisher.
+
+Build tiga paket berhasil; **421 tes lulus**,0 error/failure/skipped,90.85 s.
+Log `/tmp/fixed_return_metadata_final_build.log`. Commit/push sebelum full run.

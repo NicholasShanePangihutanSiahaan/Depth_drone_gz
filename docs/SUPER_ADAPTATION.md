@@ -257,3 +257,12 @@ target+reserve; pada roof, preferred height diturunkan dalam observed corridor.
 Ini margin engineering, bukan TEB formal [FaSTrack](https://arxiv.org/abs/2102.07039)
 atau jaminan terhadap perubahan lingkungan. Critical PID snapshot dan witness
 guard diperluas untuk audit. Detail angka/replay dan hasil tes ada di jurnal.
+
+
+## Status flight dan transisi return
+
+Run879d89e menyelesaikan dua pohon (12 sektor valid) tetapi gagal saat return
+karena metadata anchor scan dipakai pada densifikasi route baru. Lifecycle
+metadata diperbaiki per-route/per-phase dan regresi async/PID diperpanjang
+sampai home/DESCEND. Ini belum berarti full flight landing/disarm berhasil;
+run lengkap berikut tetap diperlukan. Tidak mengubah kebijakan keselamatan.
