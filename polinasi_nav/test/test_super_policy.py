@@ -361,3 +361,15 @@ def test_pending_worker_does_not_extend_existing_blocked_timeout():
     ctl.command=np.array([0.,0.,2.]);ctl.blocked_since=0.;ctl.pending_plan=Future()
     assert not ctl._prepare_trajectory(2.1,ctl.command)
     assert ctl.failure=='blocked_route' and not ctl.pending_plan.done()
+
+
+def test_backup_failure_keeps_mask_witness_and_critical_snapshot_beyond_budget(tmp_path):
+    from polinasi_nav.planner_recovery import save_failure_snapshot
+    c,g=fixture();p=np.array([0.,0.,2.]);g.state[tuple(g.indices(p))]=UNKNOWN;g.rebuild(0.)
+    stop,detail=explicit_backup(g,p,np.zeros(3),np.zeros(3),c)
+    assert stop is None and not detail['start_safe']
+    assert detail['rejections'][0]['path_reason']=='braking_box_blocked'
+    c['planner_audit_dir']=str(tmp_path);ctl=SurveyController(c,g,asynchronous=False)
+    for _ in range(8):save_failure_snapshot(ctl,dict(reason='ordinary'))
+    critical=dict(reason='pid_final_safety');save_failure_snapshot(ctl,critical)
+    assert (tmp_path/'failure_critical.npz').exists() and len(list(tmp_path.glob('*.npz')))==9

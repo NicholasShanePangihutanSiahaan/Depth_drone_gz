@@ -210,7 +210,7 @@ def explicit_backup(grid,p,v,a,c,optimise=False):
                 matrix=[[t**3,t**4,t**5],[3*t*t,4*t**3,5*t**4],[6*t,12*t*t,20*t**3]]
                 coeff[3:]=np.linalg.solve(matrix,[q-p-v*t-a*t*t/2,-v-a*t,-a])
                 trial.coeff=coeff;trial.duration=t;candidates.append(trial)
-    best=None
+    best=None;rejections=[]
     for candidate in candidates:
         t=candidate.duration
         control=np.zeros((6,3))
@@ -221,12 +221,18 @@ def explicit_backup(grid,p,v,a,c,optimise=False):
         for order in range(1,4):
             derivative=(6-order)*np.diff(derivative,axis=0)/t
             bounds.append(derivative_bound(derivative,depth=2))
-        if any(b>limit+1e-8 for b,limit in zip(bounds,(c['speed'],c['acceleration'],c['jerk']))):continue
+        if any(b>limit+1e-8 for b,limit in zip(bounds,(c['speed'],c['acceleration'],c['jerk']))):
+            rejections.append(dict(reason='derivative_bounds',bounds=bounds))
+            continue
         candidate.max_speed=bounds[0]
         detail={}
-        if not candidate.path_safe(grid,False,detail):continue
+        if not candidate.path_safe(grid,False,detail):
+            rejections.append(detail)
+            continue
         if best is None or t<best.duration:best=candidate
-    if best is None:return None,dict(valid=False,reason='no_bounded_collision_free_stop')
+    if best is None:return None,dict(valid=False,reason='no_bounded_collision_free_stop',
+        rejections=rejections,start_safe=grid.safe(p),
+        canopy_guard_cells=getattr(grid,'canopy_guard_cells',0))
     end=sum(best.duration**k*best.coeff[k] for k in range(6))
     return best,dict(valid=True,policy='explicit_PVA_stop_with_live_voxel_check',
         duration_seconds=float(best.duration),end_position=end.tolist(),

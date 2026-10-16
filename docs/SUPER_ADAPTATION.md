@@ -244,3 +244,16 @@ saat worker pending. Prinsip backup feasible didukung
 [FASTER](https://arxiv.org/abs/2001.04420); implementasi lokal ini bukan port
 FASTER dan prior FOV tetap conditional. Replay snapshot exact berhasil
 setelah endpoint mundur sekitar10 cm; flight berikut belum tervalidasi.
+
+
+## Cadangan perencanaan terhadap pembaruan peta
+
+Run57c105d gagal pada PID final backup saat headroom hasil pengamatan baru
+tidak lagi memenuhi guard, meskipun body brake lolos. Fixed-LiDAR feedback
+mode kini menyisakan satu voxel tambahan di tahap planning ascent/scan;
+execution observation guard, clearance, health dan unknown tetap sama.
+Area clear tetap menarget stem-top geometry karena kolom dicari sampai
+target+reserve; pada roof, preferred height diturunkan dalam observed corridor.
+Ini margin engineering, bukan TEB formal [FaSTrack](https://arxiv.org/abs/2102.07039)
+atau jaminan terhadap perubahan lingkungan. Critical PID snapshot dan witness
+guard diperluas untuk audit. Detail angka/replay dan hasil tes ada di jurnal.

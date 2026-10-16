@@ -105,6 +105,11 @@ class PositionPID:
             self.integral = previous_integral
             self.last.update(integral=self.integral.tolist(), saturated=True)
         if not safe:
+            from .planner_recovery import save_failure_snapshot
+            from .super_policy import backup_grid
+            if getattr(controller,'c',{}).get('planner_audit_dir'):
+                save_failure_snapshot(controller,dict(reason='pid_final_safety',pid=self.last),
+                    points=[controller.command],grid=backup_grid(controller))
             # Brake from the last actually published acceleration, not the
             # nominal acceleration or an unchecked newly proposed correction.
             controller.command_a = self.previous_acceleration.copy()

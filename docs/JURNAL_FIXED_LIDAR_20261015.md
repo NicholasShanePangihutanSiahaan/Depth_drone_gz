@@ -534,3 +534,58 @@ setelah selesai sebelum push/run berikutnya.
 
 Build tiga paket berhasil; **414 tes lulus**, 0 error/failure/skipped,88.63 s.
 Log `/tmp/fixed_terminal_reserve_build.log`. Commit/push sebelum flight baru.
+
+
+## 16 Oktober 2026 — PID menolak backup setelah headroom diperbarui
+
+Run57c105d `fixed_lidar_validation_20261016_114500` membuktikan perbaikan
+endpoint: initial trajectory16.60056 s,2 upaya,495 checks,1 cached segment,
+1.65306 s worker; dua moving handoff diterima. APPROACH20.25→58.90 s
+(38.65 s), ASCEND→SCAN72.30 s. Fault73.75 s pid_final_safety; auditor stop
+dan session stopped=true, stop ulang tidak mengirim signal ke proses lain.
+649 pasangan posisi RMSE .0149772 m,max .0393737 m, localisation tracking.
+Tidak ada sektor scan/return/landing/disarm selesai. Preset actual flight
+tracking_limit/tracking_margin .2 m tetap; angka .1 m sebelumnya adalah
+fixture tes, bukan batas preset run ini.
+
+PID log: position error [.04949,-.01327,.00586] m, actual speed .01527 m/s,
+reference velocity/acceleration nol pada [6.8914131,-.0108174,3.3192240].
+Actual body brake dan reference brake lolos untuk correction1,.5,0.
+Semua explicit backup gagal no_bounded_collision_free_stop pada grid guard.
+Ini berbeda dari planner exception. Snapshot worker SCAN72.5 s masih memiliki
+stationary brake safe; bukan bukti grid live73.5 s tetap safe.
+
+Rekonstruksi ekspor akhir map73.76 s/observasi73.5 s: body safe pada reference
+tetapi guard .2 m dan stationary backup tidak safe. Di3.1192240 m (20 cm
+lebih rendah), body/guard/backup lolos; di3.2192240 dan3.2692240 belum lolos.
+Ini menunjukkan headroom terpakai setelah update, bukan bukti drift permanen
+atau menabrak. Ekspor bukan exact live snapshot PID; snapshot PID ditambahkan
+untuk run berikut. Safety abort dipertahankan saat guard tidak terpenuhi.
+
+Riset FaSTrack https://arxiv.org/abs/2102.07039 membedakan model planner dan
+tracking serta memakai TEB terhitung. Implementasi kita TIDAK menghitung TEB
+atau mengklaim jaminan FaSTrack. Usulan engineering yang diuji: satu voxel
+tambahan pada perencanaan fixed+feedback+adaptive scan. Ascent guard planning
+base .2 + .2 m voxel, eksekusi backup tetap base .2 m. Canopy profile memilih
+target di bawah observed ceiling minus reserve, dengan pencarian sampai
+target+reserve agar area lapang tetap dapat mencapai target geometris.
+Tidak mengubah occupied/unknown/FOV, timestamp, timeout, badan atau clearance.
+Margin bounded ini bukan bukti aman dari arbitrer noise/gerakan objek;
+freshness dan abort pada invalidasi tetap berlaku.
+
+Diagnosis guard kini menelusuri footprint tambahan di atas badan, sehingga
+unknown/occupied sumber inflasi terlihat. Explicit backup menyimpan subreason
+dan start_safe. Fault PID menyimpan exact numeric live guarded grid dan input
+PID pada failure_critical.npz, bahkan setelah delapan snapshot biasa terisi
+(maksimum8 biasa+1 kritis). Tidak memakai GT.
+
+Tes awal snapshot PID gagal pada fixture SimpleNamespace tanpa c; pencatatan
+kini hanya dilakukan bila audit directory tersedia. Regresi planning reserve
+tidak boleh mengharuskan selisih actual height tepat1voxel bila hysteresis
+lama membatasi tinggi: tes diperbaiki untuk memeriksa reserve terhadap ceiling.
+Tes baru: one-voxel ceiling update saat ascent, clear target/roof pada scan,
+witness unknown guard, dan critical snapshot saat budget penuh. Build/suite
+akhir dicatat berikut sebelum push dan flight baru.
+
+Build tiga paket berhasil; **418 tes lulus**,0 error/failure/skipped,87.86 s.
+Log `/tmp/fixed_map_reserve_build.log`. Commit/push sebelum flight berikutnya.

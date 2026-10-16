@@ -201,3 +201,19 @@ def test_recovered_map_with_unknown_ceiling_does_not_allow_ascent():
     assert ctl.ascent_map_resumes==1
     assert ctl.ascent_reference.stop is not None
     assert ctl.ascent_reference.reason in ('observation_guard_limit','observed_stopping_corridor_limit')
+
+
+def test_fixed_planning_reserve_survives_one_voxel_new_ceiling():
+    from polinasi_nav.canopy_scan import canopy_guard_grid
+    c,g=fixture();c.update(tree_ascent_observation_guard=.2,lidar_fixed=True,
+        scan_adaptive_height=True,feedback_speed_envelope=False)
+    roof=g.indices([0.,0.,4.8])[2];g.state[:,:,roof:]=UNKNOWN;g.rebuild(0.)
+    _,old=run_ascent(c,g,5.5)
+    c['feedback_speed_envelope']=True
+    ref,new=run_ascent(c,g,5.5)
+    assert new[-1][0][2]<old[-1][0][2]-.9*g.res
+    assert ref.diagnostics['map_update_planning_reserve_m']==g.res
+    g.state[:,:,roof-1:]=UNKNOWN;g.rebuild(1.)
+    guarded=canopy_guard_grid(g,c['tree_ascent_observation_guard'])
+    assert not guarded.safe(old[-1][0]) and guarded.safe(new[-1][0])
+    assert c['tree_ascent_observation_guard']==.2

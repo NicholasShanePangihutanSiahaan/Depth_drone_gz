@@ -14,6 +14,16 @@ def vertical_guard(config):
 
 
 
+def planning_map_reserve(config):
+    """One voxel of planning headroom for fixed-LiDAR map updates.
+
+    An engineering margin, not a proven tracking-error bound. Execution
+    clearance, observation guard and freshness gates remain unchanged.
+    """
+    return float(config['resolution']) if (config.get('lidar_fixed') and
+        config.get('feedback_speed_envelope') and config.get('scan_adaptive_height')) else 0.
+
+
 def select_rays(hits, sequence, surface_stride, free_stride):
     groups = (np.flatnonzero(hits), np.flatnonzero(~np.asarray(hits, bool)))
     selected = [ids[sequence % min(stride, len(ids))::stride]
@@ -162,7 +172,9 @@ class VoxelMap:
         """Bounded audit of raw cells responsible for one inflated rejection."""
         index = np.asarray(index, dtype=int)
         kernel = self.actual_kernel if actual else self.kernel
-        ids = index + np.argwhere(kernel)-np.asarray(kernel.shape)//2
+        offsets=np.argwhere(kernel)-np.asarray(kernel.shape)//2
+        guard_cells=0 if actual else getattr(self,'canopy_guard_cells',0)
+        ids=np.unique(np.concatenate([index+offsets+[0,0,k] for k in range(guard_cells+1)]),axis=0)
         inside = self.inside(ids)
         valid = ids[inside]
         states = self.state[tuple(valid.T)]

@@ -91,3 +91,30 @@ def test_guard_planning_mask_reserves_overhead_without_mutating_map():
     np.testing.assert_array_equal(g.blocked,original)
     np.testing.assert_array_equal(g.state,raw)
     assert guarded.blocked_actual is g.blocked_actual
+
+
+def test_fixed_scan_planning_reserve_keeps_clear_target_but_lowers_under_roof():
+    c,g,points=fixture()
+    old,_=canopy_profile(g,points,0,[2.,0.,2.8],dict(observed_stem_top=4.),c,2.8)
+    c.update(lidar_fixed=True,feedback_speed_envelope=True,scan_adaptive_height=True)
+    new,detail=canopy_profile(g,points,0,[2.,0.,2.8],dict(observed_stem_top=4.),c,2.8)
+    np.testing.assert_allclose(new,old,atol=1e-8)
+    assert detail['map_update_planning_reserve_m']==g.res
+    roof=g.indices([0.,0.,4.2])[2];g.state[:,:,roof]=OCCUPIED;g.rebuild(0.)
+    low,low_detail=canopy_profile(g,points,0,[2.,0.,2.8],dict(observed_stem_top=5.5),c,2.8)
+    c['feedback_speed_envelope']=False
+    high,_=canopy_profile(g,points,0,[2.,0.,2.8],dict(observed_stem_top=5.5),c,2.8)
+    assert max(low[:6,2])<max(high[:6,2])
+    assert all(a["observed_height_cap_m"]-a["selected_height_m"]>=g.res-1e-8
+        for a in low_detail["anchors"])
+    np.testing.assert_array_equal(low[:,:2],points[:,:2])
+
+
+def test_guard_blockage_describes_unknown_above_original_body_footprint():
+    c,g,_=fixture();roof=g.indices([0.,0.,4.2])[2]
+    g.state[:,:,roof:]=UNKNOWN;g.rebuild(0.);guard=canopy_guard_grid(g,.4)
+    p=next(np.array([0.,0.,z]) for z in np.arange(2.,4.2,.02)
+        if g.safe([0.,0.,z]) and not guard.safe([0.,0.,z]))
+    detail=guard.describe_blockage(guard.indices(p))
+    assert 'unknown' in detail['causes'] and detail['footprint_unknown_cells']>0
+    assert g.safe(p) and guard.canopy_guard_cells==2

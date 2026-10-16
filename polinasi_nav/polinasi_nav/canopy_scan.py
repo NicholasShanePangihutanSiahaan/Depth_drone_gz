@@ -6,7 +6,7 @@ import math
 import copy
 import numpy as np
 from .continuous import ContinuousTrajectory
-from .mapping import vertical_guard
+from .mapping import vertical_guard,planning_map_reserve
 
 
 def canopy_guard_grid(grid,guard):
@@ -17,6 +17,7 @@ def canopy_guard_grid(grid,guard):
     view=copy.copy(grid)
     view.blocked=grid.blocked.copy()
     cells=max(0,int(math.ceil(guard/grid.res-1e-9)))
+    view.canopy_guard_cells=getattr(grid,'canopy_guard_cells',0)+cells
     for offset in range(1,cells+1):
         view.blocked[:,:,:-offset]|=grid.blocked[:,:,offset:]
         view.blocked[:,:,-offset:]=True
@@ -75,6 +76,7 @@ def canopy_profile(grid,waypoints,index,current,tree,config,initial_height):
     result=np.asarray(waypoints).copy()
     stop=min(len(result),index+config.get('survey_batch_points',6))
     guard=config.get('tree_ascent_observation_guard',.2)
+    reserve=planning_map_reserve(config)
     guarded_grid=canopy_guard_grid(grid,guard)
     camera_z=config.get('camera_mount',[0.,0.,0.])[2]
     target=min(5.5,stem_target_height(tree,config)-camera_z)
@@ -85,7 +87,7 @@ def canopy_profile(grid,waypoints,index,current,tree,config,initial_height):
     for i in range(index,stop):
         xy=result[i,:2]
         low=np.r_[xy,floor]
-        heights=np.arange(floor,max(floor,target)+1e-8,resolution)
+        heights=np.arange(floor,max(floor,target+reserve)+1e-8,resolution)
         connected=[]
         for height in heights:
             p=np.r_[xy,height]
@@ -97,8 +99,9 @@ def canopy_profile(grid,waypoints,index,current,tree,config,initial_height):
         ceiling=max(connected) if connected else None
         if ceiling is not None:
             distance=float(np.linalg.norm(xy-previous[:2]))
-            selected=min(ceiling,previous[2]+config.get('scan_height_max_slope',.45)*distance)
-            if abs(selected-previous[2])<config.get('scan_height_hysteresis',.08) and ceiling>=previous[2]:
+            preferred=min(target,max(floor,ceiling-reserve))
+            selected=min(preferred,previous[2]+config.get('scan_height_max_slope',.45)*distance)
+            if abs(selected-previous[2])<config.get('scan_height_hysteresis',.08) and preferred>=previous[2]:
                 selected=float(previous[2])
             # A cap at the endpoint alone misses a lower leaf BETWEEN anchors.
             # Prefer a slightly lower straight chord over a tiny A* detour to
@@ -119,6 +122,7 @@ def canopy_profile(grid,waypoints,index,current,tree,config,initial_height):
         target_kind='estimated_stem_top_not_detected_flower',
         stem_target_z_m=stem_target_height(tree,config),camera_mount_z_m=float(camera_z),
         desired_vehicle_z_m=float(target),floor_m=float(floor),guard_m=float(guard),
+        map_update_planning_reserve_m=reserve,
         map_version=int(grid.version),map_stamp=float(grid.last_observation_stamp)
         if math.isfinite(grid.last_observation_stamp) else None,
         planning_at_rest=True,online_height_setpoint_override=False,anchors=entries)

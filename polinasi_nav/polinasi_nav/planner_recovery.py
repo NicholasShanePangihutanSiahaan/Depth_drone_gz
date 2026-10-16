@@ -13,13 +13,15 @@ def save_failure_snapshot(controller,detail,points=None,grid=None):
     try:
         directory.mkdir(parents=True,exist_ok=True)
         # Bound disk/CPU cost per run. Keep exact first failures for replay.
-        if len(list(directory.glob('*.npz')))>=8:return
-        path=directory/f'failure_{time.monotonic_ns()}.npz'
+        critical=detail.get('reason')=='pid_final_safety'
+        if len(list(directory.glob('*.npz')))>=8 and not critical:return
+        path=directory/('failure_critical.npz' if critical else f'failure_{time.monotonic_ns()}.npz')
         grid=controller.grid if grid is None else grid
         metadata=dict(config=controller.c,diagnostics=detail,origin=grid.lo.tolist(),
             shape=list(grid.shape),map_version=int(grid.version),
             last_observation_stamp=float(grid.last_observation_stamp),
             state=controller.state,phase=getattr(controller,'tree_phase',None),
+            canopy_guard_cells=getattr(grid,'canopy_guard_cells',0),
             command=controller.command.tolist(),command_v=controller.command_v.tolist(),
             command_a=controller.command_a.tolist(),
             provenance='exact_detached_planning_grid_not_ground_truth')
