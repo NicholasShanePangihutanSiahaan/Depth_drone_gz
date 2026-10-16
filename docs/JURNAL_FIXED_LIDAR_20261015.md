@@ -635,3 +635,91 @@ tidak mengubah clearance/timeout/FOV/controller/publisher.
 
 Build tiga paket berhasil; **421 tes lulus**,0 error/failure/skipped,90.85 s.
 Log `/tmp/fixed_return_metadata_final_build.log`. Commit/push sebelum full run.
+
+
+## 16 Oktober 2026 — full mission berhasil pada 1fb9b7c
+
+Run `reports/fixed_lidar_validation_20261016_125204`, session
+`.dependencies/ros_sensor_palm_farm_20261016_125206_20833_mapping`, menjalankan
+HEAD1fb9b7c tanpa GUI/RViz (`POLINASI_RVIZ_AFTER_APPROACH=0`). Worktree clean,
+branch fixed-lidar dan remote sudah sinkron sebelum launch. Audit host memastikan
+UDP9002/14650 dan TCP5762 kosong. Domain96, partition polinasi_fixed_lidar.
+Tidak ada perubahan kecepatan/controller/clearance/FOV pada iterasi flight ini;
+peningkatan kecepatan ditunda sesuai arahan pengguna.
+
+Hasil: **COMPLETE345.10 s, armed=false, FCU LAND, failure kosong**. Auditor
+exit0 dan menghentikan hanya registered session; session.json stopped=true.
+Audit port/proses setelah stop kosong. Tidak ada window dibuka.
+
+Timestamp berikut memakai detik simulasi, bukan detik wall-clock:
+
+| Fase | Mulai | Akhir | Durasi |
+|---|---:|---:|---:|
+| TAKEOFF, sejak sampel pertama | 9.15 | 20.55 | 11.40 |
+| Pohon pertama APPROACH | 20.55 | 61.25 | 40.70 |
+| Pohon pertama ASCEND | 61.25 | 70.95 | 9.70 |
+| Pohon pertama SCAN | 70.95 | 153.00 | 82.05 |
+| Pohon kedua APPROACH | 153.05 | 205.70 | 52.65 |
+| Pohon kedua ASCEND | 205.70 | 211.70 | 6.00 |
+| Pohon kedua SCAN, termasuk recovery | 211.70 | 300.35 | 88.65 |
+| RETURN | 300.40 | 338.60 | 38.20 |
+| DESCEND | 338.60 | 338.80 | 0.20 |
+| LAND sampai COMPLETE/disarm | 338.80 | 345.10 | 6.30 |
+
+Total sejak sampel pertama335.95 s (5 menit35.95 detik simulasi); sampel
+pertama bukan bukti timestamp perintah takeoff. FCU berubah GUIDED→LAND338.85 s.
+DESCEND .20 s hanya fase software sebelum menyerahkan landing ke FCU; bukan
+klaim turun2 m dalam .20 s. Gerakan turun berlangsung pada fase LAND.
+
+tree_scan_records berisi12 record inspection_valid=true, masing-masing6 view
+untuk ID4 dan6. Pusat sensor yang disimpan [8.97735,-.02131] dan
+[-4.50595,-9.00276], sehingga dua ID ini tidak menunjuk pusat yang sama.
+Keduanya memakai continuous_front_tree; bukti kandidat tree6 memiliki low
+stem support dan4 lapisan konsisten. Tinggi ascent berhenti2.91979 dan2.52019 m
+karena observation_guard_limit; scan mengikuti profil tinggi yang tersedia.
+Ini inspeksi target geometris, bukan deteksi bunga atau bukti mencapai puncak
+batang sebenarnya. Ground truth tidak menjadi input estimator; estimator
+experimental_scan_to_map_ICP_body_IMU, bukan FAST-LIO.
+
+Transisi RETURN melewati titik KeyError lama dan mencapai home, sehingga
+perbaikan lifecycle metadata kini sudah diuji flight penuh. Ada satu recovery
+yang harus dibedakan dari abort fatal:252.70 s BRAKE/route_changed ketika
+sertifikat suffix menemukan future segment15 di luar navigation window.
+Diagnosis causes=[outside_window], footprint_outside_cells27; posisi nominal
+dan aktual saat itu tetap safe. Controller menyelesaikan recovery254.45 s
+(1.75 s), lalu meneruskan scan dan menyelesaikan misi. Tidak ada bukti dari
+kejadian ini bahwa objek baru bergerak atau lokalisasi hilang. Delapan moving
+handoff diterima,11 kandidat ditolak. Penolakan bukan seluruhnya fault misi.
+
+3359 pasangan pose sensor vs GT audit menghasilkan RMSE .0182656 m,
+maximum .0531658 m. Posisi sensor akhir [.0162765,-.0089144,.1993132] m;
+error horizontal terhadap home[0,0] .0185578 m. Referensi navigation tetap
+di hover saat FCU LAND sehingga tracking_error akhir1.80078 m tidak mengukur
+error terhadap lintasan landing FCU. Clearance negatif saat kontak tanah
+pada takeoff/landing juga tidak boleh dilaporkan sebagai clearance transit.
+Rata-rata kecepatan terukur gabungan approach .21672 m/s, scan aktif .16315 m/s,
+return .21737 m/s (integral kecepatan terhadap waktu simulasi / durasi fase).
+Maksimum tracking error approach .14598 m, ascent .16151 m, scan aktif .10883 m,
+return .08279 m. Tidak ada klaim optimasi minimum waktu atau perbandingan
+SUPER sebelum-sesudah yang terkontrol dari satu run ini.
+
+Artefak numerik di folder validation: accuracy.navigation.jsonl,
+accuracy.localisation.jsonl, accuracy.jsonl, accuracy.summary.json, setup.json.
+Peta tersimpan di
+`reports/ros_sensor_palm_farm_20261016_125206_20833_mapping/map_3d/`:
+map.json (54,002,806 byte), map.html (53,091,682 byte), navigation_debug.jsonl,
+mission_status.json dan planner_failures/*.npz. Ekspor akhir345.151 s/observasi
+344.9 s, frame map/resolusi voxel .2 m,561962 point,33886 occupied dan538775
+measured-free voxels; unknown di luar daftar tetap implicit unknown.
+Mask assumed-free/assumed-occupied dipisah dari pengamatan terukur.
+Peta historis adalah artefak audit, bukan sertifikat keamanan seluruh farm.
+
+Status validasi: implementasi returnfix sudah unit+flight (build tiga paket,
+421 tes lulus sebelum flight; tidak diulang selama mengukur timing flight).
+Run ini satu full nominal sensor-simulation mission pada farm statis dan
+prior FOV eksplisit pengguna. Kebijakan unknown bawah/atas serta persistensi
+prior saat dropout tetap aktif; prior bukan bukti ruang terukur aman. Tidak
+menambah validasi hardware, CIRI/MPC SUPER, minimum waktu, atau flight fault
+injection blocked-route/dropout/delay melalui keberhasilan run nominal ini.
+Tidak perlu memperbaiki kode tambahan untuk menyatakan hasil nominal ini.
+Dokumentasi hasil di-commit/push setelah audit; artefak besar tetap lokal.

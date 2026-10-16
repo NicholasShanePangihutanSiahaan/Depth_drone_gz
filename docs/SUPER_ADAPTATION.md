@@ -266,3 +266,27 @@ karena metadata anchor scan dipakai pada densifikasi route baru. Lifecycle
 metadata diperbaiki per-route/per-phase dan regresi async/PID diperpanjang
 sampai home/DESCEND. Ini belum berarti full flight landing/disarm berhasil;
 run lengkap berikut tetap diperlukan. Tidak mengubah kebijakan keselamatan.
+
+
+## Full flight tervalidasi pada simulasi nominal — 16 Oktober 2026
+
+HEAD1fb9b7c, run `reports/fixed_lidar_validation_20261016_125204`, mencapai
+COMPLETE345.10 s dan armed=false setelah12 sektor valid pada dua pusat pohon
+berbeda, RETURN300.40→338.60 s, lalu LAND338.80 s/disarm345.10 s. Semuanya
+detik simulasi; sejak sampel takeoff pertama9.15 s durasinya335.95 s.
+Bug metadata return tidak berulang. Satu route_changed recovery252.70→254.45 s
+terjadi akibat suffix future curve keluar window peta; current body aman,
+controller brake/replan dan pulih. Run bukan tanpa recovery.
+
+Sensor pose vs GT audit3359 sampel: RMSE .0182656 m/max .0531658 m; estimator
+tetap ICP–IMU eksperimental, GT bukan input estimator. Error horizontal home
+akhir .0185578 m. Peta point cloud/voxel, HTML dan log numerik tersedia pada
+`reports/ros_sensor_palm_farm_20261016_125206_20833_mapping/map_3d/`.
+Run berhenti bersih, tidak membuka window. Lihat jurnal untuk timeline,
+evidence coverage, batas interpretasi tracking/clearance selama FCU LAND.
+
+Ini mengubah status dari belum full flight menjadi **satu full nominal flight
+simulasi berhasil**. Hasil tetap conditional pada prior FOV pengguna dan farm
+statis. Bukan validasi hardware, keselamatan unknown terukur, full port SUPER,
+minimum-time flight, ataupun fault-injection flight. Kecepatan tidak dinaikkan
+di iterasi ini; pekerjaan peningkatan kecepatan ditunda sesuai arahan pengguna.
