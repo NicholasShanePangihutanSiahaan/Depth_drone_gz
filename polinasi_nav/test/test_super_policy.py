@@ -331,3 +331,33 @@ def test_segment_braking_cache_is_only_reused_on_unchanged_controls_in_job():
     g.state[tuple(g.indices([.5,0.,2.]))]=UNKNOWN;g.rebuild(1.)
     safe,detail,checks,_=check_braking(new,g,c,cache)
     assert not safe and checks>0 and detail['check']['reason']
+
+
+def test_history_endpoint_retreats_from_static_safe_but_unstoppable_window_edge():
+    from polinasi_nav.global_route import local_route_goal
+    from polinasi_nav.local_braking_retime import terminal_reserve_check
+    c,g=fixture();c['history_route_local_lookahead']=20.
+    start=np.array([0.,0.,2.])
+    centers=[g.centers([i,g.indices(start)[1],g.indices(start)[2]]) for i in range(g.shape[0]-1,0,-1)]
+    center=next(p for p in centers if g.safe(p))
+    end=center+np.array([g.res*.49,0.,0.]);end[1:]=start[1:]
+    assert g.safe(end)
+    tr=ContinuousTrajectory([start,end],c)
+    safe,detail=terminal_reserve_check(tr,g,c)
+    assert not safe and 'outside_window' in detail['check']['blockage']['causes']
+    destination=end+np.array([2.,0.,0.])
+    route=dict(goal=destination.tolist(),path=[start.tolist(),end.tolist(),destination.tolist()],
+        stamp=0.,partial=False,request_id=1)
+    point,detail=local_route_goal(g,start,destination,route,0.,c)
+    assert point is not None and point[0]<end[0]
+    assert feedback_brake_safe(g,point,[1e-6,0.,0.],np.zeros(3),c)
+    assert detail['terminal_reserve_rejections']
+
+
+def test_pending_worker_does_not_extend_existing_blocked_timeout():
+    from concurrent.futures import Future
+    c,g=fixture();c['blocked_timeout']=2.
+    ctl=SurveyController(c,g,asynchronous=False);ctl.state='SURVEY'
+    ctl.command=np.array([0.,0.,2.]);ctl.blocked_since=0.;ctl.pending_plan=Future()
+    assert not ctl._prepare_trajectory(2.1,ctl.command)
+    assert ctl.failure=='blocked_route' and not ctl.pending_plan.done()

@@ -437,9 +437,13 @@ class MissionController:
         # Certify the complete commanded trajectory, including safe stopping.
         stage_started = time.perf_counter()
         from .super_policy import backup_grid
-        from .local_braking_retime import check_braking,retime_local
+        from .local_braking_retime import check_braking,retime_local,terminal_reserve_check
         from .planner_recovery import save_failure_snapshot
         check_grid=backup_grid(self)
+        terminal_safe,terminal_detail=terminal_reserve_check(self.trajectory,check_grid,self.c)
+        if not terminal_safe:
+            from .planner_recovery import reject_candidate
+            return reject_candidate(self,now,terminal_detail)
         checks=cache_hits=0;cache=set()
         for _ in range(12):
             certified,detail,count,hits=check_braking(self.trajectory,check_grid,self.c,cache)

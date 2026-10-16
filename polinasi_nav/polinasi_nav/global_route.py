@@ -84,7 +84,24 @@ def local_route_goal(grid,current,destination,route,now,config):
     if best[0]>.75:
         return None,dict(detail,reason='off_history_path',distance_m=best[0])
     prefix=np.vstack([best[2],points[best[1]+1:]])
-    selected=None;travel=0.
+    selected=None;travel=0.;eligible=[]
+    def finish(detail):
+        if not config.get('feedback_speed_envelope'):
+            return selected,detail
+        from .super_policy import feedback_brake_safe
+        rejected=[]
+        for endpoint,direction in reversed(eligible):
+            check={}
+            # Limit from the MOVING side near a stop, including unchanged
+            # velocity/PID uncertainty; not a new commanded minimum speed.
+            if feedback_brake_safe(grid,endpoint,direction*1e-6,np.zeros(3),config,check):
+                return endpoint.copy(),dict(detail,selected=endpoint.tolist(),
+                    terminal_reserve_rejections=rejected,
+                    terminal_reserve_policy='near_zero_robust_stop_then_full_curve_certificate')
+            rejected.append(dict(point=endpoint.tolist(),check=check))
+        return None,dict(detail,selected=None,reason='observed_frontier_reached',
+            terminal_reserve_rejections=rejected)
+
     limit=config.get('history_route_local_lookahead',2.)
     for p,q in zip(prefix[:-1],prefix[1:]):
         distance=float(np.linalg.norm(q-p))
@@ -92,11 +109,13 @@ def local_route_goal(grid,current,destination,route,now,config):
             if travel+length>limit+1e-8:break
             candidate=p+(q-p)*length/max(distance,1e-12)
             if not grid.safe(candidate):
-                return selected,dict(reason='live_prefix_blocked',partial=route['partial'],
-                    request_id=route['request_id'],selected=None if selected is None else selected.tolist())
-            if np.linalg.norm(candidate-current)>.1:selected=candidate.copy()
+                return finish(dict(reason='live_prefix_blocked',partial=route['partial'],
+                    request_id=route['request_id'],selected=None if selected is None else selected.tolist()))
+            if np.linalg.norm(candidate-current)>.1:
+                selected=candidate.copy()
+                eligible.append((selected,(q-p)/max(distance,1e-12)))
         travel+=distance
         if travel>=limit:break
-    return selected,dict(reason='history_path_prefix' if selected is not None else 'observed_frontier_reached',
+    return finish(dict(reason='history_path_prefix' if selected is not None else 'observed_frontier_reached',
         partial=route['partial'],request_id=route['request_id'],
-        final_destination=destination.tolist(),selected=None if selected is None else selected.tolist())
+        final_destination=destination.tolist(),selected=None if selected is None else selected.tolist()))

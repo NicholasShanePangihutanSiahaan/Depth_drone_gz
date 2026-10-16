@@ -199,6 +199,10 @@ class SurveyController(MovingHandoff, MissionController):
         return result
 
     def _prepare_trajectory(self, now, position, range_value=None, range_stamp=None):
+        # A pending worker must not postpone the existing blocked timeout.
+        if self.blocked_since is not None and now-self.blocked_since>self.c['blocked_timeout']:
+            self.fail('blocked_route')
+            return False
         destination=self.route_destination()
         if self.c.get('history_route_enabled') and destination is not None:
             if self._history_goal(self.command,destination) is None:

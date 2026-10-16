@@ -491,3 +491,46 @@ agar ruas jauh berada di luar tetangga. Kemudian build tiga paket dan
 `/tmp/fixed_local_retime_build.log`. Tiga regresi baru: C2/distant cruise,
 moving PVA tidak ditimpa, cache invalidasi unknown. Commit/push sebelum
 flight headless berikutnya; hasil flight belum tervalidasi saat commit.
+
+
+## 16 Oktober 2026 — endpoint terlalu dekat crop window
+
+Setelah daemon restart, verifikasi HEAD301b206 bersih,412 tes lulus,
+remote masih9b63761. Push301b206 diselesaikan; tidak ada port/proses simulasi
+aktif sebelum run baru. Headless run `fixed_lidar_validation_20261016_113409`,
+session `.dependencies/ros_sensor_palm_farm_20261016_113411_5290_mapping`.
+Takeoff sukses; treeID4 dipilih, APPROACH belum bergerak karena kandidat
+ditolak. Pada snapshot,12 retiming masih gagal pada nominal speed .002593 m/s:
+uncertainty/PID scenario .032593 m/s, reason braking_box_blocked,
+witness outside_window pada cell[4.1,-.1,2.1]. Komputasi42.16 s wall/11747
+checks. Ini masalah endpoint/window, bukan bukti daun atau ICP failure.
+Run dihentikan untuk audit, stop_reason registered_simulation_stopped;
+last t42.65 s, failure kosong,337 pasangan RMSE .0137754 m/max .0292188 m.
+Session stopped=true. Tidak ada SCAN/return/landing/disarm tervalidasi.
+
+Snapshot exact `failure_725308285617.npz` membuktikan endpoint
+[3.993495702,-.005659918,2.001034563] statically safe tetapi near-zero robust
+stop gagal outside_window. Memperlambat lagi tidak menghilangkan uncertainty
+floor. local_route_goal tadinya memilih endpoint hanya dengan body safe.
+
+Riset primer FASTER (Tordesillas et al., https://arxiv.org/abs/2001.04420)
+menegaskan perlunya backup/terminal feasible pada free-known space; bukan
+alasan menganggap crop unknown aman atau memaksa berhenti di frontier.
+Usulan engineering lokal: evaluasi moving-side near-zero robust stop pada
+calon endpoint history-prefix, pilih endpoint terdahulu bila perlu. Full
+curve/live/PID tetap wajib. Tidak memperbesar map, menambah load atau
+melonggarkan clearance/unknown. Terminal reserve precheck menghentikan
+retiming sia-sia pada endpoint yang tidak layak. Timeout blocked lama kini
+tetap diberlakukan meski worker pending, bukan menunggu komputasi selesai.
+
+Replay independen snapshot yang sama: endpoint baru
+[3.893746026,-.005458583,2.001069094], sekitar10 cm lebih pendek. Dengan
+guidance sudah dipilih, SurveyController membangun kurva/braking dengan
+ready=true,failure kosong,2 upaya,496 checks,1 cache hit,16.6020634 s durasi
+dan1.18694371 s wall. Ini replay lintasan, bukan seluruh ROS/flight ulang.
+Regresi menambah endpoint static-safe tetapi reserve-outside dan pending
+worker yang tidak boleh memperpanjang blocked_timeout. Hasil build dicatat
+setelah selesai sebelum push/run berikutnya.
+
+Build tiga paket berhasil; **414 tes lulus**, 0 error/failure/skipped,88.63 s.
+Log `/tmp/fixed_terminal_reserve_build.log`. Commit/push sebelum flight baru.

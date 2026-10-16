@@ -231,3 +231,16 @@ hash mask juga menginvalidasi perubahan tanpa version bump. Snapshot awal
 sebelum retiming kini tersimpan. 412 tes lulus; belum flight saat implementasi
 ini ditulis. Detail run/perbaikan ada pada jurnal. Ini usulan engineering
 berdasarkan prinsip alokasi waktu lokal, bukan klaim implementasi TOPP-RA.
+
+
+## Endpoint prefix harus menyisakan ruang berhenti
+
+Run301b206 mengungkap terminal statically safe tetapi robust stop keluar
+window. Guidance kini memilih prefix endpoint yang lolos moving-side
+near-zero uncertainty scenario; ini bukan commanded minimum speed dan
+bukan sertifikat seluruh kurva. Pemeriksaan terminal awal menghindari
+retiming panjang pada endpoint infeasible. Timeout lama tetap berjalan
+saat worker pending. Prinsip backup feasible didukung
+[FASTER](https://arxiv.org/abs/2001.04420); implementasi lokal ini bukan port
+FASTER dan prior FOV tetap conditional. Replay snapshot exact berhasil
+setelah endpoint mundur sekitar10 cm; flight berikut belum tervalidasi.

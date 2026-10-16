@@ -87,3 +87,16 @@ def check_braking(trajectory,grid,c,cache):
         if key is not None:cache.add(key)
         begin+=duration
     return True,{},checks,hits
+
+
+def terminal_reserve_check(trajectory,grid,c):
+    if not c.get('feedback_speed_envelope') or not hasattr(trajectory,'controls'):
+        return True,{}
+    end=trajectory.controls[-1][-1]
+    for control in trajectory.controls[-1][-2::-1]:
+        delta=end-control
+        if np.linalg.norm(delta)>1e-9:
+            detail={}
+            safe=feedback_brake_safe(grid,end,delta/np.linalg.norm(delta)*1e-6,np.zeros(3),c,detail)
+            return safe,dict(reason='terminal_robust_reserve_unavailable',position=end.tolist(),check=detail)
+    return True,{}
