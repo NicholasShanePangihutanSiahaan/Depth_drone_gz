@@ -453,3 +453,41 @@ rendah dari .09, fallback chord tetap disertifikasi, timeout/unsafe hold,
 dan snapshot exact serta bounded. Belum flight pada saat commit ini.
 Ini refinement bounded lokal, bukan implementasi TOPP-RA/Ruckig/MINCO penuh.
 Tidak mengubah sensor timeout, clearance, mounting atau kebijakan FOV.
+
+
+## 16 Oktober 2026 — loop dilanjutkan, retiming braking lokal
+
+Run 9b63761 `fixed_lidar_validation_20261015_221813` melewati fault SCAN lama.
+APPROACH21.35→53.90 s=32.55 s; ASCEND→SCAN65.45 s. Reference scan diterima,
+namun ditemukan masalah performa: durasi hasil optimasi42.8142 s menjadi
+164.4750 s karena empat global slow(1.4), dengan7755 braking checks,
+27.735 s wall sertifikasi/28.103 s worker. Satu ruas constrained .045 m/s
+membuat ruas bebas ikut lambat. Run dihentikan sengaja untuk audit performa,
+bukan karena fault flight: stop_reason registered_simulation_stopped,
+last t77.3 s/failure kosong, belum sektor selesai. Session stopped=true;
+681 pasangan audit RMSE .0145843 m, maksimum .0325121 m. Tidak ada klaim
+landing/disarm. Map/cloud dan snapshot worker di direktori run terkait.
+
+Riset ulang TOPP-RA dan optimizer backup SUPER menguatkan pengaturan waktu
+sepanjang path, bukan skala global terburuk. Implementasi lokal engineering:
+retime ruas gagal, turunkan PVA knot bersama, sesuaikan tetangga jika perlu,
+cek bounds turunan konservatif dan geometri lagi. Start/end PVA dipertahankan;
+seluruh kurva tetap wajib lolos braking setelah usulan. Moving BoundaryTrajectory
+mempertahankan fallback retiming C2 lama; tidak memaksa perubahan boundary.
+Ini bukan TOPP-RA atau MINCO penuh dan bukan optimum waktu global.
+
+Sertifikasi per-segmen mencakup kedua endpoint dan interval .05 s. Cache
+hanya untuk kontrol/durasi identik dalam job frozen, ditambah identity,
+origin/res, hash mask blocked dan parameter braking untuk invalidasi.
+Peta berubah bahkan tanpa version increment tidak dapat memakai hasil lama.
+Snapshot exact sekarang juga disimpan pada penolakan braking pertama sebelum
+retiming, sehingga kandidat diterima setelah perlambatan tetap bisa diaudit.
+Status menampilkan local_braking_retiming, cache hits dan tanda recovered.
+
+Tes awal terlalu mengasumsikan ruas tetangga pertama tidak berubah; retiming
+yang menjaga bounds memang dapat merambat satu ruas. Skenario diperbaiki
+agar ruas jauh berada di luar tetangga. Kemudian build tiga paket dan
+**412 tes lulus**, 0 error/failure/skipped,85.94 s. Log lokal
+`/tmp/fixed_local_retime_build.log`. Tiga regresi baru: C2/distant cruise,
+moving PVA tidak ditimpa, cache invalidasi unknown. Commit/push sebelum
+flight headless berikutnya; hasil flight belum tervalidasi saat commit.

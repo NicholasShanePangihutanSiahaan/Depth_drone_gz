@@ -292,3 +292,42 @@ def test_failure_snapshot_is_exact_numeric_grid_and_bounded(tmp_path):
         np.testing.assert_array_equal(snapshot['blocked'],g.blocked)
         np.testing.assert_array_equal(snapshot['state'],g.state)
         assert json.loads(str(snapshot['metadata']))['provenance']=='exact_detached_planning_grid_not_ground_truth'
+
+
+def test_local_braking_retime_preserves_C2_and_distant_cruise():
+    from polinasi_nav.local_braking_retime import retime_local
+    c,g=fixture();tr=ContinuousTrajectory([[x*.6,0.,2.] for x in range(11)],c)
+    new=retime_local(tr,float(tr.ends[4]-.1),g,c)
+    assert new is not None and new.safe(g)
+    assert tr.duration<new.duration<1.4*tr.duration
+    assert new.durations[0]==tr.durations[0] and new.durations[-1]==tr.durations[-1]
+    np.testing.assert_array_equal(new.controls[0],tr.controls[0])
+    for a,b in zip(tr.sample(0.),new.sample(0.)):np.testing.assert_allclose(a,b,atol=1e-8)
+    np.testing.assert_allclose(new.sample(new.duration)[1:],0.,atol=1e-8)
+    for t in new.ends[:-1]:
+        for a,b in zip(new.sample(t-1e-7),new.sample(t+1e-7)):np.testing.assert_allclose(a,b,atol=1e-6)
+    assert np.all(new.bounds()<=np.array([reference_speed(c),c['acceleration'],c['jerk']])+1e-8)
+
+
+def test_local_retime_does_not_override_fixed_moving_PVA():
+    from polinasi_nav.local_braking_retime import retime_local
+    from polinasi_nav.moving_trajectory import BoundaryTrajectory
+    c,g=fixture();tr=BoundaryTrajectory([[0.,0.,2.],[2.,0.,2.]],c,[.2,0.,0.],[.01,0.,0.])
+    assert retime_local(tr,1.,g,c) is None
+    np.testing.assert_allclose(tr.sample(0.)[1],[.2,0.,0.],atol=1e-8)
+
+
+def test_segment_braking_cache_is_only_reused_on_unchanged_controls_in_job():
+    from polinasi_nav.local_braking_retime import check_braking,retime_local
+    c,g=fixture();tr=ContinuousTrajectory([[x*.6,0.,2.] for x in range(11)],c)
+    cache=set();safe,_,checks,_=check_braking(tr,g,c,cache)
+    assert safe and checks>0
+    safe,_,checks,hits=check_braking(tr,g,c,cache)
+    assert safe and checks==0 and hits==len(tr.controls)
+    new=retime_local(tr,float(tr.ends[4]-.1),g,c)
+    safe,_,checks,hits=check_braking(new,g,c,cache)
+    assert safe and checks>0 and hits>=2
+    # A new map always gets a new cache in the planner; unknown must reject.
+    g.state[tuple(g.indices([.5,0.,2.]))]=UNKNOWN;g.rebuild(1.)
+    safe,detail,checks,_=check_braking(new,g,c,cache)
+    assert not safe and checks>0 and detail['check']['reason']

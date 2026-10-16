@@ -1114,6 +1114,7 @@ class NavigationNode(ConfigNode):
                        prefetch_rejected=getattr(self.controller, 'prefetch_rejected', 0),
                        prefetch_reason=getattr(self.controller, 'prefetch_reason', ''),
                        duration_optimisation=getattr(self.controller.trajectory,'duration_optimisation',{}),
+                       local_braking_retiming=getattr(self.controller.trajectory,'local_braking_retiming',[]),
                        final_duration_seconds=getattr(self.controller.trajectory,'duration',None),
                        handoff='scheduled_C2_or_stopping_endpoint' if self.c.get('moving_handoff_enabled') else 'certified_stop_to_stop'),
                    'processing_pipeline': self.pipeline_timing.status() if hasattr(self, 'pipeline_timing') else None,

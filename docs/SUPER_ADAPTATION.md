@@ -218,3 +218,16 @@ numpy.load(..., allow_pickle=False)); metadata JSON disimpan dalam field
 metadata. Snapshot tidak memakai ground truth. Build dan 409 tes lulus;
 hasil flight berikut dicatat di jurnal. Belum TOPP-RA/Ruckig, belum pencarian
 durasi kontinu baru, dan belum jaminan semua kegagalan scanning selesai.
+
+
+## Retiming braking lokal — 16 Oktober 2026
+
+Flight9b63761 berhasil memulai SCAN tetapi global retiming memperpanjang
+42.8142→164.4750 s. Ditambahkan usulan retiming ruas gagal dan tetangganya,
+dengan PVA knot konsisten, bounds dan geometry diperiksa lagi. Whole-curve
+braking tetap wajib; moving boundary memakai fallback C2 lama. Cache braking
+per-segmen hanya dipakai untuk coefficients/duration dan grid/config identik;
+hash mask juga menginvalidasi perubahan tanpa version bump. Snapshot awal
+sebelum retiming kini tersimpan. 412 tes lulus; belum flight saat implementasi
+ini ditulis. Detail run/perbaikan ada pada jurnal. Ini usulan engineering
+berdasarkan prinsip alokasi waktu lokal, bukan klaim implementasi TOPP-RA.
