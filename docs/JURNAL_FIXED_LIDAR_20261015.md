@@ -966,3 +966,59 @@ dicatat setelah tersedia. Tidak memperbesar batas cloud/pose/map/clearance.
 Build tiga paket berhasil;433 tes lulus dalam86.89 s,0 errors/failures/skipped.
 Log /tmp/fixed_depth_recovery_build.log dan build_ros/polinasi_nav/pytest.xml.
 Commit/push sebelum run4; belum mengklaim keberhasilan flight perubahan ini.
+
+
+## 20 Oktober 2026 — flowers run4: cadangan vertikal tidak menangkap pertumbuhan lateral
+
+Run09d471d reports/fixed_lidar_validation_20261020_210322, registered session
+.dependencies/ros_sensor_palm_farm_flowers_20261020_210325_33599_mapping,
+berhenti47.35 s BRAKE/APPROACH tree1, emergency_unavoidable:route_changed.
+Session stopped=true, audit port/proses kosong.379 pasangan pose, RMSE
+.0092684963 m, maksimum .01783208436 m. Tidak ada health fault atau bukti
+tabrakan aktual. Belum selesai approach; belum validasi misi dua pohon.
+
+Snapshot exact map387/observasi47.1: failure_critical.npz di folder map_3d/
+planner_failures run tersebut, gate nominal_next_step, actual_remaining_stop
+masih lulus. Reference[-4.195666365,-1.288848637,1.5], v[-.241480558,
+-.036258991,0], next[-4.207672489,-1.290525615,1.499997555]. Voxel nominal
+[-4.1,-1.3,1.5] terblokir occupied[-4.3,-.3,2.3]; badan aktual masih safe.
+Label emergency_unavoidable berarti gate controller gagal, bukan pembuktian
+bahwa setiap manuver fisik mustahil. Tidak mengubah gate untuk meloloskannya.
+
+Penyebab terverifikasi lewat tiga snapshot: voxel occupied baru tersebut
+masih FREE pada map261/32.2 s dan318/39.1 s; pada keduanya sudah ada occupied
+[-4.3,-.1,2.3], hanya .2 m dari voxel baru. Pada map387 voxel baru OCCUPIED,
+seen47.1. Ini perubahan bukti sensor, bukan bukti daun bergerak atau ICP drift.
+Cadangan transit sebelumnya hanya mengecek perpindahan ke atas .2 m. Ia
+tidak menahan pertumbuhan occupied lateral yang mengenai footprint nominal.
+Tidak ada bukti cache melewatkan occupied yang sudah diketahui pada voxel
+baru; tidak menyatakan kapan persis pertama terlihat di antara snapshot318
+dan387 karena riwayat per-voxel setiap frame tidak direkam penuh.
+
+Perbaikan rekayasa: tetap reserve vertikal .2 m, tambah reserve lateral .2 m
+khusus APPROACH/RETURN. Planner history, pemilihan prefix lokal, A*, kurva
+hasil smoothing/retiming dan live unexecuted-suffix memakai view yang sama.
+Ekspansi lateral dibulatkan satu voxel per sumbu (box XY konservatif), upward
+satu voxel; marker view mencegah ekspansi ganda. Occupancy, unknown, priors,
+timestamp, actual-body mask, clearance, tracking_margin, speed, timeout,
+emergency/final PID gates dan policy scan tidak dilonggarkan. Cadangan ini
+tambahan engineering margin untuk voxel tetangga, bukan bukti formal
+robustness/SUPER/CIRI atau jaminan untuk obstacle yang baru terlihat arbitrer.
+Backup tetap di-check ulang; tidak diperbolehkan melewati occupied nominal.
+
+Regresi mengambil koordinat dan ukuran drone run4: buffer vertikal saja
+menerima chord sebelum hit baru, buffer lateral menolaknya dengan hit lama.
+Sesudah hit baru, chord nominal lama gagal seperti flight. Tes tambahan
+memastikan retiming mempertahankan class/buffer, cache dicabut ketika muncul
+unknown, view tidak mengubah raw/state/ages/actual-mask, penggunaan berulang
+tidak menggandakan reserve, dan final trajectory memakai buffer pada kedua
+fase transit.32 tes targeted lulus3.69 s. Full build/suite dan run5 dicatat
+setelah tersedia. Belum mengklaim buffer ini berhasil dalam flight.
+
+Build tiga paket berhasil;437 tes lulus98.26 s,0 errors/failures/skipped.
+Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_lateral_build.log.
+Replay exact map261/32.2 s: history dengan reserve baru memilih detour
+[-3.9,-1.5,1.5] ke reachable prefix[-4.9,-1.5,1.5],117 ekspansi;
+seluruh edge lulus view lokal yang sama. Goal lama kini tidak aman pada
+reserve baru, sehingga prefix partial tidak diklaim mencapai final goal.
+Commit/push sebelum run5; hasil flight dicatat setelah tersedia.

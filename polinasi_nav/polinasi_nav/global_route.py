@@ -38,9 +38,10 @@ def plan_history_route(history,request,now):
     grid.rebuild(now)
     guard=float(c.get('transit_observation_guard',0.))
     if guard>0:
-        from .canopy_scan import canopy_guard_grid
-        grid=canopy_guard_grid(grid,guard)
+        from .transit_guard import transit_guard_grid
+        grid=transit_guard_grid(grid,guard,c.get('transit_lateral_observation_guard',0.))
     result['observation_guard_m']=guard
+    result['lateral_observation_guard_m']=c.get('transit_lateral_observation_guard',0.)
     # Transfers stay under the canopy: never climb above the higher endpoint.
     levels=grid.centers(np.column_stack([np.zeros(grid.shape[2]),np.zeros(grid.shape[2]),np.arange(grid.shape[2])]))[:,2]
     grid.blocked[:,:,levels>max(start[2],goal[2])+res/2]=True

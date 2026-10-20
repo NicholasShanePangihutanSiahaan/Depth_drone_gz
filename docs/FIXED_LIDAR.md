@@ -205,3 +205,12 @@ dengan depth valid/fresh dan health lain sehat; stale sensor/emergency selalu
 menghentikan run. Event sementara bukan COMPLETE atau bukti lokalisasi gagal.
 Timestamp tepat pada threshold memakai toleransi roundoff1e-9 s yang sama
 dengan fresh_depth, tanpa memperbesar timeout fisik.
+
+
+Pada inspeksi, transit APPROACH/RETURN memakai reserve observasi ke atas
+`transit_observation_guard=.2` m dan lateral
+`transit_lateral_observation_guard=.2` m. History A*, prefix, smoothing dan
+live suffix menggunakan view konservatif yang sama; mask badan aktual dan
+data occupancy/umur tidak diubah. Ini margin rekayasa untuk perubahan bukti
+di voxel tetangga, belum jaminan obstacle avoidance terhadap deteksi terlambat.
+Run bunga09d471d masih gagal47.35 s; status validasi terbaru ada di jurnal.

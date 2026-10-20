@@ -216,14 +216,20 @@ class ContinuousTreeInspectionController(TreeInspectionController):
     def _history_goal(self,current,destination):
         grid=self.grid
         guard=self._route_observation_guard()
-        existing=getattr(grid,'canopy_guard_cells',0)*grid.res
-        if guard>existing+1e-9:
-            from .canopy_scan import canopy_guard_grid
-            self.grid=canopy_guard_grid(grid,guard-existing)
+        if guard>0:self.grid=self._observation_grid(grid,guard)
         try:
             return super()._history_goal(current,destination)
         finally:
             self.grid=grid
+
+    def _observation_grid(self,grid,guard):
+        transit=self.state=='RETURN' or (self.state=='SURVEY' and self.tree_phase=='APPROACH')
+        if transit:
+            from .transit_guard import transit_guard_grid
+            return transit_guard_grid(grid,guard,self.c.get('transit_lateral_observation_guard',0.))
+        from .canopy_scan import canopy_guard_grid
+        remaining=max(0.,guard-getattr(grid,'canopy_guard_cells',0)*grid.res)
+        return canopy_guard_grid(grid,remaining) if remaining else grid
 
     def _route_observation_guard(self):
         if self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height'):
@@ -236,9 +242,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.scan_endpoint_rejections=[]
         grid=self.grid
         guard=self._route_observation_guard()
-        if guard>0:
-            from .canopy_scan import canopy_guard_grid
-            self.grid=canopy_guard_grid(grid,guard)
+        if guard>0:self.grid=self._observation_grid(grid,guard)
         try:
             route=super()._plan_route(start,goal)
             if (route is not None and self.state=='SURVEY' and self.tree_phase=='SCAN'
@@ -359,9 +363,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         grid=self.grid
         adaptive=self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height')
         guard=self._route_observation_guard()
-        if guard>0:
-            from .canopy_scan import canopy_guard_grid
-            self.grid=canopy_guard_grid(grid,guard)
+        if guard>0:self.grid=self._observation_grid(grid,guard)
         try:
             trajectory=SurveyController._trajectory_from_points(self,points,speed)
         finally:
@@ -372,7 +374,12 @@ class ContinuousTreeInspectionController(TreeInspectionController):
             from .canopy_scan import CanopyScanTrajectory,BoundaryCanopyTrajectory
             from .moving_trajectory import BoundaryTrajectory
             wrapper=BoundaryCanopyTrajectory if isinstance(trajectory,BoundaryTrajectory) else CanopyScanTrajectory
-            trajectory=wrapper(trajectory,guard)
+            lateral=self.c.get('transit_lateral_observation_guard',0.) if not adaptive else 0.
+            if lateral>0:
+                from .transit_guard import TransitObservationTrajectory,BoundaryTransitTrajectory
+                wrapper=BoundaryTransitTrajectory if isinstance(trajectory,BoundaryTrajectory) else TransitObservationTrajectory
+                trajectory=wrapper(trajectory,guard,lateral)
+            else:trajectory=wrapper(trajectory,guard)
             trajectory.safe(self.grid)
             if adaptive:self.scan_curve_diagnostics=trajectory.canopy_certificate
             else:self.transit_curve_diagnostics=trajectory.canopy_certificate

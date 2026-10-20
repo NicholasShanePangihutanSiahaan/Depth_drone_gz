@@ -309,3 +309,71 @@ def test_transit_buffer_rechecks_new_overhead_voxel_before_body_corridor_is_bloc
     assert ContinuousTrajectory(points,ctl.c).safe(ctl.grid)
     assert not trajectory.safe_from(ctl.grid,trajectory.duration/2)
     assert ctl.c['tracking_margin']==.2 and ctl.c['clearance']==.2
+
+
+def test_transit_lateral_reserve_rejects_run4_neighbor_before_new_return():
+    from polinasi_nav.mapping import OCCUPIED
+    from polinasi_nav.canopy_scan import CanopyScanTrajectory
+    from polinasi_nav.transit_guard import TransitObservationTrajectory,transit_guard_grid
+    from polinasi_nav.continuous import ContinuousTrajectory
+    ctl=controller()
+    ctl.c.update(bounds_min=[-9.2,-6.4,-.6],bounds_max=[.8,3.6,7.4],
+        drone_dimensions=[.6,.6,.7],transit_observation_guard=.2,
+        transit_lateral_observation_guard=.2,trajectory_geometry_cache=True)
+    ctl.grid=VoxelMap(ctl.c);g=ctl.grid
+    g.state[:]=FREE;g.seen[:]=0.
+    old=np.array([-4.3,-.1,2.3]);new=np.array([-4.3,-.3,2.3])
+    g.state[tuple(g.indices(old))]=OCCUPIED;g.rebuild(0.)
+    # Same geometric witness and failed reference as run4, before the new hit.
+    points=np.array([[-4.15,-1.28885,1.5],[-4.35,-1.28885,1.5]])
+    base=ContinuousTrajectory(points,ctl.c)
+    assert CanopyScanTrajectory(base,.2).safe(g)
+    guarded=TransitObservationTrajectory(base,.2,.2)
+    assert not guarded.safe_from(g,base.duration/2)
+    before=g.blocked.copy();actual=g.blocked_actual.copy();state=g.state.copy()
+    view=transit_guard_grid(g,.2,.2)
+    assert transit_guard_grid(view,.2,.2) is view
+    np.testing.assert_array_equal(g.blocked,before)
+    np.testing.assert_array_equal(g.blocked_actual,actual)
+    np.testing.assert_array_equal(g.state,state)
+    assert view.state is g.state and view.blocked_actual is g.blocked_actual
+    assert view.seen is g.seen
+    g.state[tuple(g.indices(new))]=OCCUPIED;g.rebuild(.1)
+    assert not base.safe(g)  # Original run4 failure after the new observation.
+    assert base.sample(base.duration/2)[0][2]==pytest.approx(1.5)
+
+
+def test_transit_guard_suffix_cache_and_retiming_preserve_lateral_checks():
+    from polinasi_nav.mapping import OCCUPIED,UNKNOWN
+    from polinasi_nav.transit_guard import TransitObservationTrajectory,transit_guard_grid
+    from polinasi_nav.local_braking_retime import retime_local
+    from polinasi_nav.continuous import ContinuousTrajectory
+    ctl=controller();g=ctl.grid
+    ctl.c['trajectory_geometry_cache']=True
+    points=np.array([[-1.,0.,2.85],[1.,0.,2.85]])
+    trajectory=TransitObservationTrajectory(ContinuousTrajectory(points,ctl.c),.2,.2)
+    assert trajectory.safe(g) and trajectory.safe_from(g,0.)
+    view=transit_guard_grid(g,.2,.2)
+    assert getattr(view,'canopy_guard_cells')==1
+    assert view.transit_lateral_guard_cells==1
+    changed=retime_local(trajectory,.1,g,ctl.c)
+    assert isinstance(changed,TransitObservationTrajectory)
+    assert changed.lateral_guard==.2 and changed.safe(g)
+    # Unknown also blocks; reserve never rewrites it into measured free.
+    idx=g.indices([0.,0.,2.85]);g.state[tuple(idx)]=UNKNOWN;g.rebuild(.1)
+    assert not trajectory.safe_from(g,0.)
+    assert not changed.safe(g)
+    assert g.state[tuple(idx)]==UNKNOWN
+
+
+@pytest.mark.parametrize('phase',['APPROACH','RETURN'])
+def test_transit_final_curve_has_lateral_reserve_in_both_phases(phase):
+    from polinasi_nav.transit_guard import TransitObservationTrajectory
+    ctl=controller();enable_feedback(ctl)
+    ctl.c.update(transit_observation_guard=.2,transit_lateral_observation_guard=.2)
+    ctl.tree_phase='APPROACH' if phase=='APPROACH' else 'SEARCH'
+    ctl.state='SURVEY' if phase=='APPROACH' else 'RETURN'
+    curve=ctl._trajectory_from_points(np.array([[1.,0.,2.85],[2.,0.,2.85]]))
+    assert isinstance(curve,TransitObservationTrajectory)
+    assert curve.safe_from(ctl.grid,0.)
+    assert curve.execution_certificate['lateral_guard_m']==.2
