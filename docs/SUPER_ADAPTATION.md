@@ -304,3 +304,22 @@ Exact snapshot replay melewati anchor7/8 dengan outward .20 m, tanpa menaikkan
 batas kecepatan atau mengubah clearance/timeout/unknown/FOV. Ini perbaikan
 geometry proposal lokal, bukan port penuh SUPER. Bukti log, penelitian primer,
 angka replay dan hasil flight berikut tersedia di jurnal.
+
+
+## Buffer pembaruan peta pada transit
+
+Run flowers2dd946a gagal pada approach setelah cached backup valid menjadi
+tidak memenuhi nominal next-step mask akibat occupied overhead baru. Preset
+fixed inspection menambahkan transit_observation_guard=.2 m pada pencarian
+rute, kurva dan pemeriksaan live suffix approach/return. Guard memberi ruang
+reaksi lebih awal, sedangkan backup/PID tetap memakai batas fisik lama.
+Ini buffer engineering berbasis resolusi voxel, bukan hasil TEB formal atau
+jaminan unknown benar-benar bebas. Tidak menaikkan kecepatan. Diagnosis
+emergency kini mencatat gate actual/nominal dan exact polynomial/grid snapshot.
+Regresi dan hasil flight dijelaskan di jurnal; keberhasilan scan repair belum
+diuji run2 karena run berhenti sebelum scan.
+
+Guidance A* history dan pemilihan prefix lokal memakai buffer transit yang
+sama dengan local curve. Jika tujuan belum feasible, history tetap partial;
+tidak diberi label inspected atau complete. Regresi memastikan obstacle pada
+buffer mendorong detour, sementara clearance dan timeout fisik tetap.

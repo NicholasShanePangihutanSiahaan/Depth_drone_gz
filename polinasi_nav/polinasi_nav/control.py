@@ -97,18 +97,34 @@ class MissionController:
             self.certified_backup=None
             self.trajectory = None
 
+    def _braking_invalidated(self,gate,detail):
+        diagnostic=dict(reason='emergency_braking_invalidated',gate=gate,
+            previous_failure=self.failure,map_version=int(self.grid.version),
+            observation_stamp=float(self.grid.last_observation_stamp),
+            command=self.command.tolist(),command_v=self.command_v.tolist(),
+            command_a=self.command_a.tolist(),brake_coefficients=self.brake.coeff.tolist(),
+            brake_elapsed_seconds=float(self.brake.elapsed),brake_duration_seconds=float(self.brake.duration),
+            check=detail)
+        self.route_failure_diagnostics['emergency_braking']=diagnostic
+        self.backup_diagnostics.update(valid=False,invalidated=True,invalidated_gate=gate,
+            invalidated_map_version=int(self.grid.version))
+        from .planner_recovery import save_failure_snapshot
+        save_failure_snapshot(self,diagnostic,grid=self.grid)
+        self.failure='emergency_unavoidable:'+self.failure
+        self.brake=None
+        self.command_v,self.command_a=np.zeros(3),np.zeros(3)
+
     def _braking(self, dt):
         if self.brake is not None:
-            if not self.brake.path_safe(self.grid, actual=True):
-                self.failure = 'emergency_unavoidable:'+self.failure
-                self.brake = None
-                self.command_v, self.command_a = np.zeros(3), np.zeros(3)
+            detail={}
+            if not self.brake.path_safe(self.grid, actual=True,diagnostics=detail):
+                self._braking_invalidated('actual_remaining_stop',detail)
                 return self.command.copy(), np.zeros(3)
             candidate = self.brake.step(dt)
-            if not self.grid.line_safe(self.command, candidate):
-                self.failure = 'emergency_unavoidable:'+self.failure
-                self.brake = None
-                self.command_v, self.command_a = np.zeros(3), np.zeros(3)
+            detail={}
+            if not self.grid.line_safe(self.command, candidate,diagnostics=detail):
+                detail['candidate']=candidate.tolist()
+                self._braking_invalidated('nominal_next_step',detail)
             else:
                 self.command = candidate
                 self.command_v, self.command_a = self.brake.v.copy(), self.brake.a.copy()

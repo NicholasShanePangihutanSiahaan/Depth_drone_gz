@@ -833,3 +833,77 @@ Hasil build/suite lengkap dan flight berikut ditambahkan setelah tersedia.
 Build tiga paket berhasil;427 tes lulus dalam100.47 s,0 errors/failures/skipped.
 Log /tmp/fixed_scan_endpoint_build.log. Replay dan regresi bukan keberhasilan
 flight; commit/push sebelum menjalankan ulang sensor mission flowers.
+
+
+## 20 Oktober 2026 — flowers run2: cadangan berhenti terkena pembaruan peta
+
+Run2dd946a reports/fixed_lidar_validation_20261020_081703, registered session
+.dependencies/ros_sensor_palm_farm_flowers_20261020_081705_35609_mapping,
+berhenti35.40 s dengan emergency_unavoidable:route_changed saat APPROACH,
+sebelum menguji repair scan pada flight. Auditor stop, session stopped=true;
+audit host port/proses kosong.259 pasangan pose, RMSE .00815984 m/max
+.01821977 m, health tetap tracking. Tidak ada inspeksi pohon selesai.
+
+Initial curve direct, worker1.4931 s; suffix dibatalkan sekitar34.502 s
+oleh occupied di[-4.3,-.3,2.3], nominal dan actual pada posisi saat itu aman.
+Cadangan PID terakhir34.45 s valid pada map285, duration2.0937103 s,
+endpoint[-2.194565,-.664065,1.840921]. Fail route_changed memilih cached backup
+yang compatible dan live-rechecked. Setelah~.9 s braking, map terbaru membuat
+_braking menolak kelanjutan; log lama hanya menyebut emergency_unavoidable.
+Tidak membuktikan tabrakan atau kegagalan lokalisasi.
+
+Rekonstruksi end export35.415 s/observasi35.2 s ke navigation window akhir
+[-7.2,-5.8,-.6], shape50x50x40: clearance -.054159091234535994 m tepat sama
+dengan log (metrik clearance ini konservatif, bukan kontak geometri).
+Brake direkonstruksi dari PID PVA terakhir34.45 s, duration identik2.0937103 s.
+Pada elapsed .8/.85/.9/.95, remaining stop actual=True lolos, tetapi langkah
+nominal berikut gagal occupied. Witness[-2.5,-.9,2.7] berada dalam inflated
+tracking reserve. Pada snapshot sebelumnya32.1 s, nearest overhead occupied
+sekitar[-2.7,-.7,2.9]; pengamatan kemudian menambah occupied lebih dekat.
+Ini replay end export, bukan exact live snapshot tiap tick. Penentuan gate
+didukung oleh rekonstruksi tetapi snapshot kritis ditambah agar run berikut
+tidak perlu inferensi dari state akhir. Tidak menghapus margin tracking.
+
+Usulan engineering: transit_observation_guard=.2 m pada preset fixed inspection.
+Approach/return route search dan kurva nominal menyisakan satu voxel ekstra
+di atas badan; live suffix memeriksa guard itu juga agar leaf update memicu
+brake/replan sebelum ruang nominal minimum habis. Backup runtime tetap diperiksa
+dengan clearance/margin fisik lama; extra buffer merupakan cadangan lintasan,
+bukan pelonggaran batas. Full PVA, braking, PID, sensor/map freshness tetap.
+Buffer ini tidak memprediksi obstacle yang sama sekali belum teramati dan
+bukan jaminan formal terhadap pertumbuhan peta arbitrer atau prior FOV salah.
+Keberhasilan pengurangan masalah harus dibuktikan flight berikut.
+
+_braking sekarang memisahkan gate actual_remaining_stop vs nominal_next_step,
+menyimpan witness, polinomial stop, elapsed/duration, PVA dan exact grid pada
+failure_critical.npz. Backup status valid=false/invalidated beserta map version
+ketika tidak berlaku lagi; tidak meninggalkan valid=true yang basi.
+Anggaran tetap8 snapshot biasa+1 kritis. Ini pencatatan; keputusan berhenti
+atau menolak langkah yang tidak aman tidak dilonggarkan.
+
+60 regresi terkait lulus sebelum tambahan tes. Dua fixture guard baru awalnya
+gagal menemukan pasangan roof voxel karena z2.8 tepat pada batas voxel dan
+Bezier hull bisa mencakup voxel sebelah; fixture dipindah2.85 m, tanpa mengubah
+algoritma agar tes lolos. Dua regresi transit approach/return lalu lulus,
+serta regresi occupied wall yang membuktikan actual stop dapat lolos ketika
+nominal step gagal, dengan critical snapshot dan status invalidated benar.
+Hasil suite lengkap dan flight baru dicatat setelah tersedia.
+
+Suite setelah buffer lokal430 pass/104.43 s. Replay kemudian memperlihatkan
+endpoint history lama tidak memenuhi guard lokal (endpoint_not_safe). Agar
+tidak mengejar tujuan yang ditolak tahap berikut, plan_history_route memakai
+guard transit yang sama; ContinuousTree._history_goal menyeleksi prefix pada
+mask guarded tanpa menumpuk guard dua kali. Regresi global menempatkan leaf
+yang tidak memblokir body route tetapi memblokir buffer; A* guarded mencari
+detour.28 regresi history/controller lulus.
+
+Replay snapshot32.1 s dengan history guarded: detour partial valid melalui
+[-1.7,-.5,1.7]→[-4.3,-1.3,1.5]→[-4.9,-1.3,1.5]→[-5.1,-1.3,1.7].
+Semua segmen memenuhi guarded mask; prefix lokal[-5.1,-1.3,1.7] feasible.
+Partial bukan bukti tujuan inspeksi tercapai. Suite akhir diulang setelah
+perubahan global; hasil final dan run berikut dicatat sesudah tersedia.
+
+Suite final setelah penyamaan history/local:431 tes lulus,0 errors/failures/
+skipped,100.045 s. Bukti persisten build_ros/polinasi_nav/pytest.xml, timestamp
+2026-10-20T08:33:07.225523. Pemeriksaan pascainterupsi memastikan tidak ada
+simulator atau test runner tersisa. Commit/push sebelum flight ketiga.

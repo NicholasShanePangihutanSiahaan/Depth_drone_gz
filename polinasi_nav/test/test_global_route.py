@@ -119,3 +119,19 @@ def test_history_guidance_keeps_explicit_FOV_assumptions_separate_from_measureme
     h.update([g.indices([-1.,0.,2.])],OCCUPIED,0.)
     route=plan_history_route(h,request(),0.)
     assert len(route['path'])>2  # Measured obstacle defeats assumed free.
+
+
+def test_history_route_uses_same_overhead_buffer_as_local_transit_curve():
+    from polinasi_nav.canopy_scan import canopy_guard_grid
+    c,g,h=fixture()
+    leaf=g.indices([-1.,0.,2.7])
+    h.update([leaf],OCCUPIED,0.);g.state[tuple(leaf)]=OCCUPIED;g.rebuild(0.)
+    direct=plan_history_route(h,request(),0.)
+    assert direct['path'] and len(direct['path'])==2
+    guarded=canopy_guard_grid(g,.2)
+    assert not guarded.line_safe(direct['path'][0],direct['path'][-1])
+    h.c['transit_observation_guard']=.2
+    route=plan_history_route(h,request(),0.)
+    assert route['observation_guard_m']==.2
+    assert route['final_goal_reached_by_route'] and len(route['path'])>2
+    assert all(guarded.line_safe(p,q) for p,q in zip(route['path'],route['path'][1:]))

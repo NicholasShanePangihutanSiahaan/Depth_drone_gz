@@ -419,3 +419,31 @@ def test_new_survey_route_preserves_correct_anchor_mapping_after_densification()
     assert set(ctl.batch_knots)=={0,1,2}
     for anchor,knot in ctl.batch_knots.items():
         np.testing.assert_allclose(tr.points[knot],ctl.waypoints[anchor])
+
+
+def test_emergency_brake_records_nominal_step_failure_with_actual_stop_still_safe(tmp_path):
+    import json
+    from polinasi_nav.planning import Brake
+    c,g=fixture();c['planner_audit_dir']=str(tmp_path)
+    # A wall in the tracking reserve, outside the actual-body stopping mask.
+    selected=None
+    for y in range(g.indices([0.,0.,0.])[1]+1,g.shape[1]-1):
+        g.state[:]=FREE;g.state[:,y,:]=OCCUPIED;g.rebuild(0.)
+        stop=Brake([0.,0.,2.],[.2,0.,0.],np.zeros(3),c)
+        if not g.safe(stop.p) and stop.path_safe(g,actual=True):
+            selected=y;break
+    assert selected is not None
+    ctl=SurveyController(c,g,asynchronous=False)
+    ctl.command=np.array([0.,0.,2.]);ctl.command_v=np.array([.2,0.,0.]);ctl.command_a=np.zeros(3)
+    ctl.brake=stop;ctl.state='BRAKE';ctl.failure='route_changed'
+    ctl._braking(.05)
+    assert ctl.failure=='emergency_unavoidable:route_changed'
+    detail=ctl.route_failure_diagnostics['emergency_braking']
+    assert detail['gate']=='nominal_next_step'
+    assert not ctl.backup_diagnostics['valid'] and ctl.backup_diagnostics['invalidated']
+    assert 'occupied' in detail['check']['causes']
+    with np.load(tmp_path/'failure_critical.npz',allow_pickle=False) as saved:
+        metadata=json.loads(str(saved['metadata']))
+        assert metadata['diagnostics']['reason']=='emergency_braking_invalidated'
+        assert np.asarray(metadata['diagnostics']['brake_coefficients']).shape==(6,3)
+        np.testing.assert_array_equal(saved['blocked_actual'],g.blocked_actual)

@@ -279,3 +279,33 @@ def test_detour_arrival_direction_repairs_same_anchor_before_curve_construction(
     assert np.linalg.norm(after)>=np.linalg.norm(before)
     assert ctl.waypoint_index==0 and not ctl.scan_records
     assert ctl.scan_target_diagnostics['rejections']['route_terminal_reserve']>0
+
+
+@pytest.mark.parametrize('phase',['APPROACH','RETURN'])
+def test_transit_buffer_rechecks_new_overhead_voxel_before_body_corridor_is_blocked(phase):
+    from polinasi_nav.mapping import OCCUPIED
+    from polinasi_nav.canopy_scan import CanopyScanTrajectory,canopy_guard_grid
+    from polinasi_nav.continuous import ContinuousTrajectory
+    ctl=controller();enable_feedback(ctl)
+    ctl.c['transit_observation_guard']=.2
+    ctl.tree_phase='APPROACH' if phase=='APPROACH' else 'SEARCH'
+    ctl.state='SURVEY' if phase=='APPROACH' else 'RETURN'
+    points=np.array([[1.,0.,2.85],[2.,0.,2.85]])
+    # Select adjacent observed roof levels at the actual voxel resolution.
+    base=ContinuousTrajectory(points,ctl.c)
+    selected=None
+    for roof in range(ctl.grid.indices([0.,0.,3.])[2],ctl.grid.shape[2]-1):
+        ctl.grid.state[:]=FREE;ctl.grid.state[:,:,roof]=OCCUPIED;ctl.grid.rebuild(0.)
+        if not base.safe(ctl.grid) or canopy_guard_grid(ctl.grid,.2).safe(points[-1]):
+            continue
+        ctl.grid.state[:]=FREE;ctl.grid.state[:,:,roof+1]=OCCUPIED;ctl.grid.rebuild(0.)
+        if canopy_guard_grid(ctl.grid,.2).safe(points[-1]):
+            selected=roof;break
+    assert selected is not None
+    trajectory=ctl._trajectory_from_points(points)
+    assert isinstance(trajectory,CanopyScanTrajectory) and trajectory.safe(ctl.grid)
+    # Retain the old roof; a new observation extends its lower surface.
+    ctl.grid.state[:,:,selected]=OCCUPIED;ctl.grid.rebuild(.1)
+    assert ContinuousTrajectory(points,ctl.c).safe(ctl.grid)
+    assert not trajectory.safe_from(ctl.grid,trajectory.duration/2)
+    assert ctl.c['tracking_margin']==.2 and ctl.c['clearance']==.2

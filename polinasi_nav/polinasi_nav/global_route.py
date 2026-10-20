@@ -36,6 +36,11 @@ def plan_history_route(history,request,now):
     history.restore(grid,now)
     if c.get('fixed_fov_assumptions'):history.fov_priors(grid)
     grid.rebuild(now)
+    guard=float(c.get('transit_observation_guard',0.))
+    if guard>0:
+        from .canopy_scan import canopy_guard_grid
+        grid=canopy_guard_grid(grid,guard)
+    result['observation_guard_m']=guard
     # Transfers stay under the canopy: never climb above the higher endpoint.
     levels=grid.centers(np.column_stack([np.zeros(grid.shape[2]),np.zeros(grid.shape[2]),np.arange(grid.shape[2])]))[:,2]
     grid.blocked[:,:,levels>max(start[2],goal[2])+res/2]=True

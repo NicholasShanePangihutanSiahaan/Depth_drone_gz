@@ -188,3 +188,12 @@ tools/stop_simulation.py --run dengan direktori tepat dari file itu.
 Map numerik/point cloud/voxel/HTML ada di reports/ros_sensor_palm_farm_flowers_*/map_3d/.
 Runtime tetap domain96, partition polinasi_fixed_lidar, UDP9002/14650 dan
 TCP5762; jangan menjalankan dua simulator yang berbagi resource tersebut.
+
+
+Preset inspection memakai transit_observation_guard=.2 m pada approach dan
+return: rute, kurva serta live suffix menjaga buffer atas tambahan untuk
+pembaruan daun. Buffer tidak mengganti clearance/tracking margin atau gate
+lokalisasi dan tidak mengesahkan ruang unknown di luar prior pengguna.
+Jika pengereman diinvalidasi, route_failure_diagnostics.emergency_braking
+membedakan actual_remaining_stop dan nominal_next_step; exact grid dan
+polinomial tersedia pada map_3d/planner_failures/failure_critical.npz.

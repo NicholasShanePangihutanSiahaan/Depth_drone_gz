@@ -24,6 +24,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.scan_height_diagnostics={}
         self.scan_curve_diagnostics={}
         self.scan_endpoint_rejections=[]
+        self.transit_curve_diagnostics={}
         self.navigation_camera_active=False
         self.navigation_camera_completed=None
         self.scan_anchor_count=int(self.c.get('tree_scan_anchors',24))
@@ -201,6 +202,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
 
 
     def _accept_plan_auxiliary(self,clone,ready):
+        self.transit_curve_diagnostics=clone.transit_curve_diagnostics
         if self.tree_phase=='SCAN' and self.scan_orbit_ready:
             self.scan_target_diagnostics=clone.scan_target_diagnostics
             self.scan_height_diagnostics=clone.scan_height_diagnostics
@@ -211,12 +213,32 @@ class ContinuousTreeInspectionController(TreeInspectionController):
                 self.scan_target_repairs=clone.scan_target_repairs
 
 
+    def _history_goal(self,current,destination):
+        grid=self.grid
+        guard=self._route_observation_guard()
+        existing=getattr(grid,'canopy_guard_cells',0)*grid.res
+        if guard>existing+1e-9:
+            from .canopy_scan import canopy_guard_grid
+            self.grid=canopy_guard_grid(grid,guard-existing)
+        try:
+            return super()._history_goal(current,destination)
+        finally:
+            self.grid=grid
+
+    def _route_observation_guard(self):
+        if self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height'):
+            return self.c.get('tree_ascent_observation_guard',.2)
+        if self.state=='RETURN' or (self.state=='SURVEY' and self.tree_phase=='APPROACH'):
+            return self.c.get('transit_observation_guard',0.)
+        return 0.
+
     def _plan_route(self,start,goal):
         self.scan_endpoint_rejections=[]
         grid=self.grid
-        if self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height'):
+        guard=self._route_observation_guard()
+        if guard>0:
             from .canopy_scan import canopy_guard_grid
-            self.grid=canopy_guard_grid(grid,self.c.get('tree_ascent_observation_guard',.2))
+            self.grid=canopy_guard_grid(grid,guard)
         try:
             route=super()._plan_route(start,goal)
             if (route is not None and self.state=='SURVEY' and self.tree_phase=='SCAN'
@@ -336,22 +358,24 @@ class ContinuousTreeInspectionController(TreeInspectionController):
     def _trajectory_from_points(self,points,speed=None):
         grid=self.grid
         adaptive=self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height')
-        if adaptive:
+        guard=self._route_observation_guard()
+        if guard>0:
             from .canopy_scan import canopy_guard_grid
-            self.grid=canopy_guard_grid(grid,self.c.get('tree_ascent_observation_guard',.2))
+            self.grid=canopy_guard_grid(grid,guard)
         try:
             trajectory=SurveyController._trajectory_from_points(self,points,speed)
         finally:
             self.grid=grid
         if self.tree_phase=='SCAN' and not isinstance(trajectory,ContinuousTrajectory):
             raise ValueError('continuous scan smoothing not certified')
-        if self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height'):
+        if guard>0 and isinstance(trajectory,ContinuousTrajectory):
             from .canopy_scan import CanopyScanTrajectory,BoundaryCanopyTrajectory
             from .moving_trajectory import BoundaryTrajectory
             wrapper=BoundaryCanopyTrajectory if isinstance(trajectory,BoundaryTrajectory) else CanopyScanTrajectory
-            trajectory=wrapper(trajectory,self.c.get('tree_ascent_observation_guard',.2))
+            trajectory=wrapper(trajectory,guard)
             trajectory.safe(self.grid)
-            self.scan_curve_diagnostics=trajectory.canopy_certificate
+            if adaptive:self.scan_curve_diagnostics=trajectory.canopy_certificate
+            else:self.transit_curve_diagnostics=trajectory.canopy_certificate
         return trajectory
 
     def inspection_status(self):
@@ -362,6 +386,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         status['scan_height_profile']=self.scan_height_diagnostics
         status['scan_curve_diagnostics']=self.scan_curve_diagnostics
         status['scan_endpoint_rejections']=self.scan_endpoint_rejections
+        status['transit_curve_diagnostics']=self.transit_curve_diagnostics
         ids=np.argwhere(self.grid.state==OCCUPIED)
         ceiling=None
         if len(ids):
