@@ -70,7 +70,8 @@ def check_braking(trajectory,grid,c,cache):
     signature=(id(grid),grid.lo.tobytes(),grid.res,
         hashlib.sha256(grid.blocked.tobytes()).digest(),
         tuple(c.get(k) for k in ('speed','acceleration','jerk','reaction_time',
-            'feedback_speed_envelope','velocity_uncertainty_mps','pid_correction_acceleration')))
+            'feedback_speed_envelope','velocity_uncertainty_mps','pid_correction_acceleration',
+            'explicit_backup_enabled','explicit_backup_fallback_search')))
     pieces=zip(trajectory.controls,trajectory.durations) if hasattr(trajectory,'controls') else [(None,trajectory.duration)]
     for index,(controls,duration) in enumerate(pieces):
         key=(signature,controls.tobytes(),float(duration)) if controls is not None else None
@@ -80,6 +81,13 @@ def check_braking(trajectory,grid,c,cache):
             valid=brake_safe(grid,p,v,c,a,diagnostics=detail)
             if valid and c.get('feedback_speed_envelope'):
                 valid=feedback_brake_safe(grid,p,v,a,c,detail)
+            if valid and c.get('explicit_backup_enabled'):
+                # A delayed reaction stop need not share the corridor of an
+                # immediate PVA stop. Certify the backup that execution requires.
+                from .super_policy import explicit_backup
+                stop,backup=explicit_backup(grid,p,v,a,c)
+                valid=stop is not None
+                if not valid:detail=dict(reason='explicit_backup_unavailable',backup=backup)
             if not valid:
                 return False,dict(reason='curve_braking_rejected',segment=index,
                     elapsed_seconds=elapsed,position=p.tolist(),velocity=v.tolist(),

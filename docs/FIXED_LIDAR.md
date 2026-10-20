@@ -223,3 +223,12 @@ mengikuti minimum transit `exploration_min_altitude=1.0` m. Clearance aktual,
 unknown dan semua pemeriksaan lintasan tetap menentukan kandidat aman.
 Run bunga b6b1f74 menyelesaikan enam sektor pohon pertama, lalu gagal pada
 transisi menuju pohon kedua; perbaikan transisi belum tervalidasi flight.
+
+
+`explicit_backup_fallback_search=True` pada fixed inspection mencoba paling
+banyak20 alternatif durasi/endpoint setelah base PVA stop ditolak. Semua
+alternatif tetap lulus reserve, collision dan derivative bounds; tanpa
+kandidat aman, flight tetap ditolak. Planner juga memeriksa immediate backup
+sepanjang kurva, selain reaction stop. Ini pencarian terbatas, bukan optimizer
+SUPER penuh. Run5cad7d0 berhenti249.40 s pid_final_safety dengan5 sektor valid;
+perbaikan backup berikutnya belum tervalidasi flight.

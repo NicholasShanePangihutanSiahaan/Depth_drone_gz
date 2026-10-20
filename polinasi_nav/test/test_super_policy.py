@@ -447,3 +447,91 @@ def test_emergency_brake_records_nominal_step_failure_with_actual_stop_still_saf
         assert metadata['diagnostics']['reason']=='emergency_braking_invalidated'
         assert np.asarray(metadata['diagnostics']['brake_coefficients']).shape==(6,3)
         np.testing.assert_array_equal(saved['blocked_actual'],g.blocked_actual)
+
+
+def recorded_backup_fixture():
+    from polinasi_nav.mapping import VoxelMap
+    c,_=fixture()
+    c.update(resolution=.2,bounds_min=[-12.2,-7.,-.6],bounds_max=[-2.2,3.,7.4],
+        drone_dimensions=[.6,.6,.7],clearance=.2,tracking_margin=.2,
+        speed=.4,acceleration=.5,jerk=1.,reaction_time=.35,
+        pid_kp=[.6]*3,pid_ki=[.03]*3,pid_kd=[.9]*3,pid_integral_limit=.5,
+        scan_adaptive_height=True,tree_ascent_observation_guard=.2,
+        explicit_backup_fallback_search=True)
+    g=VoxelMap(c);g.state[:]=FREE;g.seen[:]=0.
+    g.state[tuple(g.indices([-6.7,-2.9,3.3]))]=OCCUPIED;g.rebuild(0.)
+    p=np.array([-7.071925142263441,-1.8692921643804425,2.273857811509911])
+    v=np.array([.17283610606784022,.1894690525776391,.08263806543018591])
+    a=np.array([.028437756392196777,.04251019618969396,-.1230982091356313])
+    return c,g,p,v,a
+
+
+def test_recorded_backup_fallback_preserves_PVA_buffer_and_derivative_limits():
+    from polinasi_nav.canopy_scan import canopy_guard_grid
+    c,g,p,v,a=recorded_backup_fixture();view=canopy_guard_grid(g,.2)
+    before=g.blocked.copy()
+    assert explicit_backup(view,p,v,a,dict(c,explicit_backup_fallback_search=False))[0] is None
+    stop,detail=explicit_backup(view,p,v,a,c)
+    assert stop is not None and stop.path_safe(view)
+    np.testing.assert_allclose(stop.coeff[0],p)
+    np.testing.assert_allclose(stop.coeff[1],v)
+    np.testing.assert_allclose(2*stop.coeff[2],a)
+    assert detail['fallback_search'] and detail['candidate_count']==21
+    assert detail['duration_seconds']==pytest.approx(1.5284229188629095)
+    for key,limit in [('speed_mps',c['speed']),('acceleration_mps2',c['acceleration']),('jerk_mps3',c['jerk'])]:
+        assert detail['derivative_bounds'][key]<=limit+1e-8
+    np.testing.assert_array_equal(g.blocked,before)
+    stop.step(stop.duration)
+    np.testing.assert_allclose(stop.v,0.,atol=1e-10)
+    np.testing.assert_allclose(stop.a,0.,atol=1e-10)
+    # Cached success never grants permission for a later map's unknown.
+    hit=view.indices(detail['end_position']);g.state[tuple(hit)]=UNKNOWN;g.rebuild(.1)
+    assert not stop.path_safe(canopy_guard_grid(g,.2))
+
+
+@pytest.mark.parametrize('enabled',[False,True])
+def test_recorded_PID_accepts_only_a_live_certified_backup(enabled):
+    c,g,p,v,a=recorded_backup_fixture()
+    c.update(explicit_backup_fallback_search=enabled,survey_waypoints=[p.tolist()])
+    ctl=SurveyController(c,g,asynchronous=False);ctl.state='SURVEY';ctl.tree_phase='SCAN'
+    ctl.command=p;ctl.command_v=v
+    ctl.command_a=np.array([-.011741389200687772,.02502311904454475,-.10481500200390763])
+    pid=PositionPID(c);pid.state='SURVEY'
+    pid.integral=np.array([.5,-.22817341006700476,-.08754935743504393])
+    pid.previous_acceleration=np.array([.06315203964528382,.0767327388916404,-.13422188250534997])
+    pid.apply(.05,ctl,np.array([-7.134802158437445,-1.916098370616943,2.2666145006815914]),
+              np.array([.15873806737813162,.19065431707996397,.11986945724273014]))
+    if not enabled:
+        assert ctl.failure=='pid_final_safety'
+        return
+    assert not ctl.failure and pid.last['correction_scale']==.5
+    assert ctl.backup_diagnostics['valid'] and ctl.backup_diagnostics['fallback_search']
+    saved=ctl.certified_backup
+    ctl.fail('test_abort')
+    assert ctl.brake is saved and ctl.backup_diagnostics['executed']
+    assert ctl.backup_diagnostics['live_rechecked']
+
+
+def test_planner_certifies_immediate_backup_in_addition_to_reaction_stop():
+    from types import SimpleNamespace
+    from polinasi_nav.canopy_scan import canopy_guard_grid
+    from polinasi_nav.local_braking_retime import check_braking
+    c,g,p,v,a=recorded_backup_fixture();view=canopy_guard_grid(g,.2)
+    p=p+[.05,.05,0.]
+    assert brake_safe(view,p,v,c,a) and feedback_brake_safe(view,p,v,a,c)
+    # A single PVA probe isolates the planner's pointwise backup certificate.
+    probe=SimpleNamespace(duration=0.,sample=lambda t:(p,v,a))
+    old=dict(c,explicit_backup_fallback_search=False)
+    ok,reason,_,_=check_braking(probe,view,old,set())
+    assert not ok and reason['check']['reason']=='explicit_backup_unavailable'
+    ok,_,_,_=check_braking(probe,view,c,set())
+    assert ok
+
+
+def test_backup_search_never_turns_unknown_into_free():
+    from polinasi_nav.canopy_scan import canopy_guard_grid
+    c,g,p,v,a=recorded_backup_fixture();g.state[:]=UNKNOWN;g.rebuild(0.)
+    stop,detail=explicit_backup(canopy_guard_grid(g,.2),p,v,a,c)
+    assert stop is None and detail['fallback_search']
+    assert detail['candidate_count']==21 and not detail['start_safe']
+    assert np.all(g.state==UNKNOWN)

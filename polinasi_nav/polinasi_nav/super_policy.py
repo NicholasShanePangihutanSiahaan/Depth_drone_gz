@@ -210,8 +210,8 @@ def explicit_backup(grid,p,v,a,c,optimise=False):
                 matrix=[[t**3,t**4,t**5],[3*t*t,4*t**3,5*t**4],[6*t,12*t*t,20*t**3]]
                 coeff[3:]=np.linalg.solve(matrix,[q-p-v*t-a*t*t/2,-v-a*t,-a])
                 trial.coeff=coeff;trial.duration=t;candidates.append(trial)
-    best=None;rejections=[]
-    for candidate in candidates:
+    best=None;best_bounds=None;best_index=None;rejections=[]
+    for candidate_index,candidate in enumerate(candidates):
         t=candidate.duration
         control=np.zeros((6,3))
         import math
@@ -229,14 +229,26 @@ def explicit_backup(grid,p,v,a,c,optimise=False):
         if not candidate.path_safe(grid,False,detail):
             rejections.append(detail)
             continue
-        if best is None or t<best.duration:best=candidate
-    if best is None:return None,dict(valid=False,reason='no_bounded_collision_free_stop',
-        rejections=rejections,start_safe=grid.safe(p),
-        canopy_guard_cells=getattr(grid,'canopy_guard_cells',0))
+        if best is None or t<best.duration:
+            best=candidate;best_bounds=bounds;best_index=candidate_index
+    if best is None:
+        if not optimise and c.get('explicit_backup_fallback_search'):
+            started=time.perf_counter()
+            stop,detail=explicit_backup(grid,p,v,a,c,optimise=True)
+            detail.update(fallback_search=True,base_rejections=rejections,
+                fallback_wall_ms=(time.perf_counter()-started)*1000.)
+            return stop,detail
+        return None,dict(valid=False,reason='no_bounded_collision_free_stop',
+            rejections=rejections,start_safe=grid.safe(p),candidate_count=len(candidates),
+            canopy_guard_cells=getattr(grid,'canopy_guard_cells',0))
     end=sum(best.duration**k*best.coeff[k] for k in range(6))
     return best,dict(valid=True,policy='explicit_PVA_stop_with_live_voxel_check',
         duration_seconds=float(best.duration),end_position=end.tolist(),
         max_speed_bound_mps=best.max_speed,map_version=int(grid.version),
+        derivative_bounds=dict(speed_mps=float(best_bounds[0]),
+            acceleration_mps2=float(best_bounds[1]),jerk_mps3=float(best_bounds[2])),
+        candidate_count=len(candidates),accepted_candidate_index=best_index,
+        search_mode='bounded_duration_endpoint_search' if optimise else 'base_stop',
         provenance='measured_plus_explicit_FOV_prior' if c.get('fixed_fov_assumptions') else 'measured_free',
         conditional_on_FOV_assumptions=bool(c.get('fixed_fov_assumptions')))
 

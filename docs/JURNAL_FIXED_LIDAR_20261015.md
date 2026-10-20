@@ -1096,3 +1096,88 @@ detour menuju pohon5 lewat[-5.1,-2.3,1.3] ke[-3.5,-6.7,1.3],431 ekspansi;
 tidak lagi history_start_not_safe. Prefix masih partial; tujuan final tetap
 memerlukan observasi baru, bukan klaim seluruh approach sudah aman.
 Commit/push sebelum run6; hasil flight belum tersedia.
+
+
+## 20 Oktober 2026 — flowers run6: cadangan langsung dan koreksi PID
+
+Run5cad7d0 reports/fixed_lidar_validation_20261020_215038, registered session
+.dependencies/ros_sensor_palm_farm_flowers_20261020_215040_41781_mapping,
+berhenti249.40 s BRAKE/SCAN tree1 anchor21, pid_final_safety,5 sektor valid.
+Auditor sudah stop; session stopped=true, host port/proses kosong.2401
+pasangan pose, RMSE .00980471701 m, maksimum .02186948878 m, estimator
+tracking. Tidak ada bukti collision aktual. Perbaikan endpoint terminal
+scan5cad7d0 belum diuji flight karena belum mencapai anchor terakhir.
+
+Takeoff tercatat9.00, approach20.50→63.40 (42.90 s), SCAN66.65. Variasi
+approach dari run5 bukan bukti pengaruh perbaikan terminal scan: perbaikan
+tersebut baru aktif pada anchor terakhir. Recovery route_changed karena
+suffix keluar rolling window terjadi87 s dan220 s; berhasil kembali scan.
+Satu moving C2 handoff diterima/live-map-checked; ini bukti acceptance satu
+sambungan saja. Retiming sempat memperpanjang segmen ke99.1331 s, kurva
+total41.1337→139.5512 s setelah10 retime. Reference .0027 m/s: bukan deadlock
+atau dropout. Masih masalah efisiensi yang perlu diaudit; tidak menaikkan
+batas kecepatan agar menutupi kegagalan ini. Run dilanjutkan sampai fault
+terminal karena validasi misi belum selesai dan speed improvement ditunda.
+
+Critical snapshot map2038/observasi249.2 menyimpan PID dan guarded grid
+secara persis. Reference p[-7.071925142,-1.869292164,2.273857812],
+v[.172836106,.189469053,.082638065], actual p[-7.134802158,-1.916098371,
+2.266614501], actual v[.158738067,.190654317,.119869457]. Position error
+sekitar8 cm. Semua3 correction scales1,.5,0 lulus brake_safe actual,
+reference dan velocity-uncertainty di raw nominal grid. Ketiganya gagal
+explicit_backup pada grid dengan reserve canopy .2. Witness occupied
+[-6.7,-2.9,3.3], inflated cell[-6.9,-1.9,2.3]. Voxel ini sudah OCCUPIED
+pada exact snapshot map1995/244.0 (seen243.9), tetap occupied pada critical
+(seen246.3). Jadi tidak boleh menyebut ini obstacle baru249.4 atau drift.
+
+Gap terverifikasi: planner check_braking mengecek stop SETELAH reaction
+segment dan robust along-motion scenario; runtime juga meminta immediate
+PVA backup dengan acceleration hasil PID/jerk limiter. Kedua tes bukan
+sertifikat yang identik: raw grid vs reserve dan awal/percepatan brake
+berbeda. Pada nominal PVA snapshot immediate backup masih ada, tetapi
+acceleration aktual yang diusulkan PID membuat base backup gagal. Zero
+feedback pun masih berbeda dari nominal karena jerk limiter mempertahankan
+kontinuitas acceleration sebelumnya. Tidak mengklaim nominal checker
+membuktikan semua arah galat PID; skenario feedback terbatas bukan TEB formal.
+
+Penelitian primer: kode resmi SUPER menggunakan BackupTrajOpt, kendala
+posisi/kecepatan/percepatan/jerk serta variabel temporal/geometris:
+https://github.com/hku-mars/SUPER/blob/master/super_planner/src/traj_opt/backup_traj_optimizer_s4.cpp
+FASTER mempertahankan safe backup dalam known-free:
+https://arxiv.org/abs/2001.04420 . Implementasi kita tetap quintic finite
+candidate search, bukan MINCO/CIRI atau jaminan safety SUPER/FASTER. Tidak
+menyalin kode sumber paper untuk perubahan ini.
+
+Perbaikan: fixed inspection mengaktifkan explicit_backup_fallback_search.
+Base backup tetap jalan cepat. HANYA bila gagal, gunakan pencarian existing
+yang sebelumnya offline:20 kandidat tambahan (4 duration scales x5 endpoint
+offsets), maksimum21 pada pencarian, preserve initial PVA, final v/a nol.
+Semua kandidat diperiksa collision pada reserve yang sama serta derivative
+hulls v/a/jerk. Tidak menghilangkan occupied/unknown atau reserve. Catat
+candidate index/count, search mode, derivative bounds, alasan base reject,
+dan fallback wall time. Failure tetap terminal bila tidak ada kandidat.
+Planner kini juga menguji immediate backup pada setiap PVA sample kurva,
+selain reaction stop dan skenario feedback. Signature cache memasukkan
+opsi explicit backup agar hasil tidak dipakai lintas kebijakan.
+
+Replay exact PID setelah raw-grid rebuild: hasil canopy mask byte-identical
+dengan critical snapshot. Koreksi1 masih gagal, correction .5 menemukan
+candidate6 (duration scale .85, zero offset), duration1.528422919 s;
+batas v=.2707330474,a=.2727460428,jerk=.7629929326. PID tanpa failure,
+cadangan live-safe. Satu pengukuran callback replay47.03 ms, fallback terakhir
+15.60 ms; ini bukan pengukuran timing flight atau bukti Jetson real-time.
+Tidak mengaktifkan suite tes ketika flight berjalan.
+
+Tes existing awal42 pass31.90 s; perintah pertama salah menyebut test_pid.py
+yang tidak ada, diperbaiki ke test_pid_control.py. Regresi baru meniru
+occupied/PVA run6, menguji fallback bounded/PVA/terminal, PID lama gagal dan
+baru menerima cadangan valid, abort memakai cached optimized backup yang
+di-recheck, unknown baru mencabut cache dan all-unknown tetap ditolak.
+Probe PVA lain pada obstacle sama membuktikan delayed+robust stop bisa
+lulus ketika immediate stop gagal; planner baru menangkap perbedaannya.
+Hasil targeted/final/build/run7 dicatat setelah tersedia.
+
+Tes targeted backup39 pass34.25 s. Build tiga paket berhasil;446 tes lulus
+91.80 s,0 errors/failures/skipped. Bukti build_ros/polinasi_nav/pytest.xml
+dan /tmp/fixed_backup_build.log. Commit/push sebelum run7; belum validasi
+flight fallback backup atau terminal scan-to-transit.
