@@ -535,3 +535,62 @@ def test_backup_search_never_turns_unknown_into_free():
     assert stop is None and detail['fallback_search']
     assert detail['candidate_count']==21 and not detail['start_safe']
     assert np.all(g.state==UNKNOWN)
+
+
+def test_feedback_checks_velocity_uncertainty_without_and_with_PID_addition():
+    c,g=fixture();detail={}
+    assert feedback_brake_safe(g,[0.,0.,2.],[.2,0.,0.],np.zeros(3),c,detail)
+    assert detail['checked_feedback_scenarios']==[
+        'velocity_uncertainty_only','velocity_uncertainty_and_forward_PID']
+    detail={}
+    assert feedback_brake_safe(g,[0.,0.,2.],[.2,0.,0.],np.zeros(3),
+                              dict(c,pid_correction_acceleration=0.),detail)
+    assert detail['checked_feedback_scenarios']==['velocity_uncertainty_only']
+
+
+def test_recorded_reference_is_rejected_before_PVA_commit_and_cached_stop_executes():
+    from types import SimpleNamespace
+    from polinasi_nav.mapping import VoxelMap
+    from polinasi_nav.canopy_scan import canopy_guard_grid
+    from polinasi_nav.control import MissionController
+    c,_=fixture()
+    c.update(resolution=.2,bounds_min=[-15.,-4.,-.6],bounds_max=[-5.,6.,7.4],
+        drone_dimensions=[.6,.6,.7],clearance=.2,tracking_margin=.2,
+        tracking_limit=.2,scan_adaptive_height=True,tree_ascent_observation_guard=.2,
+        explicit_backup_fallback_search=True,planner_audit_dir='')
+    g=VoxelMap(c);g.state[:]=FREE;g.seen[:]=0.
+    g.state[tuple(g.indices([-9.3,.1,2.9]))]=OCCUPIED;g.rebuild(0.)
+    p=np.array([-10.022164494765263,1.0844112159175885,2.44306100280372])
+    v=np.array([-.04386893585437042,-.210380880915864,-.057385888989584265])
+    a=np.array([.043047611904741476,-.004048600901767493,-.002165948795106752])
+    assert brake_safe(g,p,v,c,a)
+    detail={}
+    assert not feedback_brake_safe(g,p,v,a,c,detail)
+    assert detail['feedback_scenario']=='velocity_uncertainty_only'
+    c['survey_waypoints']=[p.tolist()]
+    ctl=SurveyController(c,g,asynchronous=False);ctl.state='SURVEY';ctl.tree_phase='SCAN'
+    ctl.command=np.array([-10.0199170691907,1.094919971627822,2.445926133422369])
+    ctl.command_v=np.array([-.046031309023801516,-.20986504061401384,-.05719027982448127])
+    ctl.command_a=np.array([.02964144596245399,.008620294543862332,-.01660339158945337])
+    # Replay one actual proposed PVA sample from the failed flight. The
+    # trajectory is already accepted; this test targets the final commit gate.
+    ctl.trajectory=SimpleNamespace();ctl.checked_map_version=g.version
+    ctl._sample_next=lambda dt,position,velocity:(p,v,a,1.)
+    ctl.health=Health(1.,1.,1.,True)
+    saved,status=explicit_backup(canopy_guard_grid(g,.2),ctl.command,ctl.command_v,ctl.command_a,c)
+    assert saved is not None
+    ctl.certified_backup=saved;ctl.backup_diagnostics=status
+    MissionController.tick(ctl,1.,.05,
+        np.array([-10.015101054693199,1.1016713836894678,2.4557112990515977]),
+        np.array([-.05058338008336855,-.22651822697084098,-.06064304112112882]))
+    assert ctl.failure=='route_changed' and ctl.state=='BRAKE'
+    assert ctl.backup_diagnostics['executed'] and ctl.brake is saved
+    assert not np.array_equal(ctl.command,p)
+    rejected=ctl.route_failure_diagnostics['rejected_reference']
+    assert rejected['reason']=='reference_feedback_reserve_revoked'
+    assert rejected['check']['feedback_scenario']=='velocity_uncertainty_only'
+    for _ in range(100):
+        ctl._braking(.05)
+        if not ctl.failure:break
+    assert not ctl.failure and ctl.state=='SURVEY'
+    np.testing.assert_allclose(ctl.command_v,0.,atol=1e-10)

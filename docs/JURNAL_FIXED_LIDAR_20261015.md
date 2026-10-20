@@ -1181,3 +1181,84 @@ Tes targeted backup39 pass34.25 s. Build tiga paket berhasil;446 tes lulus
 91.80 s,0 errors/failures/skipped. Bukti build_ros/polinasi_nav/pytest.xml
 dan /tmp/fixed_backup_build.log. Commit/push sebelum run7; belum validasi
 flight fallback backup atau terminal scan-to-transit.
+
+
+## 20 Oktober 2026 — flowers run7: uncertainty check terlambat sesudah referensi maju
+
+Run18af5b1 reports/fixed_lidar_validation_20261020_223010, registered session
+.dependencies/ros_sensor_palm_farm_flowers_20261020_223013_47099_mapping,
+berhenti242.75 s BRAKE/SCAN tree1 anchor8, pid_final_safety,2 sektor valid.
+Auditor sudah melakukan cleanup.2340 pasangan pose, RMSE .00984922940 m,
+maksimum .02053082270 m, health tracking. Tidak ada bukti collision aktual.
+Perbaikan terminal scan masih belum tervalidasi flight. Satu map-change
+brake pada sekitar74 s pulih74.30; belum menyelesaikan orbit pertama.
+
+Ada masalah efisiensi tambahan: curve167.113621 s dengan segmen144.834987 s
+dan reference sekitar.0027 m/s. Kali ini before duration optimisation sudah
+175.763196 s, local_braking_retiming kosong: durasi besar berasal dari
+profil kecepatan/initial quintic timing, bukan loop local retime seperti
+run6. Drone tidak deadlock; elapsed naik sampai149.05/167.11 pada226.60.
+Run diteruskan untuk validasi misi hingga fatal fault. Ini bukan hasil
+minimum-time; masalah performa tetap terbuka.
+
+Critical map2091/observasi242.4: candidate p[-10.022164495,1.084411216,
+2.443061003], v[-.043868936,-.210380881,-.057385889], nominal a
+[.043047612,-.004048601,-.002165949]. Actual p[-10.015101055,1.101671384,
+2.455711299], v[-.050583380,-.226518227,-.060643041], tracking error .03312 m.
+PID correction scales1,.5,0 semua lulus actual/reference brake checks;
+velocity uncertainty+.03 m/s semuanya gagal occupied[-9.3,.1,2.9],
+inflated cell[-10.1,.7,2.3]. Pada critical snapshot voxel occupied tersebut
+seen202.9: sudah tercatat sekurangnya39.85 s sebelum fault, bukan obstacle
+baru pada tick242.75. Tidak menyimpulkan drift/dropout. Backup fallback
+18af5b1 belum dipanggil pada tick gagal karena gate uncertainty lebih dulu
+menolak kandidat. Ini kasus berbeda dari run6, bukan bukti pencarian21
+kandidat gagal menemukan solusi pada run7.
+
+Root cause terverifikasi: live geometry recheck dan directional/final
+nominal braking gate tidak mengecek uncertainty scenario sebelum self.command
+dimajukan. PositionPID baru memeriksanya sesudah PVA referensi diganti.
+Peta dapat tetap geometrically-safe untuk kurva sementara stopping envelope
+tidak lagi aman. Sertifikat worker sebelumnya pada frozen map tidak
+menggantikan pemeriksaan safety calon referensi terhadap peta live.
+Pada exact current grid run7, skenario maximum forward PID juga gagal;
+jadi tidak mengklaim kegagalan run7 semata-mata karena skenario zero PID
+yang belum diuji planner. Gap zero PID ditemukan pada audit kontrak:
+nominal(no uncertainty) plus uncertainty+maximum-PID bukan sertifikat
+untuk uncertainty tanpa tambahan percepatan; geometri stop tidak monoton
+terhadap acceleration. Tetap hanya finite scenarios, bukan formal robust
+coverage untuk semua vektor PID/estimator error.
+
+Perbaikan1: feedback_brake_safe mengecek uncertainty-only dan, jika ada,
+uncertainty+forward maximum PID, dengan feedback_scenario dan daftar checked
+scenarios pada log. PID yang memanggil correction_acceleration=0 tidak
+menduplikasi tes. Planner/profile/terminal dan runtime memakai helper sama.
+Perbaikan2: sebelum mengubah command PVA, final control gate mengecek calon
+referensi dengan helper pada map live. Bila ditolak, simpan critical snapshot
+reference_feedback_reserve_revoked, kandidat dan PVA sebelumnya, lalu gunakan
+bounded route_changed brake/replan existing. PVA/backup terakhir yang benar
+benar dikirim tidak ditimpa kandidat yang gagal. Tidak menghapus pemeriksa
+PID, menurunkan uncertainty, memperbesar timeout atau melonggarkan clearance.
+Health dan actual-body checks tetap mendahului keputusan ini.
+
+Replay critical: raw rebuild lalu upward reserve byte-identical dengan
+mask snapshot. PVA sebelumnya di242.70:
+p[-10.019917069,1.094919972,2.445926133],
+v[-.046031309,-.209865041,-.057190280],
+a[.029641446,.008620295,-.016603392]. Cached explicit stop pada map live
+masih valid. Calon nominal p242.75 lulus brake_safe raw, tetapi uncertainty
+gagal. Dengan gate baru MissionController.tick menghasilkan route_changed,
+state BRAKE, cached backup executed=true, bukan mem-publish kandidat dan
+kemudian pid_final_safety. Ini replay satu tick, bukan validasi seluruh
+flight. Snapshot/PVA sample dipakai sebagai input regresi kontrol; ground
+truth tetap tidak dipakai sebagai state estimator/planner.
+
+64 tes gabungan existing backup+continuous tree lulus40.95 s. Regresi baru
+menguji dua skenario feedback/tanpa duplikasi saat extra=0 dan sample PVA
+run7: nominal-safe/uncertainty-unsafe, cadangan terakhir dieksekusi, lalu
+brake selesai kembali SURVEY tanpa menerbitkan candidate yang ditolak.
+Hasil targeted/final build dan run8 dicatat setelah tersedia.
+
+Tes targeted41 pass42.26 s. Build tiga paket berhasil;448 tes lulus108.83 s,
+0 errors/failures/skipped. Bukti build_ros/polinasi_nav/pytest.xml dan
+/tmp/fixed_reference_build.log. Commit/push sebelum run8; belum validasi
+flight pre-commit recovery atau penyelesaian dua pohon di flowers map.

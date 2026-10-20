@@ -42,9 +42,23 @@ def feedback_brake_safe(grid,p,v,a,c,diagnostics=None):
     if norm<1e-8:return brake_safe(grid,p,v,c,a,diagnostics=diagnostics)
     direction=v/norm
     predicted_v=v+direction*c['velocity_uncertainty_mps']
-    predicted_a=a+direction*c['pid_correction_acceleration']
-    predicted_a*=min(1.,c['acceleration']/max(np.linalg.norm(predicted_a),1e-12))
-    return brake_safe(grid,p,predicted_v,c,predicted_a,diagnostics=diagnostics)
+    # Braking geometry is not monotone in acceleration: adding maximum
+    # feedback can bend the stop away from a voxel that zero feedback hits.
+    # These are finite scenarios, not a proof for every intermediate vector.
+    additions=[('velocity_uncertainty_only',0.)]
+    if c['pid_correction_acceleration']>0.:
+        additions.append(('velocity_uncertainty_and_forward_PID',c['pid_correction_acceleration']))
+    checked=[]
+    for name,extra in additions:
+        predicted_a=a+direction*extra
+        predicted_a*=min(1.,c['acceleration']/max(np.linalg.norm(predicted_a),1e-12))
+        detail={}
+        safe=brake_safe(grid,p,predicted_v,c,predicted_a,diagnostics=detail)
+        checked.append(name)
+        if diagnostics is not None:
+            diagnostics.update(detail,feedback_scenario=name,checked_feedback_scenarios=list(checked))
+        if not safe:return False
+    return True
 
 
 def feedback_curve_peak(controls,duration,c):

@@ -358,6 +358,21 @@ class MissionController:
                 or not brake_safe(self.grid, candidate, v, self.c, a)):
             self.fail('command_or_braking_collision')
             return self._braking(dt)
+        if self.c.get('feedback_speed_envelope'):
+            from .super_policy import feedback_brake_safe
+            detail={}
+            if not feedback_brake_safe(self.grid,candidate,v,a,self.c,detail):
+                # Keep the last published PVA/backup intact until the new
+                # reference has passed the same finite uncertainty scenarios.
+                rejected=dict(reason='reference_feedback_reserve_revoked',
+                    candidate=candidate.tolist(),velocity=v.tolist(),acceleration=a.tolist(),
+                    previous_command=self.command.tolist(),previous_velocity=self.command_v.tolist(),
+                    previous_acceleration=self.command_a.tolist(),check=detail)
+                from .planner_recovery import save_failure_snapshot
+                save_failure_snapshot(self,rejected,points=[self.command,candidate])
+                self.fail('route_changed')
+                self.route_failure_diagnostics['rejected_reference']=rejected
+                return self._braking(dt)
         self.command, self.command_v, self.command_a = candidate, v, a
         self.elapsed = next_elapsed
         # Yaw points at the tree along detours too. Bound mount/body rotation.

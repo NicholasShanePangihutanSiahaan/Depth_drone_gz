@@ -232,3 +232,12 @@ kandidat aman, flight tetap ditolak. Planner juga memeriksa immediate backup
 sepanjang kurva, selain reaction stop. Ini pencarian terbatas, bukan optimizer
 SUPER penuh. Run5cad7d0 berhenti249.40 s pid_final_safety dengan5 sektor valid;
 perbaikan backup berikutnya belum tervalidasi flight.
+
+
+Final control gate memeriksa skenario ketidakpastian pada calon referensi
+SEBELUM mengganti command PVA. Bila reserve dicabut, controller memakai
+bounded route_changed recovery dari cadangan terakhir yang masih live-safe.
+`feedback_brake_safe` memeriksa uncertainty-only serta uncertainty+forward
+PID; ini finite scenario checks, bukan bukti formal untuk semua galat PID.
+Run18af5b1 masih gagal242.75 s pid_final_safety pada uncertainty check;
+perbaikan urutan pemeriksaan berikutnya belum tervalidasi flight.
