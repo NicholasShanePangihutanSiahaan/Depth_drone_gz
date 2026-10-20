@@ -907,3 +907,62 @@ Suite final setelah penyamaan history/local:431 tes lulus,0 errors/failures/
 skipped,100.045 s. Bukti persisten build_ros/polinasi_nav/pytest.xml, timestamp
 2026-10-20T08:33:07.225523. Pemeriksaan pascainterupsi memastikan tidak ada
 simulator atau test runner tersisa. Commit/push sebelum flight ketiga.
+
+
+## 20 Oktober 2026 — flowers run3: auditor menghentikan preventive depth brake
+
+Run d4f9e96 reports/fixed_lidar_validation_20261020_093818, registered session
+.dependencies/ros_sensor_palm_farm_flowers_20261020_093822_5581_mapping,
+berhenti33.00 s APPROACH tree2, failure/stop_reason depth_recovering. Session
+stopped=true, audit port/proses kosong.236 pasangan pose: RMSE .01004115 m,
+max .02359878 m, sensor health tracking. Belum menguji scan repair di flight.
+Transit curve pada log nominal_safe=true, guard .2 m/guard_safe=true, detour
+di ketinggian sekitar1.70 m. Tidak menyimpulkan buffer terbukti untuk seluruh
+approach karena flight berhenti sebelum selesai.
+
+depth_motion_recovery melaporkan certified_brake_started, started33.0,
+integrated_age=.6000000000000014, valid_age=.6000000000000014, threshold .6,
+hold_timeout2.0. last_integrated/last_valid32.4. Last received frame32.6;
+last mapping job submitted32.58/completed32.74 mengintegrasikan depth32.4.
+Perbedaan status depth_safety age .55 berasal dari assess tick sebelumnya;
+recovery memiliki umur yang dipakai pada keputusan33.0 s. Pipeline latest
+map received→setpoint1.7796 s wall/.30 s sim; tidak mengklaim dropout fisik
+atau deadlock hanya karena ada jeda satu frame pada map yang terintegrasi.
+
+Root cause1 terverifikasi: DepthMotionRecovery membandingkan age>timeout*.6
+tanpa toleransi roundoff; 33.-32.4 > .6 meski secara desimal tepat sama.
+fresh_depth yang dipakai guard lain sudah memiliki1e-9 s tolerance. Perbaikan
+menggunakan tolerance sama pada preventive threshold; threshold tetap .6 s,
+timeout tetap1 s, recovery tetap2 s. Regresi33.0 tidak memulai brake,
+33.05 (umur .65) tetap memulai certified brake.
+
+Root cause2 terverifikasi: auditor sensor RecoveryWatch hanya mengenali
+route_changed sebagai bounded recovery; depth_recovering langsung dianggap
+terminal. Generic inspection-loop auditor dan unit controller sebelumnya
+sudah memperlakukan depth_recovering sebagai sementara. Cached backup pada
+run3 valid/executed/live_rechecked, duration1.988413 s, endpoint
+[-1.438138,-.365326,1.615669]. Auditor berhenti pada tick awal, sehingga run3
+TIDAK membuktikan controller gagal atau berhasil menyelesaikan recovery.
+
+Perbaikan auditor read-only: kenali depth_recovering hanya ketika state
+BRAKE/HOLD_ABORT dan action certified_brake_started/braking_or_waiting,
+metadata finite valid, valid frame masih fresh dan tidak ada health fault.
+Deadline ditambatkan ke timestamp started milik controller, tidak ke saat
+auditor pertama menerima pesan; maksimum tetap2 s sim, wall watchdog60 s,
+dan maksimum3 recovery/20 s. Tidak membuka jalur resume atau mengirim kontrol;
+controller sendiri tetap mensyaratkan map baru setelah recovery dimulai,
+actual velocity<.04, reference<.01, brake selesai dan pose/body/reference aman.
+Sensor loss, stale_depth_camera, emergency, timeout, metadata/state tidak
+sesuai tetap stop. Event depth_brake_started/depth_recovery_ended dicatat.
+
+Tes targeted pertama29 pass/2 import failures: saat file ROS adapters diuji
+mandiri, import approach_viewer tidak mendapat tools di sys.path, meskipun
+full suite sebelumnya mengisinya lewat modul lain. Fixture import mandiri
+diperbaiki, tidak mengubah runtime CLI. Target akhir31 pass dalam .74 s.
+Regresi audit mencakup resume, hold, limit2 s, data valid basi, emergency,
+lokalisasi hilang dan metadata tidak lengkap. Build/suite final dan run4
+dicatat setelah tersedia. Tidak memperbesar batas cloud/pose/map/clearance.
+
+Build tiga paket berhasil;433 tes lulus dalam86.89 s,0 errors/failures/skipped.
+Log /tmp/fixed_depth_recovery_build.log dan build_ros/polinasi_nav/pytest.xml.
+Commit/push sebelum run4; belum mengklaim keberhasilan flight perubahan ini.

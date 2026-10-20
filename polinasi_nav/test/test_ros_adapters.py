@@ -115,6 +115,8 @@ def test_sensor_auditor_only_allows_bounded_existing_map_brake_recovery():
     from pathlib import Path
     path=Path(__file__).resolve().parents[2]/'tools/audit_sensor_localisation.py'
     spec=importlib.util.spec_from_file_location('sensor_audit',path)
+    import sys
+    sys.path.insert(0,str(path.parent))
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     w=module.RecoveryWatch()
     nav=dict(failure='route_changed',mission='BRAKE',simulation_time=1.,health_reason='')
@@ -361,3 +363,31 @@ def test_real_timing_gap_is_still_rejected_and_reported():
         assert node.last_status['last_timing_gap_seconds'] == .5
     finally:
         node.destroy_node()
+
+
+
+def test_sensor_auditor_depth_recovery_is_bounded_and_never_masks_sensor_loss():
+    import importlib.util
+    from pathlib import Path
+    path=Path(__file__).resolve().parents[2]/'tools/audit_sensor_localisation.py'
+    spec=importlib.util.spec_from_file_location('sensor_depth_audit',path)
+    import sys
+    sys.path.insert(0,str(path.parent))
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    nav=dict(failure='depth_recovering',mission='BRAKE',simulation_time=33.,health_reason='',
+        depth_motion_recovery=dict(action='certified_brake_started',started=33.,valid_age=.65,hold_timeout_seconds=2.),
+        depth_safety=dict(timeout_seconds=1.))
+    watch=module.RecoveryWatch()
+    assert watch.check(nav,100.)==''
+    assert watch.check(dict(nav,mission='HOLD_ABORT',simulation_time=34.),106.)==''
+    assert watch.check(dict(nav,failure='',mission='SURVEY',simulation_time=34.1),107.)==''
+    assert [e['event'] for e in watch.events]==['depth_brake_started','depth_recovery_ended']
+    assert watch.check(dict(nav,failure='stale_lidar'),108.)=='stale_lidar'
+    assert watch.check(dict(nav,failure='emergency_unavoidable:depth_recovering'),109.).startswith('emergency_unavoidable')
+    assert module.RecoveryWatch().check(dict(nav,health_reason='localisation_loss'),100.)=='localisation_loss'
+    bad=dict(nav,depth_motion_recovery=dict(nav['depth_motion_recovery'],valid_age=1.05))
+    assert module.RecoveryWatch().check(bad,100.)=='stale_depth_camera'
+    bounded=module.RecoveryWatch();assert bounded.check(nav,100.)==''
+    assert bounded.check(dict(nav,simulation_time=35.05),113.)=='stale_depth_camera'
+    missing=dict(nav);missing.pop('depth_motion_recovery')
+    assert module.RecoveryWatch().check(missing,100.)=='depth_recovering'

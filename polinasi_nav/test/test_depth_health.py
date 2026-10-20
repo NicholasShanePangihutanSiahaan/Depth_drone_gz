@@ -85,3 +85,14 @@ def test_depth_recovery_does_not_override_other_failure_or_unsafe_brake():
     ctl.grid.blocked[:] = True
     assert DepthMotionRecovery().update(3.7,depth,ctl,ctl.command,ctl.command_v,1.)=='fail'
     assert ctl.failure=='insufficient_depth_recovery_stopping_clearance'
+
+
+
+def test_preventive_depth_threshold_uses_same_roundoff_tolerance_as_freshness():
+    ctl=moving_controller();guard=DepthMotionRecovery()
+    depth=dict(last_integrated_stamp=32.4,last_valid_stamp=32.4)
+    assert 33.-32.4>.6  # Exact decimal threshold expressed in binary floats.
+    assert guard.update(33.,depth,ctl,ctl.command,ctl.command_v,1.)=='inactive'
+    assert not ctl.failure
+    assert guard.update(33.05,depth,ctl,ctl.command,ctl.command_v,1.)=='certified_brake_started'
+    assert ctl.failure=='depth_recovering'

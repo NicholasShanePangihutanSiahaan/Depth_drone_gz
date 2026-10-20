@@ -197,3 +197,11 @@ lokalisasi dan tidak mengesahkan ruang unknown di luar prior pengguna.
 Jika pengereman diinvalidasi, route_failure_diagnostics.emergency_braking
 membedakan actual_remaining_stop dan nominal_next_step; exact grid dan
 polinomial tersedia pada map_3d/planner_failures/failure_critical.npz.
+
+
+Auditor membedakan route_changed recovery dan preventive depth_recovering.
+Recovery depth tetap maksimal2 s simulasi dari timestamp started controller,
+dengan depth valid/fresh dan health lain sehat; stale sensor/emergency selalu
+menghentikan run. Event sementara bukan COMPLETE atau bukti lokalisasi gagal.
+Timestamp tepat pada threshold memakai toleransi roundoff1e-9 s yang sama
+dengan fresh_depth, tanpa memperbesar timeout fisik.

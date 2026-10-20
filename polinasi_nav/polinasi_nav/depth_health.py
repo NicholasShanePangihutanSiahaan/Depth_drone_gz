@@ -64,7 +64,7 @@ class DepthMotionRecovery:
                 action = 'resumed_replan'
             else:
                 action = 'braking_or_waiting'
-        elif (not controller.failure and controller.state=='SURVEY' and age>threshold
+        elif (not controller.failure and controller.state=='SURVEY' and age>threshold+1e-9
                 and (controller.trajectory is not None or np.linalg.norm(controller.command_v)>.01)
                 and fresh_depth(now,valid,timeout)):
             if (brake_safe(controller.grid,position,velocity,controller.c,controller.command_a,actual=True)

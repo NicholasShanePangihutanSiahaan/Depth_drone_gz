@@ -19,10 +19,21 @@ class RecoveryWatch:
         self.wall_started=None
         self.recent=[]
         self.events=[]
+        self.depth_started=None
+        self.depth_wall_started=None
+        self.depth_recent=[]
 
     def check(self,nav,wall):
         failure=nav.get('failure','')
         stamp=nav.get('simulation_time',0.)
+        if self.depth_started is not None and failure!='depth_recovering':
+            self.events.append(dict(event='depth_recovery_ended',stamp=stamp,failure=failure))
+            self.depth_started=self.depth_wall_started=None
+        if failure=='depth_recovering':
+            if self.started is not None:
+                self.events.append(dict(event='recovery_ended',stamp=stamp,failure=failure))
+                self.started=self.wall_started=None
+            return self._depth_check(nav,wall)
         if failure!='route_changed':
             if self.started is not None:
                 self.events.append(dict(event='recovery_ended',stamp=stamp,failure=failure))
@@ -37,6 +48,39 @@ class RecoveryWatch:
                 diagnostics=nav.get('route_failure_diagnostics',{})))
         if len(self.recent)>3:return 'repeated_map_change_recovery'
         if stamp-self.started>5. or wall-self.wall_started>60.:return 'map_change_recovery_timeout'
+        return ''
+
+    def _depth_check(self,nav,wall):
+        """Observe the controller's existing 2s brake/settle recovery only.
+
+        Receiving frames is insufficient: controller still requires a newer
+        integrated map and actual settling before clearing its recovery flag.
+        """
+        import math
+        stamp=nav.get('simulation_time',0.)
+        status=nav.get('depth_motion_recovery',{})
+        if nav.get('health_reason'):
+            return nav['health_reason']
+        if (nav.get('mission') not in ('BRAKE','HOLD_ABORT')
+                or status.get('action') not in ('certified_brake_started','braking_or_waiting')):
+            return 'depth_recovering'
+        valid_age=status.get('valid_age')
+        timeout=nav.get('depth_safety',{}).get('timeout_seconds')
+        limit=status.get('hold_timeout_seconds')
+        started=status.get('started')
+        if (not all(isinstance(v,(float,int)) and math.isfinite(v) for v in (valid_age,timeout,limit,started))
+                or timeout<=0 or limit<=0 or valid_age<0 or valid_age>timeout+1e-9):
+            return 'stale_depth_camera'
+        if not -1e-9<=stamp-started<=min(2.,limit)+1e-9:
+            return 'stale_depth_camera'
+        if self.depth_started is None:
+            self.depth_started,self.depth_wall_started=started,wall
+            self.depth_recent=[t for t in self.depth_recent if stamp-t<20.]+[stamp]
+            self.events.append(dict(event='depth_brake_started',stamp=stamp,
+                diagnostics=status))
+        if len(self.depth_recent)>3:return 'repeated_depth_recovery'
+        if stamp-self.depth_started>min(2.,limit)+1e-9:return 'stale_depth_camera'
+        if wall-self.depth_wall_started>60.:return 'depth_recovery_wall_timeout'
         return ''
 
 
