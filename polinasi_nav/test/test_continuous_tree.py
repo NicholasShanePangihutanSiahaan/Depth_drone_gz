@@ -377,3 +377,66 @@ def test_transit_final_curve_has_lateral_reserve_in_both_phases(phase):
     assert isinstance(curve,TransitObservationTrajectory)
     assert curve.safe_from(ctl.grid,0.)
     assert curve.execution_certificate['lateral_guard_m']==.2
+
+
+def exit_fixture():
+    from polinasi_nav.mapping import OCCUPIED
+    ctl=controller();enable_feedback(ctl)
+    ctl.c.update(bounds_min=[-11.6,-5.4,-.6],bounds_max=[-1.6,4.6,7.4],
+        drone_dimensions=[.6,.6,.7],takeoff_altitude=2.,exploration_min_altitude=1.,
+        scan_adaptive_height=True,transit_observation_guard=.2,
+        transit_lateral_observation_guard=.2)
+    ctl.grid=VoxelMap(ctl.c);g=ctl.grid
+    g.state[:]=FREE;g.seen[:]=0.
+    for p in [[-5.3,-.3,3.1],[-5.3,-.1,3.1]]:
+        g.state[tuple(g.indices(p))]=OCCUPIED
+    g.state[:,:,g.indices([0.,0.,.1])[2]]=OCCUPIED
+    g.rebuild(0.)
+    pos=np.array([-6.501186126,-.2851235,2.1])
+    ctl.active_tree=dict(id=1,xy=[-8.490262631,-.430426432])
+    ctl._begin_continuous_scan(pos);ctl.command=pos.copy()
+    ctl.waypoint_index=23;ctl.goal=pos.copy()
+    ctl.waypoints[23]=pos;ctl.scan_nominal_waypoints[23]=pos
+    return ctl,pos
+
+
+def test_last_scan_anchor_is_lowered_into_transit_reserve_without_skipping_sector():
+    from polinasi_nav.canopy_scan import canopy_guard_grid
+    from polinasi_nav.transit_guard import transit_guard_grid
+    from polinasi_nav.local_braking_retime import route_terminal_reserve_check
+    ctl,pos=exit_fixture();g=ctl.grid
+    assert canopy_guard_grid(g,.2).safe(pos)
+    assert not transit_guard_grid(g,.2,.2).safe(pos)
+    assert not ctl._scan_endpoint_safe(pos,pos-[0.,.5,0.])[0]
+    ctl._repair_scan_target(pos)
+    assert ctl.goal[2]==pytest.approx(1.9)
+    np.testing.assert_allclose(ctl.goal[:2],pos[:2])
+    assert ctl.waypoint_index==23 and not ctl.scan_sector_records
+    assert pos[2]-ctl.goal[2]<=ctl.c['scan_target_max_descent']
+    view=transit_guard_grid(g,.2,.2)
+    assert view.safe(ctl.goal)
+    assert route_terminal_reserve_check([pos,ctl.goal],view,ctl.c)[0]
+    assert ctl._batch_endpoint_safe([pos,ctl.goal],23)
+    assert ctl.scan_target_diagnostics['departure_reserve_required']
+
+
+def test_last_scan_anchor_rejects_lowering_through_measured_obstacle():
+    from polinasi_nav.mapping import OCCUPIED
+    ctl,pos=exit_fixture();g=ctl.grid
+    ctl.c['scan_target_max_outward']=0.
+    # Retain the measured ground and place a real obstacle below the anchor.
+    g.state[tuple(g.indices(pos-[0.,0.,.9]))]=OCCUPIED;g.rebuild(.1)
+    ctl._repair_scan_target(pos)
+    assert ctl.scan_target_diagnostics['result']=='no_observed_safe_candidate'
+    np.testing.assert_array_equal(ctl.goal,pos)
+    assert ctl.waypoint_index==23 and not ctl.scan_sector_records
+
+
+def test_scan_exit_rechecks_new_map_before_counting_last_sector():
+    ctl,pos=exit_fixture();ctl.scan_start_aligned=True
+    ctl.wait_for_scan=0.;ctl.grid.last_observation_stamp=.1
+    ctl.scan_sector_records=[dict(inspection_valid=True)]*5
+    assert not ctl._prepare_scan(.2,pos)
+    assert ctl.wait_for_scan is None and ctl.goal is None
+    assert ctl.waypoint_index==23 and not ctl.completed_trees
+    assert len(ctl.scan_sector_records)==5

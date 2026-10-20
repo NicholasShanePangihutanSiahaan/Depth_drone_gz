@@ -192,3 +192,22 @@ def test_bad_survey_waypoints_rejected(points):
     c['survey_waypoints'] = points
     with pytest.raises(ValueError, match='survey'):
         SurveyController(c, grid, asynchronous=False)
+
+
+def test_history_timeout_reports_current_cause_and_saves_exact_grid(tmp_path):
+    import json
+    c,g,ctl=make()
+    ctl.state='SURVEY';ctl.c.update(history_route_enabled=True,history_route_wait_timeout=1.,
+        planner_audit_dir=str(tmp_path))
+    ctl.global_route={'reason':'history_start_not_safe','path':[]}
+    ctl.route_failure_diagnostics={'reason':'old_recovered_candidate'}
+    ctl._history_goal=lambda current,destination:None
+    ctl.global_route_diagnostics={'reason':'history_start_not_safe'}
+    assert not ctl._prepare_trajectory(1.,ctl.command)
+    assert not ctl._prepare_trajectory(2.1,ctl.command)
+    assert ctl.failure=='global_route_unavailable'
+    assert ctl.route_failure_diagnostics['history_route']['reason']=='history_start_not_safe'
+    snap=np.load(tmp_path/'failure_critical.npz')
+    metadata=json.loads(str(snap['metadata']))
+    assert metadata['diagnostics']['reason']=='global_route_unavailable'
+    np.testing.assert_array_equal(snap['state'],g.state)

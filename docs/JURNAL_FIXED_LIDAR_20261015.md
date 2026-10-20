@@ -1022,3 +1022,77 @@ Replay exact map261/32.2 s: history dengan reserve baru memilih detour
 seluruh edge lulus view lokal yang sama. Goal lama kini tidak aman pada
 reserve baru, sehingga prefix partial tidak diklaim mencapai final goal.
 Commit/push sebelum run5; hasil flight dicatat setelah tersedia.
+
+
+## 20 Oktober 2026 — flowers run5: scan lengkap, endpoint belum siap transit
+
+Runb6b1f74 reports/fixed_lidar_validation_20261020_211925, session
+.dependencies/ros_sensor_palm_farm_flowers_20261020_211927_36980_mapping,
+berhenti197.75 s BRAKE/APPROACH tree5, global_route_unavailable. Auditor
+sudah meminta cleanup ketika sesi ini mengirim stop terdaftar; tidak ada
+penghentian proses luar. Session stopped=true.1885 pasangan pose, RMSE
+.00889611555 m, maksimum .02502530813 m, sensor estimator tracking. GT
+hanya pembanding audit. Tidak ada bukti benturan atau kegagalan lokalisasi.
+
+Takeoff tercatat9.15, approach20.70→87.90 (67.20 s simulasi), lalu ascent
+dan scan. Pohon1 centre[-8.490262631,-.430426432], enam sektor front-camera
+valid pada scan stamps106.1,121.8,138.9,153.8,166.2,181.5. Satu route_changed
+pada98.801 akibat occupied[-9.1,.3,2.5] membatalkan suffix yang belum dilalui;
+current nominal/actual masih aman. Certified brake/replan pulih99.30.
+Beberapa kandidat scan ditolak braking checker lalu lolos retiming yang
+diperiksa ulang. Belum membuktikan moving handoff berhasil: accepted0,
+rejected31. Tidak mengklaim optimasi kecepatan selesai.
+
+Pohon berikutnya id5 centre[-4.614801027,-10.238346938], berbeda dari pohon1.
+Approach goal[-5.001648248,-8.274045490,2.0]. Setelah kamera siap185.4,
+planner berulang mengembalikan history_start_not_safe hingga timeout
+global_route_unavailable197.75. Ini bukan menunggu tanpa batas: gate wait
+tetap menghentikan. Scan lama berakhir reference[-6.501186126,-.285123500,
+2.1] yang lolos raw/scan reserve, tetapi gagal reserve lateral transit baru.
+Perbedaan syarat endpoint dua fase belum diperiksa saat membentuk scan.
+
+Replay ekspor map197.761/observasi197.4 (bukan snapshot live persis197.75)
+menunjukkan occupied[-5.3,-.3,3.1] memblokir nominal tetangga
+[-6.3,-.3,2.3]. Terminal reference aman nominal tetapi reserve transit
+memeriksa tetangga tersebut. Menurunkan endpoint pada XY sama ke1.9 m
+lulus reserve;2.0 masih satu voxel lama dan tidak cukup. Ini validasi
+berdasarkan peta historis akhir, bukan bukti penerbangan atau ground truth
+yang diumpankan ke planner.
+
+Perbaikan: endpoint anchor scan TERAKHIR dan terminal braking-nya harus
+memenuhi reserve transit yang sama sebelum diterima, baik ketika batching,
+memilih target atau mereparasi final approach direction. Jika belum aman,
+tetap sektor/sudut/radius yang sama atau outward sesuai batas lama; tidak
+menghapus anchor. Untuk anchor terakhir saja, floor turun memakai floor
+transit/exploration1.0 m di dalam batas scan_target_max_descent=.6 m dari
+nominal. Sebelumnya floor minimal takeoff2.0 m menolak alternatif1.9.
+Ini pilihan geometris departure di bawah daun; clearance terhadap tanah,
+batang, daun, unknown, mask nominal/actual dan batas dinamika tetap sama.
+Semua kandidat tetap memerlukan A*, smoothing dan whole-curve braking
+certificate. Di replay diperlukan penurunan .2 m, bukan penurunan sampai
+floor1.0. Pengamatan baru setelah arrival dapat membatalkan departure
+reserve; sector terakhir belum dihitung dan target direncanakan ulang.
+
+Tambahan audit: global_route_unavailable kini menyimpan penyebab history
+terkini dan exact critical snapshot, bukan menampilkan diagnostic kandidat
+scan lama yang sudah recovered. Timeout tidak berubah. Eksplorasi tidak
+diteruskan setelah failure pada tick yang sama.
+
+40 tes targeted lulus4.59 s. Regresi: endpoint scan lama raw-safe namun
+transit-unsafe diperbaiki turun .2 m pada XY yang sama; obstacle terukur di
+bawah menolak repair, sector tidak diskip, observasi baru membatalkan
+penghitungan sektor terakhir, timeout history mencatat cause/snapshot baru.
+Replay final map: shared MissionController._prepare_trajectory menghasilkan
+kurva aman2.793402373 s ke endpoint1.9 m, seluruh braking checks lulus,
+reserve transit endpoint lulus. Fixture replay awal belum mengisi command
+dan observed_stem_top sehingga gagal setup; setelah mengisi keduanya sesuai
+state misi replay lengkap lulus. Tidak ada perubahan produksi untuk menutupi
+kesalahan fixture. Build/regresi final dan run6 dicatat setelah tersedia.
+
+Build tiga paket berhasil;441 tes lulus93.11 s,0 errors/failures/skipped.
+Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_exit_build.log.
+Replay history akhir dari endpoint1.9 m juga menghasilkan reachable partial
+detour menuju pohon5 lewat[-5.1,-2.3,1.3] ke[-3.5,-6.7,1.3],431 ekspansi;
+tidak lagi history_start_not_safe. Prefix masih partial; tujuan final tetap
+memerlukan observasi baru, bukan klaim seluruh approach sudah aman.
+Commit/push sebelum run6; hasil flight belum tersedia.

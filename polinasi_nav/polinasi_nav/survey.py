@@ -208,7 +208,16 @@ class SurveyController(MovingHandoff, MissionController):
         if self.c.get('history_route_enabled') and destination is not None:
             if self._history_goal(self.command,destination) is None:
                 self.global_route_wait_since=now if self.global_route_wait_since is None else self.global_route_wait_since
-                if now-self.global_route_wait_since>self.c.get('history_route_wait_timeout',self.c['blocked_timeout']):self.fail('global_route_unavailable')
+                if now-self.global_route_wait_since>self.c.get('history_route_wait_timeout',self.c['blocked_timeout']):
+                    self.route_failure_diagnostics=dict(reason='global_route_unavailable',
+                        history_route=dict(self.global_route or {}),
+                        local_history=dict(self.global_route_diagnostics),
+                        destination=destination.tolist(),wait_since=float(self.global_route_wait_since),
+                        command=self.command.tolist(),current_nominal_safe=bool(self.grid.safe(self.command)))
+                    from .planner_recovery import save_failure_snapshot
+                    save_failure_snapshot(self,self.route_failure_diagnostics)
+                    self.fail('global_route_unavailable')
+                    return False
                 reason=self.global_route_diagnostics.get('reason')
                 if reason not in ('no_known_progress','observed_frontier_reached','live_prefix_blocked'):
                     return False

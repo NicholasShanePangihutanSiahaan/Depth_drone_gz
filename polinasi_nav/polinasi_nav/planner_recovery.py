@@ -13,7 +13,7 @@ def save_failure_snapshot(controller,detail,points=None,grid=None):
     try:
         directory.mkdir(parents=True,exist_ok=True)
         # Bound disk/CPU cost per run. Keep exact first failures for replay.
-        critical=detail.get('reason') in ('pid_final_safety','emergency_braking_invalidated')
+        critical=detail.get('reason') in ('pid_final_safety','emergency_braking_invalidated','global_route_unavailable')
         if len(list(directory.glob('*.npz')))>=8 and not critical:return
         path=directory/('failure_critical.npz' if critical else f'failure_{time.monotonic_ns()}.npz')
         grid=controller.grid if grid is None else grid

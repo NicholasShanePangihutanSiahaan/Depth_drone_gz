@@ -94,14 +94,27 @@ class ContinuousTreeInspectionController(TreeInspectionController):
             return self._scan_endpoint_safe(self.goal,current)[0]
         return super()._choose_goal(current)
 
+    def _scan_exit_endpoint(self,index=None):
+        index=self.waypoint_index if index is None else index
+        return (index==len(self.waypoints)-1 and
+                self.c.get('transit_lateral_observation_guard',0.)>0.)
+
+    def _scan_endpoint_grid(self,grid,index=None):
+        if not self._scan_exit_endpoint(index):return grid
+        from .transit_guard import transit_guard_grid
+        return transit_guard_grid(grid,self.c.get('transit_observation_guard',0.),
+            self.c.get('transit_lateral_observation_guard',0.))
+
     def _scan_endpoint_safe(self,position,previous,grid=None):
         if grid is None:
             grid=self.grid
             if self.c.get('scan_adaptive_height'):
                 from .canopy_scan import canopy_guard_grid
                 grid=canopy_guard_grid(grid,self.c.get('tree_ascent_observation_guard',.2))
+        grid=self._scan_endpoint_grid(grid)
         if not grid.safe(position):
-            return False,dict(reason='scan_endpoint_not_guarded_free')
+            return False,dict(reason='scan_exit_not_transit_guarded_free' if
+                self._scan_exit_endpoint() else 'scan_endpoint_not_guarded_free')
         from .local_braking_retime import endpoint_reserve_check
         return endpoint_reserve_check(position,np.asarray(position)-previous,grid,self.c)
 
@@ -109,7 +122,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         if self.tree_phase!='SCAN':
             return True
         from .local_braking_retime import route_terminal_reserve_check
-        safe,detail=route_terminal_reserve_check(points,self.grid,self.c)
+        safe,detail=route_terminal_reserve_check(points,self._scan_endpoint_grid(self.grid,index),self.c)
         if not safe:
             self.scan_endpoint_rejections.append(dict(anchor=int(index),**detail))
         return safe
@@ -126,8 +139,11 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         radius=float(np.linalg.norm(delta))
         direction=delta/max(radius,1e-9)
         top=float(self.waypoints[index,2])
-        floor=max(float(self.c['takeoff_altitude']),
-                  float(nominal[2])-self.c.get('scan_target_max_descent',.6))
+        # The final scan anchor also prepares departure under nearby leaves.
+        # Use the transit altitude floor within the SAME bounded scan descent;
+        # map/body/ground clearance still decides whether any candidate is safe.
+        floor_limit=self.c.get('exploration_min_altitude',1.) if self._scan_exit_endpoint() else self.c['takeoff_altitude']
+        floor=max(float(floor_limit),float(nominal[2])-self.c.get('scan_target_max_descent',.6))
         step=self.grid.res
         rejects=dict(occupied=0,unknown_or_outside=0,terminal_reserve=0)
         candidates=[]
@@ -148,12 +164,13 @@ class ContinuousTreeInspectionController(TreeInspectionController):
                 elif not self._scan_endpoint_safe(p,current,candidate_grid)[0]:
                     rejects['terminal_reserve']+=1
                 else:
-                    score=float(offset+3*(top-height)+.05*np.linalg.norm(p-current))
+                    score=float(abs(offset)+3*(top-height)+.05*np.linalg.norm(p-current))
                     candidates.append((score,p))
         detail=dict(policy='same_angle_observed_free_resampling',tree_id=self.active_tree['id'],
             anchor=int(index),nominal=nominal.tolist(),blocked_target=self.goal.tolist(),
             map_version=int(self.grid.version),rejections=rejects,candidate_count=len(candidates),
             observation_stamp=float(self.grid.last_observation_stamp),
+            departure_reserve_required=self._scan_exit_endpoint(),
             original_blockage=self.grid.describe_blockage(self.grid.indices(self.goal)),
             sector_skipped=False,endpoint_is_not_route_certificate=True)
         if not candidates:
@@ -177,7 +194,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
                                self.c.get('planner_max_expansions',50000))
                 if route is None:
                     rejects['route_unavailable']+=1
-                elif not route_terminal_reserve_check(route,candidate_grid,self.c)[0]:
+                elif not route_terminal_reserve_check(route,self._scan_endpoint_grid(candidate_grid),self.c)[0]:
                     rejects['route_terminal_reserve']+=1
                 else:
                     selected=candidate
@@ -249,7 +266,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
                     and self.c.get('feedback_speed_envelope') and self.c.get('scan_target_repair')
                     and self.batch_end_index==self.waypoint_index):
                 from .local_braking_retime import route_terminal_reserve_check
-                if not route_terminal_reserve_check(route,self.grid,self.c)[0]:
+                if not route_terminal_reserve_check(route,self._scan_endpoint_grid(self.grid),self.c)[0]:
                     original=self.goal.copy()
                     self._repair_scan_target(start,grid=self.grid)
                     if np.linalg.norm(self.goal-original)>1e-8:
@@ -335,6 +352,12 @@ class ContinuousTreeInspectionController(TreeInspectionController):
             self.scan_start_aligned=True
         if self.wait_for_scan is not None:
             if self.grid.last_observation_stamp<=self.wait_for_scan:return False
+            if self._scan_exit_endpoint() and not self._scan_endpoint_grid(self.grid).safe(self.command):
+                # A newly integrated observation can revoke departure reserve
+                # after arrival. Repair the same final sector before counting it.
+                self.wait_for_scan=None;self.goal=None
+                self.trajectory=None;self.elapsed=0.;self.batch_end_index=None
+                return False
             self._record_pass(self.waypoint_index,now,position)
             self.wait_for_scan=None
             self.waypoint_index+=1

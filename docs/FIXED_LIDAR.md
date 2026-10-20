@@ -214,3 +214,12 @@ live suffix menggunakan view konservatif yang sama; mask badan aktual dan
 data occupancy/umur tidak diubah. Ini margin rekayasa untuk perubahan bukti
 di voxel tetangga, belum jaminan obstacle avoidance terhadap deteksi terlambat.
 Run bunga09d471d masih gagal47.35 s; status validasi terbaru ada di jurnal.
+
+
+Anchor scan terakhir juga harus memenuhi reserve transit sebelum pindah
+pohon/pulang. Bila perlu, repair mempertahankan sektor dengan penurunan
+terbatas `scan_target_max_descent=.6` m; hanya pada anchor terakhir floor
+mengikuti minimum transit `exploration_min_altitude=1.0` m. Clearance aktual,
+unknown dan semua pemeriksaan lintasan tetap menentukan kandidat aman.
+Run bunga b6b1f74 menyelesaikan enam sektor pohon pertama, lalu gagal pada
+transisi menuju pohon kedua; perbaikan transisi belum tervalidasi flight.
