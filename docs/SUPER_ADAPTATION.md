@@ -290,3 +290,17 @@ simulasi berhasil**. Hasil tetap conditional pada prior FOV pengguna dan farm
 statis. Bukan validasi hardware, keselamatan unknown terukur, full port SUPER,
 minimum-time flight, ataupun fault-injection flight. Kecepatan tidak dinaikkan
 di iterasi ini; pekerjaan peningkatan kecepatan ditunda sesuai arahan pengguna.
+
+
+## Scan endpoint sebelum batching — flowers, 20 Oktober 2026
+
+Flight flowers de9f53a blocked_route116.95 s: endpoint statically safe tetapi
+terminal robust stop tidak feasible. Batching kini berhenti sebelum anchor
+dengan terminal scenario gagal; anchor tetap harus diinspeksi pada job berikut.
+Same-angle scan target repair juga dipicu terminal infeasibility, lalu menilai
+arah kedatangan rute A* setiap kandidat sebelum full curve certification.
+Kasus arah chord lulus tetapi detour gagal ditangkap regresi occupied voxel.
+Exact snapshot replay melewati anchor7/8 dengan outward .20 m, tanpa menaikkan
+batas kecepatan atau mengubah clearance/timeout/unknown/FOV. Ini perbaikan
+geometry proposal lokal, bukan port penuh SUPER. Bukti log, penelitian primer,
+angka replay dan hasil flight berikut tersedia di jurnal.

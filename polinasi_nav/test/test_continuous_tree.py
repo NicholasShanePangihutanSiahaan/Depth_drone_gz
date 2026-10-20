@@ -197,3 +197,85 @@ def test_async_scan_repair_waypoints_adopted_only_with_safe_plan():
     accepted=ctl.waypoints.copy()
     ctl._accept_plan_auxiliary(rejected,False)
     np.testing.assert_allclose(ctl.waypoints,accepted)
+
+
+def enable_feedback(ctl):
+    ctl.c.update(feedback_speed_envelope=True,velocity_uncertainty_mps=.03,
+                 pid_correction_acceleration=.15,scan_target_repair=True,
+                 scan_target_max_outward=0.,scan_target_max_descent=.6)
+
+
+def test_statically_free_anchor_with_no_arrival_reserve_is_lowered_without_skipping():
+    from polinasi_nav.mapping import OCCUPIED
+    ctl=controller();enable_feedback(ctl)
+    ctl._begin_continuous_scan(np.array([2.,0.,3.2]));ctl.waypoint_index=3
+    roof=ctl.grid.indices([0.,0.,4.2])[2]
+    ctl.grid.state[:,:,roof]=OCCUPIED;ctl.grid.rebuild(0.)
+    xy=ctl.waypoints[3,:2].copy()
+    # Find the measured-free side of the voxel boundary where arrival
+    # uncertainty crosses into the inflated roof. No artificial blocked mask.
+    candidates=[np.r_[xy,z] for z in np.arange(2.6,3.8,.005)]
+    target=next(p for p in candidates if ctl.grid.safe(p) and
+                not ctl._scan_endpoint_safe(p,p-[0.,0.,1.])[0])
+    ctl.waypoints[3]=target;ctl.scan_nominal_waypoints[3]=target
+    ctl.command=target-[0.,0.,.5]
+    assert not ctl.grid.occupied_goal(target)
+    assert ctl._choose_goal(ctl.command)
+    assert ctl.goal[2]<target[2]
+    np.testing.assert_allclose(ctl.goal[:2],target[:2])
+    assert ctl._scan_endpoint_safe(ctl.goal,ctl.command)[0]
+    assert ctl.waypoint_index==3 and not ctl.scan_records
+    assert ctl.scan_target_diagnostics['rejections']['terminal_reserve']>0
+
+
+def test_scan_batch_stops_before_unstoppable_endpoint_and_keeps_next_anchor():
+    ctl=controller();enable_feedback(ctl)
+    g=ctl.grid
+    centers=[g.centers([i,g.indices([0.,0.,2.])[1],g.indices([0.,0.,2.])[2]])
+             for i in range(g.shape[0]-1,0,-1)]
+    center=next(p for p in centers if g.safe(p))
+    end=center+np.array([g.res*.49,0.,0.]);end[1:]=[0.,2.]
+    assert g.safe(end)
+    ctl.command=end-[1.,0.,0.]
+    ctl.waypoints=np.array([end-[.5,0.,0.],end]);ctl.waypoint_index=0
+    ctl.goal=ctl.waypoints[0].copy()
+    points=ctl._plan_route(ctl.command,ctl.goal)
+    assert points is not None and ctl.batch_end_index==0
+    assert ctl.waypoint_index==0 and len(ctl.waypoints)==2
+    np.testing.assert_allclose(ctl.goal,ctl.waypoints[0])
+    assert ctl.scan_endpoint_rejections[0]['anchor']==1
+    assert not ctl.scan_records and not ctl.completed_trees
+
+
+def test_detour_arrival_direction_repairs_same_anchor_before_curve_construction():
+    from polinasi_nav.mapping import OCCUPIED
+    from polinasi_nav.canopy_scan import canopy_guard_grid
+    from polinasi_nav.planning import plan
+    from polinasi_nav.local_braking_retime import route_terminal_reserve_check
+    ctl=controller();enable_feedback(ctl)
+    ctl.c.update(bounds_min=[-12.,-4.4,-.6],bounds_max=[-5.,4.,6.],
+                 drone_dimensions=[.6,.6,.7],clearance=.2,tracking_margin=.2,
+                 takeoff_altitude=2.,scan_adaptive_height=True,
+                 tree_ascent_observation_guard=.2,scan_target_max_outward=1.)
+    ctl.grid=VoxelMap(ctl.c);g=ctl.grid
+    g.state[:]=FREE;g.seen[:]=0.
+    g.state[tuple(g.indices([-9.1,.3,2.5]))]=OCCUPIED;g.rebuild(0.)
+    ctl.active_tree=dict(id=1,xy=[-8.5283911758325,-.3374676624235])
+    ctl.command=np.array([-9.1466839259891,1.4491005542121,2.23350992018065])
+    target=np.array([-9.6142586262347,1.2240617645784,2.4670198403613])
+    ctl.waypoints=np.array([target]);ctl.scan_nominal_waypoints=np.array([target])
+    ctl.waypoint_index=0;ctl.goal=target.copy()
+    guarded=canopy_guard_grid(g,.2)
+    assert guarded.safe(target)
+    assert ctl._scan_endpoint_safe(target,ctl.command)[0]
+    old_route=plan(guarded,ctl.command,target)
+    assert old_route is not None
+    assert not route_terminal_reserve_check(old_route,guarded,ctl.c)[0]
+    route=ctl._plan_route(ctl.command,ctl.goal)
+    assert route is not None and route_terminal_reserve_check(route,guarded,ctl.c)[0]
+    assert np.linalg.norm(ctl.goal-target)>.1
+    before=target[:2]-ctl.active_tree['xy'];after=ctl.goal[:2]-ctl.active_tree['xy']
+    np.testing.assert_allclose(before/np.linalg.norm(before),after/np.linalg.norm(after))
+    assert np.linalg.norm(after)>=np.linalg.norm(before)
+    assert ctl.waypoint_index==0 and not ctl.scan_records
+    assert ctl.scan_target_diagnostics['rejections']['route_terminal_reserve']>0

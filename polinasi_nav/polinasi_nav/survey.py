@@ -333,6 +333,8 @@ class SurveyController(MovingHandoff, MissionController):
             return route
         self.batch_end_index = self.waypoint_index
         self.batch_knots = {self.waypoint_index: len(route)-1}
+        if not self._batch_endpoint_safe(route,self.waypoint_index):
+            return route
         for index in range(self.waypoint_index+1,
                            min(len(self.waypoints), self.waypoint_index+self.c.get('survey_batch_points', 4))):
             candidate = self.waypoints[index]
@@ -341,10 +343,15 @@ class SurveyController(MovingHandoff, MissionController):
             extension = super()._plan_route(route[-1], candidate)
             if extension is None:
                 break
+            if not self._batch_endpoint_safe(extension,index):
+                break  # Keep every anchor; stop this chunk before an infeasible endpoint.
             route = route+extension[1:]
             self.batch_end_index, self.goal = index, candidate.copy()
             self.batch_knots[index] = len(route)-1
         return route
+
+    def _batch_endpoint_safe(self,points,index):
+        return True
 
     def _trajectory_from_points(self, points, speed=None):
         if speed is None:

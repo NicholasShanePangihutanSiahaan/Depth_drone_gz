@@ -23,6 +23,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.scan_target_diagnostics={}
         self.scan_height_diagnostics={}
         self.scan_curve_diagnostics={}
+        self.scan_endpoint_rejections=[]
         self.navigation_camera_active=False
         self.navigation_camera_completed=None
         self.scan_anchor_count=int(self.c.get('tree_scan_anchors',24))
@@ -86,12 +87,33 @@ class ContinuousTreeInspectionController(TreeInspectionController):
                     self.waypoints,self.waypoint_index,self.command,self.active_tree,self.c,
                     self.scan_initial_height)
             self.goal=self.waypoints[self.waypoint_index].copy()
-            if self.c.get('scan_target_repair') and self.grid.occupied_goal(self.goal):
+            endpoint_safe,_=self._scan_endpoint_safe(self.goal,current)
+            if self.c.get('scan_target_repair') and (self.grid.occupied_goal(self.goal) or not endpoint_safe):
                 self._repair_scan_target(current)
-            return self.grid.safe(self.goal)
+            return self._scan_endpoint_safe(self.goal,current)[0]
         return super()._choose_goal(current)
 
-    def _repair_scan_target(self,current):
+    def _scan_endpoint_safe(self,position,previous,grid=None):
+        if grid is None:
+            grid=self.grid
+            if self.c.get('scan_adaptive_height'):
+                from .canopy_scan import canopy_guard_grid
+                grid=canopy_guard_grid(grid,self.c.get('tree_ascent_observation_guard',.2))
+        if not grid.safe(position):
+            return False,dict(reason='scan_endpoint_not_guarded_free')
+        from .local_braking_retime import endpoint_reserve_check
+        return endpoint_reserve_check(position,np.asarray(position)-previous,grid,self.c)
+
+    def _batch_endpoint_safe(self,points,index):
+        if self.tree_phase!='SCAN':
+            return True
+        from .local_braking_retime import route_terminal_reserve_check
+        safe,detail=route_terminal_reserve_check(points,self.grid,self.c)
+        if not safe:
+            self.scan_endpoint_rejections.append(dict(anchor=int(index),**detail))
+        return safe
+
+    def _repair_scan_target(self,current,grid=None):
         """Resample the SAME angular anchor, never skip an inspection sector.
 
         Only at rest in the planner snapshot. A free endpoint is not a flight
@@ -106,15 +128,24 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         floor=max(float(self.c['takeoff_altitude']),
                   float(nominal[2])-self.c.get('scan_target_max_descent',.6))
         step=self.grid.res
-        rejects=dict(occupied=0,unknown_or_outside=0)
+        rejects=dict(occupied=0,unknown_or_outside=0,terminal_reserve=0)
         candidates=[]
+        candidate_grid=self.grid if grid is None else grid
+        if grid is None and self.c.get('scan_adaptive_height'):
+            from .canopy_scan import canopy_guard_grid
+            candidate_grid=canopy_guard_grid(self.grid,self.c.get('tree_ascent_observation_guard',.2))
+        heights=np.arange(top,floor-1e-8,-step)
+        if top>=floor:
+            heights=np.unique(np.r_[heights,floor])[::-1]
         for offset in np.arange(0.,self.c.get('scan_target_max_outward',1.)+1e-8,step):
-            for height in np.arange(top,floor-1e-8,-step):
+            for height in heights:
                 p=np.r_[nominal[:2]+offset*direction,height]
-                if self.grid.occupied_goal(p):
+                if candidate_grid.occupied_goal(p):
                     rejects['occupied']+=1
-                elif not self.grid.safe(p):
+                elif not candidate_grid.safe(p):
                     rejects['unknown_or_outside']+=1
+                elif not self._scan_endpoint_safe(p,current,candidate_grid)[0]:
+                    rejects['terminal_reserve']+=1
                 else:
                     score=float(offset+3*(top-height)+.05*np.linalg.norm(p-current))
                     candidates.append((score,p))
@@ -128,9 +159,34 @@ class ContinuousTreeInspectionController(TreeInspectionController):
             self.scan_target_diagnostics=dict(detail,result='no_observed_safe_candidate')
             return
         candidates.sort(key=lambda item:item[0])
-        # Prefer a directly reachable candidate. Otherwise let A* find a detour
-        # to the least-displaced free endpoint; unknown is never free.
-        selected=next((p for _,p in candidates if self.grid.line_safe(self.command,p)),candidates[0][1])
+        # A detour can enter from a different direction than the direct chord.
+        # Check that actual route's final tangent before accepting the endpoint.
+        selected=None
+        if self.c.get('feedback_speed_envelope'):
+            from .planning import plan
+            from .local_braking_retime import route_terminal_reserve_check
+            rejects.update(route_unavailable=0,route_terminal_reserve=0)
+            evaluated=0
+            for _,candidate in candidates[:24]:
+                evaluated+=1
+                if candidate_grid.line_safe(self.command,candidate):
+                    route=[self.command,candidate]
+                else:
+                    route=plan(candidate_grid,self.command,candidate,
+                               self.c.get('planner_max_expansions',50000))
+                if route is None:
+                    rejects['route_unavailable']+=1
+                elif not route_terminal_reserve_check(route,candidate_grid,self.c)[0]:
+                    rejects['route_terminal_reserve']+=1
+                else:
+                    selected=candidate
+                    break
+            detail['route_candidates_evaluated']=evaluated
+            if selected is None:
+                self.scan_target_diagnostics=dict(detail,result='no_route_terminal_reserve_candidate')
+                return
+        else:
+            selected=next((p for _,p in candidates if candidate_grid.line_safe(self.command,p)),candidates[0][1])
         self.waypoints[index]=selected
         # A lower roof applies to the remaining ring. Do not repeatedly climb
         # back into the old blocked height at every following angular anchor.
@@ -139,7 +195,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         self.goal=selected.copy()
         detail.update(result='proposed_requires_route_certificate',selected=selected.tolist(),
             remaining_height_m=float(selected[2]),
-            direct_corridor_safe=bool(self.grid.line_safe(self.command,selected)))
+            direct_corridor_safe=bool(candidate_grid.line_safe(self.command,selected)))
         self.scan_target_diagnostics=detail
         self.scan_target_repairs.append(detail)
 
@@ -149,19 +205,30 @@ class ContinuousTreeInspectionController(TreeInspectionController):
             self.scan_target_diagnostics=clone.scan_target_diagnostics
             self.scan_height_diagnostics=clone.scan_height_diagnostics
             self.scan_curve_diagnostics=clone.scan_curve_diagnostics
+            self.scan_endpoint_rejections=clone.scan_endpoint_rejections
             if ready:
                 self.waypoints=clone.waypoints.copy()
                 self.scan_target_repairs=clone.scan_target_repairs
 
 
     def _plan_route(self,start,goal):
-        if not (self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height')):
-            return super()._plan_route(start,goal)
-        from .canopy_scan import canopy_guard_grid
+        self.scan_endpoint_rejections=[]
         grid=self.grid
-        self.grid=canopy_guard_grid(grid,self.c.get('tree_ascent_observation_guard',.2))
+        if self.tree_phase=='SCAN' and self.c.get('scan_adaptive_height'):
+            from .canopy_scan import canopy_guard_grid
+            self.grid=canopy_guard_grid(grid,self.c.get('tree_ascent_observation_guard',.2))
         try:
-            return super()._plan_route(start,goal)
+            route=super()._plan_route(start,goal)
+            if (route is not None and self.state=='SURVEY' and self.tree_phase=='SCAN'
+                    and self.c.get('feedback_speed_envelope') and self.c.get('scan_target_repair')
+                    and self.batch_end_index==self.waypoint_index):
+                from .local_braking_retime import route_terminal_reserve_check
+                if not route_terminal_reserve_check(route,self.grid,self.c)[0]:
+                    original=self.goal.copy()
+                    self._repair_scan_target(start,grid=self.grid)
+                    if np.linalg.norm(self.goal-original)>1e-8:
+                        route=super()._plan_route(start,self.goal)
+            return route
         finally:
             self.grid=grid
 
@@ -294,6 +361,7 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         status['scan_target_repairs']=self.scan_target_repairs
         status['scan_height_profile']=self.scan_height_diagnostics
         status['scan_curve_diagnostics']=self.scan_curve_diagnostics
+        status['scan_endpoint_rejections']=self.scan_endpoint_rejections
         ids=np.argwhere(self.grid.state==OCCUPIED)
         ceiling=None
         if len(ids):

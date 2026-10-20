@@ -758,3 +758,78 @@ Log /tmp/fixed_flowers_build.log. Setelah perapian helper/provenance dan docs,
 regresi flowers3 tes diulang lulus. Hash world dan32 mesh yang dirujuk
 dibandingkan dengan workspace sumber sebelum flight; semua identik byte.
 Tidak ada flight map baru yang diklaim sebelum menjalankannya.
+
+
+## 20 Oktober 2026 — flowers run1 blocked_route dan repair endpoint scan
+
+Run de9f53a: reports/fixed_lidar_validation_20261020_075230, session
+.dependencies/ros_sensor_palm_farm_flowers_20261020_075233_30017_mapping.
+Auditor menghentikan run pada116.95 s, BRAKE/SCAN/blocked_route, tree1 anchor2,
+0 sektor valid. Session stopped=true dan audit host sesudahnya tanpa proses
+atau port simulator aktif. Tidak ada GUI, tidak ada hardware.
+1078 pasangan pose sensor vs GT audit: RMSE .00869650 m/max .02177817 m.
+Health reason kosong, sehingga bukan bukti kegagalan lokalisasi.
+
+Planner memilih detour pada approach; initial prefix39.8081 s, ruas dekat
+occupied dibatasi .0523454 m/s oleh feedback braking. Moving handoff12 kandidat
+ditolak camera_observation_required. Ini perlambatan yang teramati; iterasi
+ini tidak menaikkan kecepatan atau menghilangkan camera gate.
+
+Saat SCAN, peta baru membatalkan suffix104.15 s karena occupied dekat
+[-9.1,.3,2.5] m. Current nominal/actual safe; recovery selesai104.85 s.
+Mulai104.90 s retry kandidat terminal berulang, deadline116.90 s. Endpoint
+[-10.00765678,.88567375,2.38323806] statically safe tetapi near-zero robust
+arrival (.030001 m/s setelah ketidakpastian, PID acceleration scenario)
+menyentuh inflated occupied/canopy mask. Ini witness konservatif hull box,
+bukan bukti drone telah bertabrakan. Tidak menghapus occupied atau unknown.
+
+Penyebab program terverifikasi lewat snapshot:
+map_3d/planner_failures/failure_12003016626336.npz, allow_pickle=False.
+Rekonstruksi blocked mask dari raw state/seen/FOV dan canopy guard identik
+byte pada snapshot (guarded mask equality=true). Sebelumnya Survey batching
+memeriksa posisi/route aman, tetapi tidak menyaring terminal stopping reserve
+sebelum menambah anchor. Scan repair hanya dipicu occupied_goal; goal yang
+statically safe tetapi tidak punya stopping reserve terus terpilih.
+
+Perbaikan tahap awal memotong batch sebelum endpoint tidak feasible. Replay
+lanjutan masih gagal pada anchor7 karena arah datang A* berbeda dari chord
+command→goal. Karena itu diperbaiki pula route-aware repair: kandidat pada
+sudut anchor yang sama, tinggi/outward dalam batas lama, diuji endpoint dari
+arah segmen terakhir rute A* sebenarnya. Evaluasi kandidat maksimum24 per
+repair. Termasuk floor tepat agar langkah voxel tidak melewatkan floor.
+Full curve, canopy, braking dan PID final tetap menguji hasil; proposal ini
+bukan sertifikat eksekusi sendiri. Anchor tidak dilewati, radius tidak dipotong,
+coverage tidak bertambah hanya karena target diganti. Timeout tetap12 s.
+
+Endpoint helper menggunakan persis near-zero direction/uncertainty scenario
+terminal gate lama. Hook Survey default tidak mengubah endpoint policy untuk
+controller lain; continuous scan menyaring ujung setiap prefix. Jika anchor
+pertama gagal setelah A*, resampling dan replan dibatasi satu retry geometry
+dalam job. Diagnosis scan_endpoint_rejections dan scan_target_diagnostics
+mencatat anchor, witness, jumlah kandidat dan alasan rute gagal.
+
+Replay exact setelah perubahan: anchor2→batch_end6 lolos full certificate,
+durasi14.7038 s; anchor7 bergeser outward .20 m ke[-9.72377,1.39141,2.46702],
+durasi4.08444 s; anchor8 outward .20 m ke[-10.15675,1.01898,2.38324],
+durasi3.97717 s. Anchor9 juga lolos setelah retiming8.24617 s. Anchor10
+unknown pada snapshot beku ditolak; tidak menganggap snapshot ini sebagai
+prediksi observasi/flight masa depan. Menurunkan endpoint lama saja sampai
+2.08324 m pada arah masuk lama tetap gagal; pergeseran lateral relevan.
+
+Riset primer yang diperiksa ulang: FASTER https://arxiv.org/abs/2001.04420
+dan public SUPER backup optimizer
+https://github.com/hku-mars/SUPER/blob/master/super_planner/src/traj_opt/backup_traj_optimizer_s4.cpp.
+Kelayakan backup merupakan bagian perencanaan; usulan engineering lokal di
+atas bukan port optimizer/CIRI/FASTER dan tetap conditional pada prior FOV
+pengguna. Tidak mengklaim measured-known-free guarantee untuk assumed-free.
+
+Regresi targeted awal55 pass. Setelah tambahan route-aware repair24 pass;
+suite controller16 pass termasuk tiga regresi baru: statically-free anchor
+perlu diturunkan, prefix tidak memakai endpoint unstoppable, dan occupied
+voxel nyata membuat arah detour gagal meskipun chord lulus. Regresi terakhir
+membuktikan resampling pada sudut sama mengembalikan endpoint feasible.
+Hasil build/suite lengkap dan flight berikut ditambahkan setelah tersedia.
+
+Build tiga paket berhasil;427 tes lulus dalam100.47 s,0 errors/failures/skipped.
+Log /tmp/fixed_scan_endpoint_build.log. Replay dan regresi bukan keberhasilan
+flight; commit/push sebelum menjalankan ulang sensor mission flowers.

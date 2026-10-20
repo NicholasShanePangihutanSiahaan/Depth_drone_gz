@@ -89,6 +89,29 @@ def check_braking(trajectory,grid,c,cache):
     return True,{},checks,hits
 
 
+def endpoint_reserve_check(position,direction,grid,c):
+    """Same near-zero arrival scenario as the final terminal certificate."""
+    if not c.get('feedback_speed_envelope'):
+        return True,{}
+    direction=np.asarray(direction,dtype=float)
+    norm=np.linalg.norm(direction)
+    if norm<=1e-9:
+        return True,{}
+    detail={}
+    safe=feedback_brake_safe(grid,np.asarray(position),direction/norm*1e-6,
+                             np.zeros(3),c,detail)
+    return safe,dict(reason='terminal_robust_reserve_unavailable',
+                     position=np.asarray(position).tolist(),check=detail)
+
+
+def route_terminal_reserve_check(points,grid,c):
+    end=np.asarray(points[-1])
+    for previous in reversed(points[:-1]):
+        if np.linalg.norm(end-previous)>1e-9:
+            return endpoint_reserve_check(end,end-previous,grid,c)
+    return True,{}
+
+
 def terminal_reserve_check(trajectory,grid,c):
     if not c.get('feedback_speed_envelope') or not hasattr(trajectory,'controls'):
         return True,{}
@@ -96,7 +119,5 @@ def terminal_reserve_check(trajectory,grid,c):
     for control in trajectory.controls[-1][-2::-1]:
         delta=end-control
         if np.linalg.norm(delta)>1e-9:
-            detail={}
-            safe=feedback_brake_safe(grid,end,delta/np.linalg.norm(delta)*1e-6,np.zeros(3),c,detail)
-            return safe,dict(reason='terminal_robust_reserve_unavailable',position=end.tolist(),check=detail)
+            return endpoint_reserve_check(end,delta,grid,c)
     return True,{}
