@@ -8,11 +8,16 @@ export POLINASI_GZ_PARTITION="${POLINASI_GZ_PARTITION:-polinasi_fixed_lidar}"
 export POLINASI_MAVROS_UDP_PORT="${POLINASI_MAVROS_UDP_PORT:-14650}"
 source tools/ros_environment.sh
 stage="${1:-hover}"
+scenario="${2:-palm_farm}"
+case "$scenario" in palm_farm|palm_farm_flowers) ;; *) exit 2 ;; esac
+if [[ "$scenario" == palm_farm_flowers ]]; then
+  /usr/bin/python3 tools/ensure_palm_flowers.py
+fi
 folder="$project_dir/reports/fixed_lidar_validation_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$folder"
 echo "Validation logs: $folder"
 touch "$folder/launcher.log"
-bash tools/start_fixed_lidar.sh "$stage" > "$folder/launcher.log" 2>&1 &
+bash tools/start_fixed_lidar.sh "$stage" "$scenario" > "$folder/launcher.log" 2>&1 &
 launcher_pid=$!
 run_dir=""
 audit_pid=""
@@ -53,6 +58,6 @@ if [[ "${POLINASI_RVIZ_AFTER_APPROACH:-0}" == 1 ]]; then viewer_args=(--rviz-aft
 /usr/bin/python3 tools/audit_sensor_localisation.py "${viewer_args[@]}" --output "$folder/accuracy.jsonl" --seconds 5400 --stop-run "$run_dir" > "$folder/audit.log" 2>&1 &
 audit_pid=$!
 /usr/bin/python3 tools/start_mission.py --timeout 120 > "$folder/start.log" 2>&1
-echo "Mission started ($stage). Audit: $folder/audit.log"
+echo "Mission started ($stage, $scenario). Audit: $folder/audit.log"
 wait "$audit_pid"
 /usr/bin/python3 -c 'import json,sys;c=json.load(open(sys.argv[1]));print(json.dumps(c,indent=2));sys.exit(bool(c["stop_reason"]) or c["last_navigation"].get("mission")!="COMPLETE")' "$folder/accuracy.summary.json"

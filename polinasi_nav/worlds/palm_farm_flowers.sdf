@@ -1,0 +1,1670 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.9">
+  <world name="polinasi_palm_farm">
+    <physics name="1ms" type="ignore">
+      <max_step_size>.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+    <scene>
+      <ambient>.55 .55 .55 1</ambient>
+      <background>.58 .76 .91 1</background>
+      <shadows>true</shadows>
+    </scene>
+    <light name="tropical_sun" type="directional">
+      <pose>0 0 30 0 0 0</pose>
+      <diffuse>.95 .91 .82 1</diffuse>
+      <specular>.15 .15 .15 1</specular>
+      <cast_shadows>true</cast_shadows>
+      <direction>-.4 -.35 -1</direction>
+    </light>
+    <model name="soil_and_grass">
+      <static>true</static>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/ground.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/ground.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <collision name="solid_ground">
+          <pose>5 0 -0.25 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>92 82 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <include>
+      <uri>model://iris_lidar</uri>
+      <pose>0 0 .195 0 0 0</pose>
+    </include>
+    <model name="oil_palm_00">
+      <static>true</static>
+      <pose>8.83629166 0.83297253 0.00000000 0.00000000 0.00000000 -0.74757000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_00.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_00.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>0.20566720 0.22219189 4.96540713 0.00000000 1.06573000 0.03338740</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.05329098 1.05329098 1.05329098</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.05329098 1.05329098 1.05329098</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_01">
+        <pose>-0.45110860 0.19716752 4.90658551 0.00000000 1.02386791 3.17210987</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.08456045 1.08456045 1.08456045</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.08456045 1.08456045 1.08456045</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_01">
+      <static>true</static>
+      <pose>18.12094481 3.24736577 0.00000000 0.00000000 0.00000000 -1.69194000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_01.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_01.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_02">
+      <static>true</static>
+      <pose>-8.98251310 -19.59872417 0.00000000 0.00000000 0.00000000 -2.09835000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_02.dae</uri>
+              <scale>1.1084583586931782 1.1084583586931782 1.1084583586931782</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_02.dae</uri>
+              <scale>1.1084583586931782 1.1084583586931782 1.1084583586931782</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_00">
+        <pose>0.15262556 -0.16237802 5.50099209 0.00000000 1.05526667 -0.33502325</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.14816062 1.14816062 1.14816062</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.14816062 1.14816062 1.14816062</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_01">
+        <pose>-0.15792690 0.30904950 5.46792509 0.00000000 1.04215960 1.50601625</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.17194815 1.17194815 1.17194815</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.17194815 1.17194815 1.17194815</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_02">
+        <pose>-0.46701319 -0.26163403 5.54239765 0.00000000 0.86231346 3.79366363</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.15512175 1.15512175 1.15512175</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.15512175 1.15512175 1.15512175</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_03">
+      <static>true</static>
+      <pose>0.26042076 -18.97868614 0.00000000 0.00000000 0.00000000 0.48971000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_03.dae</uri>
+              <scale>1.0525331643288167 1.0525331643288167 1.0525331643288167</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_03.dae</uri>
+              <scale>1.0525331643288167 1.0525331643288167 1.0525331643288167</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>0.13707299 0.27903856 5.20140781 0.00000000 1.11296074 0.92761519</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.10424985 1.10424985 1.10424985</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.10424985 1.10424985 1.10424985</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_01">
+        <pose>-0.37436839 0.09700921 5.10054738 0.00000000 1.10703502 2.89378879</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.10050896 1.10050896 1.10050896</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.10050896 1.10050896 1.10050896</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_02">
+        <pose>0.05772584 -0.28777148 5.23564704 0.00000000 1.12171765 5.07962981</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.05817101 1.05817101 1.05817101</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.05817101 1.05817101 1.05817101</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_04">
+      <static>true</static>
+      <pose>10.41782078 -17.80777907 0.00000000 0.00000000 0.00000000 0.33338000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_04.dae</uri>
+              <scale>0.9758860159888182 0.9758860159888182 0.9758860159888182</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_04.dae</uri>
+              <scale>0.9758860159888182 0.9758860159888182 0.9758860159888182</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_05">
+      <static>true</static>
+      <pose>17.57684771 -17.33446946 0.00000000 0.00000000 0.00000000 1.45534000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_05.dae</uri>
+              <scale>1.0241069897437993 1.0241069897437993 1.0241069897437993</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_05.dae</uri>
+              <scale>1.0241069897437993 1.0241069897437993 1.0241069897437993</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_06">
+      <static>true</static>
+      <pose>25.73095602 -17.55304259 0.00000000 0.00000000 0.00000000 1.76689000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_06.dae</uri>
+              <scale>1.0453952430893554 1.0453952430893554 1.0453952430893554</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_06.dae</uri>
+              <scale>1.0453952430893554 1.0453952430893554 1.0453952430893554</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_00">
+        <pose>0.31672695 0.24399838 5.06901829 0.00000000 1.10742085 0.38122185</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.99921793 0.99921793 0.99921793</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.99921793 0.99921793 0.99921793</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_01">
+        <pose>-0.31883563 -0.07935026 5.09070178 0.00000000 1.11882614 3.70364496</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.05197589 1.05197589 1.05197589</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.05197589 1.05197589 1.05197589</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_07">
+      <static>true</static>
+      <pose>35.47480800 -19.17420701 0.00000000 0.00000000 0.00000000 2.13187000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_07.dae</uri>
+              <scale>0.9898486277252518 0.9898486277252518 0.9898486277252518</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_07.dae</uri>
+              <scale>0.9898486277252518 0.9898486277252518 0.9898486277252518</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_00">
+        <pose>-0.15274397 -0.21982793 4.93216442 0.00000000 1.11544209 -2.87320675</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.01781339 1.01781339 1.01781339</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.01781339 1.01781339 1.01781339</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_01">
+        <pose>0.41499407 -0.32939903 4.83737533 0.00000000 0.87370623 -0.66009596</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.07733716 1.07733716 1.07733716</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.07733716 1.07733716 1.07733716</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_02">
+        <pose>0.22806008 0.19081747 4.79232790 0.00000000 1.12671089 1.34446705</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.06473868 1.06473868 1.06473868</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.06473868 1.06473868 1.06473868</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_08">
+      <static>true</static>
+      <pose>-4.67033411 -10.23977526 0.00000000 0.00000000 0.00000000 -2.16739000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_08.dae</uri>
+              <scale>0.9174587643518503 0.9174587643518503 0.9174587643518503</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_08.dae</uri>
+              <scale>0.9174587643518503 0.9174587643518503 0.9174587643518503</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_09">
+      <static>true</static>
+      <pose>5.04650671 -8.43705796 0.00000000 0.00000000 0.00000000 1.40222000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_09.dae</uri>
+              <scale>0.9218776949076226 0.9218776949076226 0.9218776949076226</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_09.dae</uri>
+              <scale>0.9218776949076226 0.9218776949076226 0.9218776949076226</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_10">
+      <static>true</static>
+      <pose>12.83149396 -8.76181527 0.00000000 0.00000000 0.00000000 0.97173000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_10.dae</uri>
+              <scale>1.0351933597471328 1.0351933597471328 1.0351933597471328</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_10.dae</uri>
+              <scale>1.0351933597471328 1.0351933597471328 1.0351933597471328</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_00">
+        <pose>-0.28244558 0.24506291 5.07775512 0.00000000 1.13341165 1.64269538</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.03917485 1.03917485 1.03917485</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.03917485 1.03917485 1.03917485</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_11">
+      <static>true</static>
+      <pose>21.52873695 -9.48808820 0.00000000 0.00000000 0.00000000 -2.76775000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_11.dae</uri>
+              <scale>1.0760785753796913 1.0760785753796913 1.0760785753796913</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_11.dae</uri>
+              <scale>1.0760785753796913 1.0760785753796913 1.0760785753796913</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>-0.25902957 0.14946304 5.18807269 0.00000000 0.89484689 1.72297688</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.04995979 1.04995979 1.04995979</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.04995979 1.04995979 1.04995979</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_12">
+      <static>true</static>
+      <pose>30.57419289 -9.06462538 0.00000000 0.00000000 0.00000000 -2.93421000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_12.dae</uri>
+              <scale>1.0967229247872456 1.0967229247872456 1.0967229247872456</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_12.dae</uri>
+              <scale>1.0967229247872456 1.0967229247872456 1.0967229247872456</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_13">
+      <static>true</static>
+      <pose>41.18453453 -8.65759718 0.00000000 0.00000000 0.00000000 2.14285000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_13.dae</uri>
+              <scale>0.933968336568619 0.933968336568619 0.933968336568619</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_13.dae</uri>
+              <scale>0.933968336568619 0.933968336568619 0.933968336568619</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>0.07939135 -0.13207913 4.55935430 0.00000000 1.08509938 -0.81514678</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.88037371 0.88037371 0.88037371</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.88037371 0.88037371 0.88037371</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_14">
+      <static>true</static>
+      <pose>-8.47363569 -0.42216867 0.00000000 0.00000000 0.00000000 1.42150000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_14.dae</uri>
+              <scale>1.0630850289672342 1.0630850289672342 1.0630850289672342</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_14.dae</uri>
+              <scale>1.0630850289672342 1.0630850289672342 1.0630850289672342</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>0.10521526 -0.24373567 5.23479663 0.00000000 1.13756293 -1.68042644</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.14773863 1.14773863 1.14773863</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.14773863 1.14773863 1.14773863</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_01">
+        <pose>0.17368086 0.44025288 5.15605722 0.00000000 1.08689911 1.47178998</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.95862294 0.95862294 0.95862294</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.95862294 0.95862294 0.95862294</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_15">
+      <static>true</static>
+      <pose>26.91171940 -0.55132860 0.00000000 0.00000000 0.00000000 -2.35617000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_15.dae</uri>
+              <scale>1.0474880758273186 1.0474880758273186 1.0474880758273186</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_15.dae</uri>
+              <scale>1.0474880758273186 1.0474880758273186 1.0474880758273186</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_00">
+        <pose>0.05369954 0.06831135 5.18489690 0.00000000 0.87166713 0.15097863</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.01984861 1.01984861 1.01984861</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.01984861 1.01984861 1.01984861</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_01">
+        <pose>-0.59082444 0.03759102 5.05942192 0.00000000 1.06057830 3.08218890</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.00478963 1.00478963 1.00478963</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.00478963 1.00478963 1.00478963</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_16">
+      <static>true</static>
+      <pose>36.32815606 -0.94012620 0.00000000 0.00000000 0.00000000 -2.36394000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_16.dae</uri>
+              <scale>1.108305392234751 1.108305392234751 1.108305392234751</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_16.dae</uri>
+              <scale>1.108305392234751 1.108305392234751 1.108305392234751</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>0.28861034 -0.19561881 5.42230218 0.00000000 1.11249352 -0.45010501</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.15174752 1.15174752 1.15174752</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.15174752 1.15174752 1.15174752</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_17">
+      <static>true</static>
+      <pose>-4.68248275 9.64011028 0.00000000 0.00000000 0.00000000 1.18659000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_17.dae</uri>
+              <scale>1.1250012325825964 1.1250012325825964 1.1250012325825964</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_17.dae</uri>
+              <scale>1.1250012325825964 1.1250012325825964 1.1250012325825964</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>-0.25786852 0.61966963 5.45500870 0.00000000 1.04574545 1.95086750</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.04478990 1.04478990 1.04478990</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.04478990 1.04478990 1.04478990</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_01">
+        <pose>-0.34390286 -0.00233456 5.48412300 0.00000000 1.07916102 4.06175728</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.20788891 1.20788891 1.20788891</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.20788891 1.20788891 1.20788891</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_02">
+        <pose>0.23187882 0.27220609 5.61679212 0.00000000 0.89246738 6.21507577</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.17478552 1.17478552 1.17478552</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.17478552 1.17478552 1.17478552</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_18">
+      <static>true</static>
+      <pose>4.48419213 10.42412466 0.00000000 0.00000000 0.00000000 -2.80526000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_18.dae</uri>
+              <scale>0.9594500563765269 0.9594500563765269 0.9594500563765269</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_18.dae</uri>
+              <scale>0.9594500563765269 0.9594500563765269 0.9594500563765269</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>0.15246593 -0.29673258 4.80690957 0.00000000 1.02983223 -1.58914082</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.87250671 0.87250671 0.87250671</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.87250671 0.87250671 0.87250671</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_01">
+        <pose>0.45238872 0.15768684 4.64688575 0.00000000 1.01469031 0.40052024</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.86479434 0.86479434 0.86479434</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.86479434 0.86479434 0.86479434</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_02">
+        <pose>-0.10195393 0.24073498 4.62789317 0.00000000 0.93214057 2.44246424</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.92741991 0.92741991 0.92741991</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.92741991 0.92741991 0.92741991</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_19">
+      <static>true</static>
+      <pose>13.21582916 8.12610575 0.00000000 0.00000000 0.00000000 0.75335000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_19.dae</uri>
+              <scale>1.0320516734156546 1.0320516734156546 1.0320516734156546</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_19.dae</uri>
+              <scale>1.0320516734156546 1.0320516734156546 1.0320516734156546</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_00">
+        <pose>0.18782876 -0.18089152 5.00728353 0.00000000 0.95472961 -0.86034578</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.94650507 0.94650507 0.94650507</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.94650507 0.94650507 0.94650507</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_01">
+        <pose>0.14138477 0.37785085 5.07766691 0.00000000 1.00109684 1.02375649</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.11247020 1.11247020 1.11247020</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.11247020 1.11247020 1.11247020</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_02">
+        <pose>-0.37560709 0.01023340 5.00687052 0.00000000 1.10735840 3.34784377</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.02299334 1.02299334 1.02299334</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.02299334 1.02299334 1.02299334</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_20">
+      <static>true</static>
+      <pose>23.04320785 8.91198710 0.00000000 0.00000000 0.00000000 -1.99748000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_20.dae</uri>
+              <scale>1.1019450805273103 1.1019450805273103 1.1019450805273103</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_20.dae</uri>
+              <scale>1.1019450805273103 1.1019450805273103 1.1019450805273103</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_21">
+      <static>true</static>
+      <pose>30.90511788 10.11915218 0.00000000 0.00000000 0.00000000 2.17730000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_21.dae</uri>
+              <scale>0.9553540739406883 0.9553540739406883 0.9553540739406883</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_21.dae</uri>
+              <scale>0.9553540739406883 0.9553540739406883 0.9553540739406883</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>0.10874737 0.43284067 4.79194247 0.00000000 0.92516564 0.63210094</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.90950620 0.90950620 0.90950620</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.90950620 0.90950620 0.90950620</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_01">
+        <pose>-0.37235900 0.04803736 4.62189134 0.00000000 1.14153694 3.80732759</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.88845220 0.88845220 0.88845220</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.88845220 0.88845220 0.88845220</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_22">
+      <static>true</static>
+      <pose>39.96042501 8.89973718 0.00000000 0.00000000 0.00000000 -2.22483000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_22.dae</uri>
+              <scale>1.0469147984935336 1.0469147984935336 1.0469147984935336</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_22.dae</uri>
+              <scale>1.0469147984935336 1.0469147984935336 1.0469147984935336</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_00">
+        <pose>-0.40112675 0.07100289 5.13748314 0.00000000 0.95023288 3.09814137</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.97034503 0.97034503 0.97034503</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.97034503 0.97034503 0.97034503</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_01">
+        <pose>0.12112728 -0.27565235 5.09120693 0.00000000 1.12277195 5.15583164</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.95465031 0.95465031 0.95465031</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.95465031 0.95465031 0.95465031</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_02">
+        <pose>0.12826295 0.38244342 5.22940078 0.00000000 1.01013840 7.38405927</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.01270330 1.01270330 1.01270330</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.01270330 1.01270330 1.01270330</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_23">
+      <static>true</static>
+      <pose>-9.34591936 19.22120216 0.00000000 0.00000000 0.00000000 -0.58314000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_23.dae</uri>
+              <scale>1.045834944055387 1.045834944055387 1.045834944055387</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_23.dae</uri>
+              <scale>1.045834944055387 1.045834944055387 1.045834944055387</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_24">
+      <static>true</static>
+      <pose>-1.16365741 18.16141431 0.00000000 0.00000000 0.00000000 -0.04232000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_24.dae</uri>
+              <scale>0.9787061154663623 0.9787061154663623 0.9787061154663623</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_24.dae</uri>
+              <scale>0.9787061154663623 0.9787061154663623 0.9787061154663623</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>0.22644578 0.34893330 4.79793927 0.00000000 0.98480012 0.81625200</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.95586792 0.95586792 0.95586792</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>0.95586792 0.95586792 0.95586792</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_25">
+      <static>true</static>
+      <pose>9.24279164 19.05006877 0.00000000 0.00000000 0.00000000 -3.00547000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_25.dae</uri>
+              <scale>0.9137373187353219 0.9137373187353219 0.9137373187353219</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_25.dae</uri>
+              <scale>0.9137373187353219 0.9137373187353219 0.9137373187353219</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_00">
+        <pose>-0.18085784 0.11946653 4.55534442 0.00000000 0.93563364 -2.63295355</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.95360384 0.95360384 0.95360384</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.95360384 0.95360384 0.95360384</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_01">
+        <pose>0.23977181 0.04218143 4.42973720 0.00000000 1.03001879 -0.81977606</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.95334300 0.95334300 0.95334300</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.95334300 0.95334300 0.95334300</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_02">
+        <pose>0.07183541 0.51977861 4.51431491 0.00000000 0.91727168 1.51198527</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.98056456 0.98056456 0.98056456</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.98056456 0.98056456 0.98056456</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_26">
+      <static>true</static>
+      <pose>17.13528895 17.99937969 0.00000000 0.00000000 0.00000000 -0.26127000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_26.dae</uri>
+              <scale>1.0620530619506585 1.0620530619506585 1.0620530619506585</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_26.dae</uri>
+              <scale>1.0620530619506585 1.0620530619506585 1.0620530619506585</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_00">
+        <pose>-0.36617449 0.31030429 5.22861924 0.00000000 1.06157911 2.25108476</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.99054651 0.99054651 0.99054651</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.99054651 0.99054651 0.99054651</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_01">
+        <pose>-0.02867252 -0.21304850 5.30568257 0.00000000 0.90627752 5.18558633</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.95850928 0.95850928 0.95850928</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>0.95850928 0.95850928 0.95850928</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_27">
+      <static>true</static>
+      <pose>26.70606930 17.64006348 0.00000000 0.00000000 0.00000000 -0.46706000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_27.dae</uri>
+              <scale>1.0661104094977416 1.0661104094977416 1.0661104094977416</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_27.dae</uri>
+              <scale>1.0661104094977416 1.0661104094977416 1.0661104094977416</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="oil_palm_28">
+      <static>true</static>
+      <pose>36.98392914 18.74789331 0.00000000 0.00000000 0.00000000 0.24999000</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_28.dae</uri>
+              <scale>1.100088139202908 1.100088139202908 1.100088139202908</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_28.dae</uri>
+              <scale>1.100088139202908 1.100088139202908 1.100088139202908</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_male_00">
+        <pose>-0.41509912 0.03949044 5.43649594 0.00000000 0.93405806 2.20678235</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.19583131 1.19583131 1.19583131</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_male.dae</uri>
+              <scale>1.19583131 1.19583131 1.19583131</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="launch_pad">
+      <static>true</static>
+      <link name="pad">
+        <visual name="visual">
+          <pose>0 0 .006 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>2.8 2.8 .012</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .37 .34 1</ambient>
+            <diffuse>.55 .57 .52 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <pose>0 0 .006 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>2.8 2.8 .012</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <gui fullscreen="false">
+      <plugin filename="MinimalScene" name="3D View">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">docked</property>
+        </gz-gui>
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <ambient_light>.55 .55 .55</ambient_light>
+        <background_color>.58 .76 .91</background_color>
+        <camera_pose>-12 -18 16 0 .55 .8</camera_pose>
+      </plugin>
+      <plugin filename="GzSceneManager" name="GzSceneManager">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">5</property>
+          <property type="double" key="height">5</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="InteractiveViewControl" name="InteractiveViewControl">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">5</property>
+          <property type="double" key="height">5</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="CameraTracking" name="CameraTracking">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">5</property>
+          <property type="double" key="height">5</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="WorldControl" name="WorldControl">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">72</property>
+          <property type="double" key="width">290</property>
+          <property type="double" key="z">1</property>
+          <anchors target="3D View">
+            <line own="left" target="left" />
+            <line own="bottom" target="bottom" />
+          </anchors>
+        </gz-gui>
+        <play_pause>true</play_pause>
+        <step>true</step>
+        <start_paused>false</start_paused>
+        <use_event>true</use_event>
+      </plugin>
+      <plugin filename="WorldStats" name="WorldStats">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">floating</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">110</property>
+          <property type="double" key="width">290</property>
+          <property type="double" key="z">1</property>
+          <anchors target="3D View">
+            <line own="right" target="right" />
+            <line own="bottom" target="bottom" />
+          </anchors>
+        </gz-gui>
+        <sim_time>true</sim_time>
+        <real_time>true</real_time>
+        <real_time_factor>true</real_time_factor>
+        <iterations>true</iterations>
+      </plugin>
+    </gui>
+  </world>
+</sdf>

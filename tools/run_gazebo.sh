@@ -2,7 +2,7 @@
 set -euo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 scenario="${1:-clear_orbit}"
-case "$scenario" in clear_orbit|leaf_blocked|vertical_detour|fully_blocked|sensor_dropout|palm_farm|identification) ;; *) exit 2 ;; esac
+case "$scenario" in clear_orbit|leaf_blocked|vertical_detour|fully_blocked|sensor_dropout|palm_farm|palm_farm_flowers|identification) ;; *) exit 2 ;; esac
 plugin_dir="$project_dir/.dependencies/ardupilot_gazebo"
 test -f "$plugin_dir/build/libArduPilotPlugin.so"
 export GZ_SIM_SYSTEM_PLUGIN_PATH="$plugin_dir/build${GZ_SIM_SYSTEM_PLUGIN_PATH:+:$GZ_SIM_SYSTEM_PLUGIN_PATH}"

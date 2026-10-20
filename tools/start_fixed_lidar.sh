@@ -7,10 +7,15 @@ export POLINASI_GZ_PARTITION="${POLINASI_GZ_PARTITION:-polinasi_fixed_lidar}"
 export POLINASI_MAVROS_UDP_PORT="${POLINASI_MAVROS_UDP_PORT:-14650}"
 source tools/ros_environment.sh
 stage="${1:-hover}"
+scenario="${2:-palm_farm}"
+case "$scenario" in palm_farm|palm_farm_flowers) ;; *) exit 2 ;; esac
+if [[ "$scenario" == palm_farm_flowers ]]; then
+  /usr/bin/python3 tools/ensure_palm_flowers.py
+fi
 case "$stage" in hover|inspection) ;; *) exit 2 ;; esac
-python3 tools/generate_fixed_lidar.py
+python3 tools/generate_fixed_lidar.py --scenario "$scenario"
 colcon --log-base log_ros build --packages-select polinasi_nav --symlink-install --build-base build_ros --install-base install_ros
 export POLINASI_SIM_GUI=0 POLINASI_GAZEBO_GUI=0 POLINASI_CAMERA_GUI=0
 export POLINASI_SIM_RTF=.15
 unset POLINASI_SENSOR_TEST_WORLD
-exec bash "$project_dir/tools/start_simulation.sh" sensor palm_farm mapping "$project_dir/reports/fixed_lidar/$stage.json"
+exec bash "$project_dir/tools/start_simulation.sh" sensor "$scenario" mapping "$project_dir/reports/fixed_lidar/$stage.json"

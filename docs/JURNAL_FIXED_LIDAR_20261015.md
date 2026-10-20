@@ -723,3 +723,38 @@ menambah validasi hardware, CIRI/MPC SUPER, minimum waktu, atau flight fault
 injection blocked-route/dropout/delay melalui keberhasilan run nominal ini.
 Tidak perlu memperbaiki kode tambahan untuk menyatakan hasil nominal ini.
 Dokumentasi hasil di-commit/push setelah audit; artefak besar tetap lokal.
+
+
+## 20 Oktober 2026 — baseline world palm_farm_flowers
+
+Pengguna meminta loop pada map palm_farm_flowers. Audit awal: fixed-lidar
+fc84ca0 clean; rotating-lidar6779baf memiliki perubahan lokal pengguna dan map
+flowers belum tracked. Tidak checkout/merge/menulis worktree rotating. Tidak
+membaca credential/.aws. Tidak ada AGENTS pada root/ancestor/worktree.
+Audit port/proses host UDP9002/14650/TCP5762 kosong sebelum persiapan.
+
+Map baru29 pohon dengan individual realistic meshes dan bunga statis,
+internal world name tetap polinasi_palm_farm. Posisi pohon jitter, collision
+dan visual sama. Map baru bukan sekadar menambah bunga ke world lama.
+Preset navigasi flowers bawaan mengaktifkan mock bunga dan mounting lama;
+tidak dipakai untuk flight fixed. Tetap memakai preset fixed yang sudah
+unit/flight, prior FOV pengguna dan kamera depan pitch-only. Kecepatan belum
+dinaikkan. Misi memilih dua kandidat batang sensor, tanpa deteksi bunga.
+
+Implementasi: selector scenario pada launcher fixed/validation/Gazebo/generic,
+simulation_scenario di config dan package discovery aset flowers. Salin hanya
+world/aset/generator terkait dari workspace pengguna. Mesh hasil generasi691 MB
+di-ignore, generator+world+metadata+manifest dipush agar reproducible. Patch
+protected_hashes melewati world realistic yang tidak ada pada branch ini.
+Tidak menyalin controller/estimator/misi rotating terbaru. Ensure memeriksa
+semua resource rujukan dan menulis SHA256 audit; run menyimpan world_assets.json.
+Regresi baru memeriksa29 pohon, preservasi semua model obstacle setelah prepare,
+fixed LiDAR/kamera/IMU, dua pohon sensor dan mock disabled, serta resource hilang
+dan hash berubah. Coverage polygon lama hanya metadata configured farm,
+bukan bukti terukur coverage world baru. Hasil suite/flight dicatat berikut.
+
+Build tiga paket berhasil;424 tes lulus dalam94.15 s,0 failures/errors/skipped.
+Log /tmp/fixed_flowers_build.log. Setelah perapian helper/provenance dan docs,
+regresi flowers3 tes diulang lulus. Hash world dan32 mesh yang dirujuk
+dibandingkan dengan workspace sumber sebelum flight; semua identik byte.
+Tidak ada flight map baru yang diklaim sebelum menjalankannya.

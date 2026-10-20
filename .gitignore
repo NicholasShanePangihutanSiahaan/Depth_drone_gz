@@ -21,3 +21,8 @@ reports/**
 build_ros/
 install_ros/
 log_ros/
+
+# Reproducible flower-farm meshes; generate via tools/ensure_palm_flowers.py.
+polinasi_nav/models/palm_farm_flowers/meshes/
+polinasi_nav/models/palm_farm_flowers/*.html
+polinasi_nav/config/palm_farm_flowers_navigation.json

@@ -145,3 +145,46 @@ reference/PID, alasan hold/abort, antrean IMU, waktu pipeline dan umur data
 tersimpan pada accuracy*.jsonl, accuracy.summary.json dan navigation_debug.jsonl.
 Lihat [jurnal bertanggal](JURNAL_FIXED_LIDAR_20261015.md) untuk hasil tes dan
 flight; keberhasilan unit tidak berarti keberhasilan dua pohon hingga disarm.
+
+
+## Map palm_farm_flowers — 20 Oktober 2026
+
+Launcher fixed menerima argumen kedua untuk memilih world. Misi tetap sensor
+ICP–IMU, dua kandidat batang dari persepsi, kamera depan, tanpa mock bunga.
+Geometri bunga pada world tetap obstacle seperti daun/batang/tanah.
+
+```bash
+cd /home/abin/polinasi_lidar_fixed
+# Pertama kali: menghasilkan mesh deterministik yang belum tersedia.
+/usr/bin/python3 tools/ensure_palm_flowers.py
+bash tools/build_ros.sh
+POLINASI_RVIZ_AFTER_APPROACH=0 bash tools/run_fixed_lidar_validation.sh inspection palm_farm_flowers
+# Map lama tetap dapat dipilih:
+POLINASI_RVIZ_AFTER_APPROACH=0 bash tools/run_fixed_lidar_validation.sh inspection palm_farm
+```
+
+Generator mesh berasal dari aset lokal workspace pengguna: generate_palm_flowers,
+realistic_flower_farm dan fungsi geometri generate_palm_realistic. Hanya map
+flowers dijalankan. Script protected_hashes dapat bekerja ketika map realistic
+tidak ada pada branch fixed; tidak mengubah geometri pohon. Seed36035,
+29 pohon, posisi jitter .45–1.6 m, minimum antarbatang6.5 m. Geometri rinci
+ini berbeda dari palm_farm lama; keberhasilan pada map lama bukan bukti pada
+map baru. Tidak ada koordinat bunga/manifest yang dimasukkan ke estimator
+atau dijadikan target misi. Coverage ROI historis preset masih berasal dari
+konfigurasi farm asli; bukan deteksi pohon atau sertifikat coverage farm baru.
+
+Mesh Collada hasil generasi (~691 MB) diabaikan Git dan dibuat ulang melalui
+generator; world, manifest, model metadata, dan generator disimpan di Git.
+Hash SHA256 world dan semua mesh yang dirujuk dicatat pada
+reports/palm_flowers/asset_audit.json, lalu disalin ke registered run sebagai
+world_assets.json. Salinan pertama sesi ini memakai aset pengguna yang ada,
+tanpa menulis workspace rotating-lidar. Generator juga menyimpan hash aset
+farm lain yang tersedia; daftar itu dapat berbeda antarbranch walau geometri
+flowers sama. Hash resource aktual adalah pembanding byte geometry.
+
+Log validasi dan stop memakai mekanisme yang sama seperti map lama: baca
+reports/fixed_lidar_validation_<tanggal>/run.txt, lalu jalankan
+tools/stop_simulation.py --run dengan direktori tepat dari file itu.
+Map numerik/point cloud/voxel/HTML ada di reports/ros_sensor_palm_farm_flowers_*/map_3d/.
+Runtime tetap domain96, partition polinasi_fixed_lidar, UDP9002/14650 dan
+TCP5762; jangan menjalankan dua simulator yang berbagi resource tersebut.

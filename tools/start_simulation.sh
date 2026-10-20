@@ -7,7 +7,7 @@ scenario="${2:-clear_orbit}"
 mission="${3:-inspection}"
 case "$mission" in inspection|mapping|identification) ;; *) printf 'Mission must be inspection, mapping, or identification.\n' >&2; exit 2 ;; esac
 case "$mode" in ground_truth|sensor) ;; *) printf 'Mode must be ground_truth or sensor.\n' >&2; exit 2 ;; esac
-case "$scenario" in clear_orbit|leaf_blocked|vertical_detour|fully_blocked|sensor_dropout|palm_farm|identification) ;; *) exit 2 ;; esac
+case "$scenario" in clear_orbit|leaf_blocked|vertical_detour|fully_blocked|sensor_dropout|palm_farm|palm_farm_flowers|identification) ;; *) exit 2 ;; esac
 if [[ "$mission" == identification ]]; then
   [[ "$mode" == ground_truth && "$scenario" == identification ]] || exit 2
   export POLINASI_SITL_EXTRA_DEFAULTS="$project_dir/polinasi_nav/config/sitl_identification.parm"
@@ -36,12 +36,15 @@ if [[ "$mission" == identification ]]; then run_label="${run_label}_identificati
 run_dir="$project_dir/.dependencies/$run_label"
 map_log_dir="$project_dir/reports/$run_label/map_3d"
 nav_config="$project_dir/polinasi_nav/config/navigation.json"
-if [[ "$scenario" == palm_farm ]]; then nav_config="$project_dir/polinasi_nav/config/palm_farm_navigation.json"; fi
+if [[ "$scenario" == palm_farm || "$scenario" == palm_farm_flowers ]]; then nav_config="$project_dir/polinasi_nav/config/palm_farm_navigation.json"; fi
 if [[ "$mission" == mapping ]]; then nav_config="$project_dir/polinasi_nav/config/mapping_tour.json"; fi
 if [[ "$mission" == identification ]]; then nav_config="$project_dir/polinasi_nav/config/identification_train.json"; fi
 if [[ -n "${4:-}" ]]; then nav_config="$4"; fi
 test -f "$nav_config"
 mkdir -p "$run_dir"
+if [[ "$scenario" == palm_farm_flowers && -f "$project_dir/reports/palm_flowers/asset_audit.json" ]]; then
+  cp "$project_dir/reports/palm_flowers/asset_audit.json" "$run_dir/world_assets.json"
+fi
 export ROS_LOG_DIR="$run_dir/ros_logs"
 export ROS_HOME="$run_dir/ros_home"
 mkdir -p "$ROS_LOG_DIR" "$ROS_HOME"

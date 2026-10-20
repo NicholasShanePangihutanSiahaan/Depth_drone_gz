@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.9"><model name="oil_palm_00">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="surface">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_00.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/palm_00.dae</uri>
+              <scale>1.0 1.0 1.0</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_00">
+        <pose>0.20566720 0.22219189 4.96540713 0.00000000 1.06573000 0.03338740</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.05329098 1.05329098 1.05329098</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.05329098 1.05329098 1.05329098</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+      <link name="flower_female_01">
+        <pose>-0.45110860 0.19716752 4.90658551 0.00000000 1.02386791 3.17210987</pose>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.08456045 1.08456045 1.08456045</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>true</cast_shadows>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://palm_farm_flowers/meshes/flower_female.dae</uri>
+              <scale>1.08456045 1.08456045 1.08456045</scale>
+            </mesh>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    </sdf>

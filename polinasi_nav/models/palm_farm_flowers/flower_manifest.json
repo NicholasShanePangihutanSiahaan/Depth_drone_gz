@@ -1,0 +1,954 @@
+{
+  "format_version": 1,
+  "seed": 36035,
+  "total_trees": 29,
+  "requested_tree_fractions": {
+    "male": 0.35,
+    "female": 0.35,
+    "non_flowering": 0.3
+  },
+  "counts": {
+    "male": 10,
+    "female": 10,
+    "non_flowering": 9
+  },
+  "realised_flowering_fraction": 0.6896551724137931,
+  "rounding_policy": "nearest_equal_integer_counts_per_sex",
+  "bunch_count": 42,
+  "trees": [
+    {
+      "tree": "oil_palm_00",
+      "sex": "female",
+      "flowers": [
+        {
+          "link": "flower_female_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.20566719761768562,
+            0.2221918901480434,
+            4.965407129424631,
+            0.0,
+            1.0657299967002567,
+            0.03338740297302084
+          ],
+          "scale": 1.053290977404399,
+          "attachment_world_xyz": [
+            9.138175381626573,
+            0.856090775047559,
+            4.965407129424631
+          ]
+        },
+        {
+          "link": "flower_female_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            -0.4511085953982024,
+            0.19716752093510884,
+            4.906585508416253,
+            0.0,
+            1.0238679098902839,
+            3.172109867975682
+          ],
+          "scale": 1.0845604527988306,
+          "attachment_world_xyz": [
+            8.639520356437398,
+            1.284254093420041,
+            4.906585508416253
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_01",
+      "sex": null,
+      "flowers": []
+    },
+    {
+      "tree": "oil_palm_02",
+      "sex": "male",
+      "flowers": [
+        {
+          "link": "flower_male_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.15262555567757544,
+            -0.16237802255485248,
+            5.500992090225583,
+            0.0,
+            1.0552666710884386,
+            -0.33502325431633334
+          ],
+          "scale": 1.1481606174020929,
+          "attachment_world_xyz": [
+            -9.199649328290743,
+            -19.648854411181862,
+            5.500992090225583
+          ]
+        },
+        {
+          "link": "flower_male_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.1579268993254951,
+            0.30904949757595934,
+            5.4679250869229925,
+            0.0,
+            1.042159602184236,
+            1.5060162545336904
+          ],
+          "scale": 1.1719481451424785,
+          "attachment_world_xyz": [
+            -8.63597786855664,
+            -19.61785087063651,
+            5.4679250869229925
+          ]
+        },
+        {
+          "link": "flower_male_02",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.4670131867374814,
+            -0.261634028940916,
+            5.542397651426953,
+            0.0,
+            0.8623134625870963,
+            3.79366363339852
+          ],
+          "scale": 1.155121752588509,
+          "attachment_world_xyz": [
+            -8.97347137460104,
+            -19.063493446331826,
+            5.542397651426953
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_03",
+      "sex": "female",
+      "flowers": [
+        {
+          "link": "flower_female_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.13707299235292617,
+            0.2790385615027823,
+            5.201407807222938,
+            0.0,
+            1.1129607437384328,
+            0.9276151932126205
+          ],
+          "scale": 1.104249852323592,
+          "attachment_world_xyz": [
+            0.2501320988027225,
+            -18.66796814942997,
+            5.201407807222938
+          ]
+        },
+        {
+          "link": "flower_female_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            -0.37436838904650066,
+            0.09700921146850978,
+            5.100547381896245,
+            0.0,
+            1.10703501500072,
+            2.893788794221694
+          ],
+          "scale": 1.1005089616597281,
+          "attachment_world_xyz": [
+            -0.11557807668002335,
+            -19.069170141486385,
+            5.100547381896245
+          ]
+        },
+        {
+          "link": "flower_female_02",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.05772583983259799,
+            -0.2877714835489337,
+            5.235647042470236,
+            0.0,
+            1.1217176486865452,
+            5.079629811076125
+          ],
+          "scale": 1.0581710102301805,
+          "attachment_world_xyz": [
+            0.44672110869682274,
+            -19.20548313431269,
+            5.235647042470236
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_04",
+      "sex": null,
+      "flowers": []
+    },
+    {
+      "tree": "oil_palm_05",
+      "sex": null,
+      "flowers": []
+    },
+    {
+      "tree": "oil_palm_06",
+      "sex": "male",
+      "flowers": [
+        {
+          "link": "flower_male_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.3167269515146212,
+            0.2439983830905601,
+            5.069018292768242,
+            0.0,
+            1.107420853423473,
+            0.38122184943349874
+          ],
+          "scale": 0.9992179344278305,
+          "attachment_world_xyz": [
+            25.429922942712093,
+            -17.289926147579628,
+            5.069018292768242
+          ]
+        },
+        {
+          "link": "flower_male_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.31883563141167853,
+            -0.0793502644159119,
+            5.0907017821123866,
+            0.0,
+            1.1188261382816236,
+            3.703644962690415
+          ],
+          "scale": 1.0519758929096568,
+          "attachment_world_xyz": [
+            25.87090727663759,
+            -17.850307233888312,
+            5.0907017821123866
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_07",
+      "sex": "male",
+      "flowers": [
+        {
+          "link": "flower_male_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.1527439711855197,
+            -0.2198279277287802,
+            4.93216442240986,
+            0.0,
+            1.1154420942003156,
+            -2.8732067501748157
+          ],
+          "scale": 1.017813390813664,
+          "attachment_world_xyz": [
+            35.742207246409905,
+            -19.1865634646409,
+            4.93216442240986
+          ]
+        },
+        {
+          "link": "flower_male_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.4149940725228468,
+            -0.3293990342495572,
+            4.8373753256611085,
+            0.0,
+            0.8737062284988225,
+            -0.6600959644518718
+          ],
+          "scale": 1.0773371624535766,
+          "attachment_world_xyz": [
+            35.53288848619913,
+            -18.647566275147476,
+            4.8373753256611085
+          ]
+        },
+        {
+          "link": "flower_male_02",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.2280600752442675,
+            0.19081746540250666,
+            4.79232790247328,
+            0.0,
+            1.126710892096047,
+            1.34446704902188
+          ],
+          "scale": 1.0647386757357977,
+          "attachment_world_xyz": [
+            35.1918960933154,
+            -19.082645249408728,
+            4.79232790247328
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_08",
+      "sex": null,
+      "flowers": []
+    },
+    {
+      "tree": "oil_palm_09",
+      "sex": null,
+      "flowers": []
+    },
+    {
+      "tree": "oil_palm_10",
+      "sex": "male",
+      "flowers": [
+        {
+          "link": "flower_male_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.2824455829596317,
+            0.2450629058530335,
+            5.077755124635373,
+            0.0,
+            1.133411654827151,
+            1.6426953768082933
+          ],
+          "scale": 1.0391748529833023,
+          "attachment_world_xyz": [
+            12.469842655252016,
+            -8.856892444884737,
+            5.077755124635373
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_11",
+      "sex": "female",
+      "flowers": [
+        {
+          "link": "flower_female_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            -0.2590295691786019,
+            0.14946303879625825,
+            5.188072688629408,
+            0.0,
+            0.8948468904710627,
+            1.7229768824792449
+          ],
+          "scale": 1.049959786393428,
+          "attachment_world_xyz": [
+            21.824458792561348,
+            -9.53263156391068,
+            5.188072688629408
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_12",
+      "sex": null,
+      "flowers": []
+    },
+    {
+      "tree": "oil_palm_13",
+      "sex": "female",
+      "flowers": [
+        {
+          "link": "flower_female_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.07939134822520096,
+            -0.1320791305026327,
+            4.559354299068555,
+            0.0,
+            1.0850993830316011,
+            -0.815146778805167
+          ],
+          "scale": 0.8803737066095078,
+          "attachment_world_xyz": [
+            41.25260618228303,
+            -8.519343308443407,
+            4.559354299068555
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_14",
+      "sex": "female",
+      "flowers": [
+        {
+          "link": "flower_female_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.10521526122598622,
+            -0.2437356676817351,
+            5.234796634006042,
+            0.0,
+            1.1375629312837385,
+            -1.6804264360223007
+          ],
+          "scale": 1.1477386314064075,
+          "attachment_world_xyz": [
+            -8.216961378663386,
+            -0.3543776369283602,
+            5.234796634006042
+          ]
+        },
+        {
+          "link": "flower_female_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.17368086177389222,
+            0.4402528819899306,
+            5.156057223952085,
+            0.0,
+            1.0868991078112678,
+            1.4717899793660534
+          ],
+          "scale": 0.9586229397208228,
+          "attachment_world_xyz": [
+            -8.88315749947893,
+            -0.1849356021475675,
+            5.156057223952085
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_15",
+      "sex": "male",
+      "flowers": [
+        {
+          "link": "flower_male_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.05369953763345092,
+            0.06831134939505115,
+            5.184896898520903,
+            0.0,
+            0.8716671288281977,
+            0.15097863395386224
+          ],
+          "scale": 1.019848607710612,
+          "attachment_world_xyz": [
+            26.92205362267336,
+            -0.6376030717120063,
+            5.184896898520903
+          ]
+        },
+        {
+          "link": "flower_male_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.5908244443161891,
+            0.03759101756940919,
+            5.059421923572863,
+            0.0,
+            1.060578295879882,
+            3.082188902311173
+          ],
+          "scale": 1.0047896295581065,
+          "attachment_world_xyz": [
+            27.35606665253488,
+            -0.16012260927807798,
+            5.059421923572863
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_16",
+      "sex": "female",
+      "flowers": [
+        {
+          "link": "flower_female_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.2886103425751909,
+            -0.19561880935133535,
+            5.422302180542659,
+            0.0,
+            1.112493517254895,
+            -0.4501050139813629
+          ],
+          "scale": 1.1517475156267194,
+          "attachment_world_xyz": [
+            35.98525531247537,
+            -1.0032271243210191,
+            5.422302180542659
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_17",
+      "sex": "female",
+      "flowers": [
+        {
+          "link": "flower_female_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            -0.25786852118457676,
+            0.6196696325987393,
+            5.4550087037905755,
+            0.0,
+            1.0457454483211324,
+            1.9508675030033742
+          ],
+          "scale": 1.0447898999709149,
+          "attachment_world_xyz": [
+            -5.353631289229968,
+            9.63330806117619,
+            5.4550087037905755
+          ]
+        },
+        {
+          "link": "flower_female_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            -0.34390286493851896,
+            -0.002334563810990076,
+            5.484123004260048,
+            0.0,
+            1.0791610216703782,
+            4.061757275717939
+          ],
+          "scale": 1.2078889100021821,
+          "attachment_world_xyz": [
+            -4.809221243895076,
+            9.320404192240467,
+            5.484123004260048
+          ]
+        },
+        {
+          "link": "flower_female_02",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.23187881874142985,
+            0.2722060941999391,
+            5.616792124017957,
+            0.0,
+            0.8924673794660041,
+            6.2150757675310615
+          ],
+          "scale": 1.174785523597341,
+          "attachment_world_xyz": [
+            -4.8479303746105495,
+            9.957113484902072,
+            5.616792124017957
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_18",
+      "sex": "female",
+      "flowers": [
+        {
+          "link": "flower_female_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.15246593264499014,
+            -0.29673257811329384,
+            4.806909569067126,
+            0.0,
+            1.0298322257919885,
+            -1.5891408151089117
+          ],
+          "scale": 0.8725067072222207,
+          "attachment_world_xyz": [
+            4.2423387633639615,
+            10.653913769788515,
+            4.806909569067126
+          ]
+        },
+        {
+          "link": "flower_female_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.45238871984385676,
+            0.15768684444377282,
+            4.6468857506366135,
+            0.0,
+            1.0146903145508563,
+            0.40052023530438335
+          ],
+          "scale": 0.8647943381350087,
+          "attachment_world_xyz": [
+            4.1091911322779575,
+            10.12597210803561,
+            4.6468857506366135
+          ]
+        },
+        {
+          "link": "flower_female_02",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            -0.10195393322205108,
+            0.24073497857744172,
+            4.6278931733506745,
+            0.0,
+            0.9321405675483994,
+            2.4424642373911367
+          ],
+          "scale": 0.9274199094440518,
+          "attachment_world_xyz": [
+            4.6598828708248945,
+            10.230525341784672,
+            4.6278931733506745
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_19",
+      "sex": "male",
+      "flowers": [
+        {
+          "link": "flower_male_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.18782876198931608,
+            -0.1808915179438206,
+            5.0072835269981955,
+            0.0,
+            0.954729613978586,
+            -0.8603457785554505
+          ],
+          "scale": 0.9465050657537132,
+          "attachment_world_xyz": [
+            13.476577065274148,
+            8.122654286435006,
+            5.0072835269981955
+          ]
+        },
+        {
+          "link": "flower_male_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.1413847650979852,
+            0.37785085223930925,
+            5.077666909678982,
+            0.0,
+            1.0010968401587261,
+            1.0237564916269812
+          ],
+          "scale": 1.1124701982929062,
+          "attachment_world_xyz": [
+            13.060472872213916,
+            8.498429992944619,
+            5.077666909678982
+          ]
+        },
+        {
+          "link": "flower_male_02",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.37560708775735535,
+            0.010233404512440036,
+            5.006870516169719,
+            0.0,
+            1.107358396942967,
+            3.3478437713057243
+          ],
+          "scale": 1.0229933405905132,
+          "attachment_world_xyz": [
+            12.93486033603451,
+            7.876622422592992,
+            5.006870516169719
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_20",
+      "sex": null,
+      "flowers": []
+    },
+    {
+      "tree": "oil_palm_21",
+      "sex": "female",
+      "flowers": [
+        {
+          "link": "flower_female_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.10874736786084198,
+            0.43284067055124475,
+            4.7919424674037545,
+            0.0,
+            0.9251656403152697,
+            0.6321009421559118
+          ],
+          "scale": 0.909506197483352,
+          "attachment_world_xyz": [
+            30.487490302211185,
+            9.961785602632386,
+            4.7919424674037545
+          ]
+        },
+        {
+          "link": "flower_female_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            -0.3723589983810296,
+            0.04803735811188459,
+            4.621891341826032,
+            0.0,
+            1.14153694269628,
+            3.8073275895899945
+          ],
+          "scale": 0.8884521961677686,
+          "attachment_world_xyz": [
+            31.077892146175365,
+            9.785823710319137,
+            4.621891341826032
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_22",
+      "sex": "male",
+      "flowers": [
+        {
+          "link": "flower_male_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.40112675217337723,
+            0.07100288732341029,
+            5.137483137429374,
+            0.0,
+            0.9502328765880599,
+            3.098141366465997
+          ],
+          "scale": 0.9703450264554544,
+          "attachment_world_xyz": [
+            40.260818027930945,
+            9.174888261635173,
+            5.137483137429374
+          ]
+        },
+        {
+          "link": "flower_male_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.12112727978667129,
+            -0.27565235123777304,
+            5.091206933093463,
+            0.0,
+            1.1227719525662019,
+            5.1558316366436
+          ],
+          "scale": 0.954650305642549,
+          "attachment_world_xyz": [
+            39.667964383582635,
+            8.971311041142878,
+            5.091206933093463
+          ]
+        },
+        {
+          "link": "flower_male_02",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.1282629496297881,
+            0.3824434166837825,
+            5.229400779331141,
+            0.0,
+            1.0101383952169407,
+            7.384059273013164
+          ],
+          "scale": 1.0127032950429686,
+          "attachment_world_xyz": [
+            40.18591172228592,
+            8.565267309667373,
+            5.229400779331141
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_23",
+      "sex": null,
+      "flowers": []
+    },
+    {
+      "tree": "oil_palm_24",
+      "sex": "female",
+      "flowers": [
+        {
+          "link": "flower_female_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_female.dae",
+          "local_pose": [
+            0.22644578267798257,
+            0.3489333042268916,
+            4.797939272830925,
+            0.0,
+            0.9848001222040238,
+            0.8162520015963255
+          ],
+          "scale": 0.9558679249187881,
+          "attachment_world_xyz": [
+            -0.9226519321028749,
+            18.500454870806408,
+            4.797939272830925
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_25",
+      "sex": "male",
+      "flowers": [
+        {
+          "link": "flower_male_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.18085783527372679,
+            0.11946652574530332,
+            4.555344415603965,
+            0.0,
+            0.9356336382903832,
+            -2.632953552923759
+          ],
+          "scale": 0.953603838480927,
+          "attachment_world_xyz": [
+            9.43818839243724,
+            18.95625024577137,
+            4.555344415603965
+          ]
+        },
+        {
+          "link": "flower_male_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.23977180739852189,
+            0.04218143408625981,
+            4.42973719586187,
+            0.0,
+            1.0300187889776078,
+            -0.8197760560469921
+          ],
+          "scale": 0.9533429973773132,
+          "attachment_world_xyz": [
+            9.010961945741965,
+            18.975739856630998,
+            4.42973719586187
+          ]
+        },
+        {
+          "link": "flower_male_02",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            0.0718354122989173,
+            0.5197786136740142,
+            4.514314907151318,
+            0.0,
+            0.9172716761689955,
+            1.5119852739177315
+          ],
+          "scale": 0.9805645622005335,
+          "attachment_world_xyz": [
+            9.242156073455876,
+            18.525350054282153,
+            4.514314907151318
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_26",
+      "sex": "male",
+      "flowers": [
+        {
+          "link": "flower_male_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.36617448565205396,
+            0.310304292355801,
+            5.2286192369069155,
+            0.0,
+            1.0615791106457666,
+            2.2510847568355525
+          ],
+          "scale": 0.9905465102125085,
+          "attachment_world_xyz": [
+            16.86169540846058,
+            18.393738767156076,
+            5.2286192369069155
+          ]
+        },
+        {
+          "link": "flower_male_01",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.028672516801038432,
+            -0.21304849750137958,
+            5.3056825672792955,
+            0.0,
+            0.90627751839067,
+            5.185586326241882
+          ],
+          "scale": 0.9585092809168653,
+          "attachment_world_xyz": [
+            17.052557439716598,
+            17.800967810837843,
+            5.3056825672792955
+          ]
+        }
+      ]
+    },
+    {
+      "tree": "oil_palm_27",
+      "sex": null,
+      "flowers": []
+    },
+    {
+      "tree": "oil_palm_28",
+      "sex": "male",
+      "flowers": [
+        {
+          "link": "flower_male_00",
+          "mesh": "model://palm_farm_flowers/meshes/flower_male.dae",
+          "local_pose": [
+            -0.4150991215463916,
+            0.039490444939754114,
+            5.43649594354146,
+            0.0,
+            0.9340580586605667,
+            2.206782348552331
+          ],
+          "scale": 1.1958313122782056,
+          "attachment_world_xyz": [
+            36.57196370770886,
+            18.683463047088033,
+            5.43649594354146
+          ]
+        }
+      ]
+    }
+  ],
+  "collision_policy": "same_closed_triangle_mesh_as_visual",
+  "reference_urls": [
+    "https://powo.science.kew.org/taxon/urn:lsid:ipni.org:names:666802-1/general-information",
+    "https://journal.umt.edu.my/umtjur/article/view/440",
+    "https://horizon.documentation.ird.fr/exl-doc/pleins_textes/divers21-03/010081641.pdf"
+  ],
+  "purpose": "simulation_scene_ground_truth_only_not_perception_or_navigation_input",
+  "tree_geometry": "individual_realistic_palms_at_original_trunk_and_total_heights",
+  "layout": {
+    "seed": 43776,
+    "max_displacement_m": 1.6,
+    "min_spacing_m": 6.5
+  }
+}

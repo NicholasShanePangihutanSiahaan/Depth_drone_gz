@@ -6,13 +6,15 @@ from generate_sensor_localisation import main as generate_sensor
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main():
+def main(scenario='palm_farm'):
+    if scenario not in ('palm_farm', 'palm_farm_flowers'):
+        raise ValueError('unsupported fixed-LiDAR scenario')
     generate_sensor()
     output = ROOT / 'reports/fixed_lidar'
     output.mkdir(parents=True, exist_ok=True)
     for stage in ('hover', 'inspection'):
         c = json.loads((ROOT / f'reports/sensor_localisation/{stage}.json').read_text())
-        c.update(sensor_rolling_localisation=False, sensor_fixed_localisation=True,
+        c.update(simulation_scenario=scenario, sensor_rolling_localisation=False, sensor_fixed_localisation=True,
                  simulation_continuous_roll=False, simulation_roll_rate=0.,
                  lidar_fixed=True, fixed_fov_assumptions=True, automatic_tilt_ascent=False,
                  lidar_mount=[0., 0., .28, 0., 0., 0.],
@@ -53,4 +55,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--scenario', choices=('palm_farm', 'palm_farm_flowers'), default='palm_farm')
+    main(parser.parse_args().scenario)
