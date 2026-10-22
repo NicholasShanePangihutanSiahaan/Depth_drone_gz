@@ -293,6 +293,17 @@ def select_backup_switch(trajectory,elapsed,lead,grid,c):
 
 
 def backup_grid(controller):
+    transit=(getattr(controller,'state',None)=='RETURN' or
+        (getattr(controller,'state',None)=='SURVEY' and getattr(controller,'tree_phase',None)=='APPROACH'))
+    # BRAKE keeps the departure phase: do not lose the transit reserve while
+    # rechecking the cached backup after fail() changes the mission state.
+    transit=transit or (getattr(controller,'state',None)=='BRAKE' and
+        (getattr(controller,'resume_state',None)=='RETURN' or
+         (getattr(controller,'resume_state',None)=='SURVEY' and getattr(controller,'tree_phase',None)=='APPROACH')))
+    if transit and controller.c.get('transit_observation_guard',0.)>0:
+        from .transit_guard import transit_guard_grid
+        return transit_guard_grid(controller.grid,controller.c['transit_observation_guard'],
+                                  controller.c.get('transit_lateral_observation_guard',0.))
     if (controller.c.get('explicit_backup_enabled') and controller.c.get('scan_adaptive_height')
             and getattr(controller,'tree_phase',None) in ('SCAN','ASCEND')):
         from .canopy_scan import canopy_guard_grid

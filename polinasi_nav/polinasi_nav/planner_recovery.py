@@ -6,7 +6,7 @@ import numpy as np
 from .planning import brake_safe
 
 
-def save_failure_snapshot(controller,detail,points=None,grid=None):
+def save_failure_snapshot(controller,detail,points=None,grid=None,evidence_slot=None):
     directory=controller.c.get('planner_audit_dir')
     if not directory:return
     directory=Path(directory)
@@ -14,14 +14,21 @@ def save_failure_snapshot(controller,detail,points=None,grid=None):
         directory.mkdir(parents=True,exist_ok=True)
         # Bound disk/CPU cost per run. Keep exact first failures for replay.
         critical=detail.get('reason') in ('pid_final_safety','emergency_braking_invalidated','global_route_unavailable','reference_feedback_reserve_revoked')
-        if len(list(directory.glob('*.npz')))>=8 and not critical:return
-        path=directory/('failure_critical.npz' if critical else f'failure_{time.monotonic_ns()}.npz')
+        if evidence_slot is not None and evidence_slot not in ('accepted','revoked'):
+            raise ValueError('invalid evidence slot')
+        if evidence_slot is None and len(list(directory.glob('failure_*.npz')))>=8 and not critical:return
+        path=directory/(f'evidence_{evidence_slot}.npz' if evidence_slot else
+            ('failure_critical.npz' if critical else f'failure_{time.monotonic_ns()}.npz'))
         grid=controller.grid if grid is None else grid
         metadata=dict(config=controller.c,diagnostics=detail,origin=grid.lo.tolist(),
             shape=list(grid.shape),map_version=int(grid.version),
             last_observation_stamp=float(grid.last_observation_stamp),
             state=controller.state,phase=getattr(controller,'tree_phase',None),
             canopy_guard_cells=getattr(grid,'canopy_guard_cells',0),
+            transit_lateral_guard_cells=getattr(grid,'transit_lateral_guard_cells',0),
+            grid_config=grid.c,elapsed_seconds=float(getattr(controller,'elapsed',0.)),
+            replans=int(getattr(controller,'replans',0)),
+            captured_wall_monotonic_ns=time.monotonic_ns(),
             command=controller.command.tolist(),command_v=controller.command_v.tolist(),
             command_a=controller.command_a.tolist(),
             provenance='exact_detached_planning_grid_not_ground_truth')

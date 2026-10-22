@@ -1398,3 +1398,66 @@ Build tiga paket berhasil;455 tes lulus96.99 s,0 errors/failures/skipped.
 Bukti build_ros/polinasi_nav/pytest.xml; log /tmp/fixed_cost_build.log.
 Audit host sebelum flight berikutnya: port9002/14650/5762 bebas dan tidak
 ada proses Gazebo/SITL/RViz. Perubahan akan di-commit/push sebelum run10.
+
+
+### 22 Oktober 2026 — run10, guard cadangan transit dan bukti sebelum/sesudah
+
+Run10 b419a17 (sudah push sebelum flight), reports/fixed_lidar_validation_20261022_073940,
+registered session .dependencies/ros_sensor_palm_farm_flowers_20261022_073943_16004_mapping.
+Auditor menghentikan pada64.60 s simulasi/global_route_unavailable,
+BRAKE/APPROACH tree1.554 pasangan pose: RMSE .00892677842 m,
+maksimum .0180463821 m; tidak ada fault kesehatan lokalisasi tercatat.
+Session stopped=true, tidak ada simulator sesi lain yang dihentikan.
+Belum menyelesaikan approach. Preferensi lunak belum terbukti mengatasi
+kegagalan ini dan tidak disebut perbaikan flight sukses.
+
+Replan1 diterima27.1 s: curve14.3974147 s, target prefix[-3.396,-1.5,1.5].
+Replan2 diterima44.5 s: prefix[-6.5,-.3,1.9]. Sekitar48.5 s map396,
+live suffix gagal pada[-4.308048,-1.5,1.413519] (nominal/actual body aman),
+route_changed pulih50.65 s. Posisi berhenti[-4.674690,-1.500247,1.376709]
+nominal-safe tetapi history request22/map62.4 menolak history_start_not_safe.
+Critical snapshot berada di reports/ros_sensor_palm_farm_flowers_20261022_073943_16004_mapping/map_3d/planner_failures/failure_critical.npz.
+
+Replay peta akhir dari[-3.4,-1.5,1.5] ke[-6.5,-.3,1.9]: menaikkan
+preferensi/bobot dari(.4,2) ke(.8,2),(.8,4),(1.2,4) tidak mengubah rute
+terpilih; expansions268/630/1149/1381. Karena tidak memberi bukti perbaikan,
+parameter tersebut TIDAK dinaikkan. Peta sebelum revokasi tidak tersimpan;
+seen adalah timestamp pengamatan terbaru, bukan first-seen. Snapshot akhir
+saja tidak cukup untuk mengklaim first-seen occupied atau mekanisme kausal
+lengkap. Tidak mengasumsikan lingkungan diam karena peta sebelumnya sama.
+
+Audit menemukan inkonsistensi nyata: ContinuousTreeInspectionController
+membungkus kurva transit dengan reserve atas/XY, tetapi super_policy.backup_grid
+hanya menambahkan reserve pada SCAN/ASCEND. Akibatnya final feedback check,
+explicit backup kandidat dan whole-curve braking check transit masih dapat
+menggunakan raw mask. Perbaikan: backup_grid memberi transit_guard_grid yang
+sama pada SURVEY/APPROACH dan RETURN; saat BRAKE, resume_state menjaga fase
+asal agar cached backup tidak tiba-tiba kehilangan reserve. Semua candidate
+masih harus lulus hard guard. Emergency fallback Brake tetap memeriksa
+actual/nominal body stopping seperti semula; ketika observasi sudah mencabut
+reserve, fallback itu tidak diklaim menjaga reserve tambahan atau membolehkan
+melanjutkan navigasi. Tidak ada escape dari start blocked yang ditambahkan.
+
+Tambahan bukti audit bounded: evidence_accepted.npz menyimpan exact grid,
+curve controls/durations saat kandidat lolos pada detached planning worker;
+evidence_revoked.npz menyimpan raw grid/kurva sebelum fail(route_changed)
+menghapus kurva. Dua slot ditimpa pada event berikutnya, terpisah dari maksimal
+8 ordinary failure dan failure_critical.npz. Metadata mencakup guard cells
+atas/lateral, grid_config, replans, elapsed, map stamp/version dan waktu wall
+monotonic. Ini bukan ground truth dan tidak memasukkan data audit ke estimator.
+Penulisan evidence revokasi dilakukan setelah memilih brake, sebelum kurva
+lama dihapus; overhead snapshot perlu dipantau pada run berikutnya.
+
+Regresi baru membuktikan point raw-safe dapat gagal reserve dan raw feedback
+stop lulus sementara guarded stop ditolak; APPROACH/RETURN/BRAKE memakai mask
+reserve yang sama dan TAKEOFF tidak berubah. Regresi evidence membuktikan
+peta/kurva sebelum dan sesudah berbeda tetap tersedia, independent dari
+critical snapshot serta tetap bounded. Hasil build/tes dan flight dicatat
+setelah tersedia; perubahan belum flight validated.
+
+Build tiga paket berhasil;457 tes lulus110.88 s,0 errors/failures/skipped.
+Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_backup_guard_build.log.
+Tes targeted awal67 lulus/1 gagal karena ekspektasi guard satu voxel pada
+fixture resolusi .1 m; diperbaiki memakai ceil(.2/res-1e-9), bukan mengubah
+implementasi pembulatan atau ukuran reserve. Full suite setelahnya lulus.
+Commit/push dilakukan sebelum run11; flight belum tervalidasi.

@@ -261,3 +261,14 @@ mengaktifkan biaya ini. Ini mitigasi prospektif, bukan escape dari start
 blocked atau jaminan terhadap deteksi terlambat. Replay kurva39.82→19.13 s
 pada snapshot akhir belum merupakan hasil flight. Bukti dan batas validasi
 ada pada jurnal22 Oktober2026.
+
+
+Audit runb419a17 masih gagal64.60 s history_start_not_safe. Cadangan berhenti
+transit kini memakai reserve atas/XY yang sama dengan kurva pada APPROACH
+serta RETURN, termasuk recheck cached backup ketika BRAKE. Ini memperbaiki
+inkonsistensi mask, bukan mengizinkan escape dari reserve yang sudah blocked.
+Emergency body stopping tetap aktif dan bukan bukti reserve tambahan terjaga.
+Untuk membandingkan sebelum/sesudah perubahan map, planner_failures kini
+menyimpan dua slot bounded evidence_accepted.npz dan evidence_revoked.npz,
+selain failure_critical.npz. Bukti peta lama tetap tidak tersedia untuk run10;
+perbaikan berikutnya belum tervalidasi flight.

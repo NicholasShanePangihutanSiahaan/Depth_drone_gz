@@ -594,3 +594,59 @@ def test_recorded_reference_is_rejected_before_PVA_commit_and_cached_stop_execut
         if not ctl.failure:break
     assert not ctl.failure and ctl.state=='SURVEY'
     np.testing.assert_allclose(ctl.command_v,0.,atol=1e-10)
+
+
+def test_transit_backup_uses_same_guard_and_retains_it_during_brake():
+    from types import SimpleNamespace
+    from polinasi_nav.super_policy import backup_grid
+    from polinasi_nav.transit_guard import transit_guard_grid
+    c,g=fixture();c.update(transit_observation_guard=.2,transit_lateral_observation_guard=.2)
+    g.state[tuple(g.indices([0.,1.5,2.]))]=OCCUPIED;g.rebuild(0.)
+    expected=transit_guard_grid(g,.2,.2)
+    ids=np.argwhere((~g.blocked)&expected.blocked)
+    points=g.centers(ids);p=points[np.argmin(np.linalg.norm(points-[0.,1.5,2.],axis=1))]
+    assert g.safe(p) and not expected.safe(p)
+    ctl=SimpleNamespace(c=c,grid=g,state='SURVEY',tree_phase='APPROACH')
+    guarded=backup_grid(ctl)
+    np.testing.assert_array_equal(guarded.blocked,expected.blocked)
+    assert feedback_brake_safe(g,p,np.zeros(3),np.zeros(3),c)
+    assert not feedback_brake_safe(guarded,p,np.zeros(3),np.zeros(3),c)
+    ctl.state='BRAKE';ctl.resume_state='SURVEY'
+    np.testing.assert_array_equal(backup_grid(ctl).blocked,expected.blocked)
+    ctl.tree_phase='SEARCH';ctl.state='RETURN'
+    np.testing.assert_array_equal(backup_grid(ctl).blocked,expected.blocked)
+    ctl.state='BRAKE';ctl.resume_state='RETURN'
+    np.testing.assert_array_equal(backup_grid(ctl).blocked,expected.blocked)
+    ctl.state='TAKEOFF'
+    assert backup_grid(ctl) is g
+
+
+def test_evidence_snapshots_preserve_acceptance_and_revocation_separately(tmp_path):
+    import json
+    from polinasi_nav.planner_recovery import save_failure_snapshot
+    from polinasi_nav.transit_guard import transit_guard_grid
+    c,g=fixture();c['planner_audit_dir']=str(tmp_path)
+    ctl=SurveyController(c,g,asynchronous=False)
+    ctl.state='SURVEY';ctl.command=np.array([0.,0.,2.])
+    ctl.trajectory=ContinuousTrajectory([[0.,0.,2.],[1.,0.,2.]],c)
+    guarded=transit_guard_grid(g,.2,.2);before=guarded.blocked.copy()
+    save_failure_snapshot(ctl,dict(reason='certified_candidate'),grid=guarded,evidence_slot='accepted')
+    g.state[tuple(g.indices([1.,0.,2.]))]=OCCUPIED;g.rebuild(1.)
+    ctl.fail('route_changed')
+    assert ctl.trajectory is None
+    for _ in range(10):save_failure_snapshot(ctl,dict(reason='ordinary'))
+    save_failure_snapshot(ctl,dict(reason='global_route_unavailable'))
+    assert len(list(tmp_path.glob('*.npz')))==11
+    with np.load(tmp_path/'evidence_accepted.npz') as d:
+        np.testing.assert_array_equal(d['blocked'],before)
+        assert len(d['controls'])>0
+        meta=json.loads(str(d['metadata']))
+        assert meta['transit_lateral_guard_cells']==int(np.ceil(.2/g.res-1e-9))
+        assert meta['canopy_guard_cells']==int(np.ceil(.2/g.res-1e-9))
+    with np.load(tmp_path/'evidence_revoked.npz') as d:
+        np.testing.assert_array_equal(d['state'],g.state)
+        assert len(d['controls'])>0  # captured before fail clears the trajectory
+        assert not np.array_equal(d['state'],np.load(tmp_path/'evidence_accepted.npz')['state'])
+    # Latest evidence replaces the fixed slot: no unbounded snapshot backlog.
+    save_failure_snapshot(ctl,dict(reason='certified_candidate'),evidence_slot='accepted')
+    assert len(list(tmp_path.glob('*.npz')))==11

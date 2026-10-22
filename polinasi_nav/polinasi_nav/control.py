@@ -95,6 +95,9 @@ class MissionController:
                 if self.c.get('explicit_backup_enabled'):
                     self.backup_diagnostics.update(executed=False,fallback='fresh_emergency_Brake',trigger=reason)
             self.certified_backup=None
+            if reason=='route_changed' and self.trajectory is not None:
+                from .planner_recovery import save_failure_snapshot
+                save_failure_snapshot(self,self.route_failure_diagnostics,grid=self.grid,evidence_slot='revoked')
             self.trajectory = None
 
     def _braking_invalidated(self,gate,detail):
@@ -506,6 +509,10 @@ class MissionController:
         self.paths.append(self.trajectory.points.copy())
         self.replans += 1
         self.elapsed = 0.
+        # Detached planning worker: retain the exact mask/curve that passed,
+        # not just the final map observed after a later abort.
+        save_failure_snapshot(self,dict(reason='certified_candidate',
+            planner_reason=self.route_planner_reason),grid=check_grid,evidence_slot='accepted')
         return True
 
     def _plan_route(self, start, goal):
