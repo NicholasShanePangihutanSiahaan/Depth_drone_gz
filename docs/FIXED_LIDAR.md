@@ -326,3 +326,13 @@ helper fresh_stamp dengan depth, toleransi roundoff1e-9 s yang eksplisit;
 timeout fisik dan health flag tidak diubah. `sensor_freshness` menyimpan
 stamps/ages/limits agar kasus numeric boundary berbeda dari lateness nyata.
 30 targeted tests lulus; perbaikan roundoff belum flight validated.
+
+
+Run15675a7 berhenti30.30 s localisation_loss: pose age.2 dan IMU navigasi
+age.005 masih fresh, tetapi frontend received IMU age.156 setelah ICP.
+Frontend fixed sensor kini memakai dua executor threads dengan scan group
+tersendiri (serial estimator writer), input queue lock, dan snapshot estimator
+untuk health. Clock/IMU tetap dapat diproses selama ICP. Sampel sesudah
+scan tetap antre, pose tidak direstamp, gate IMU.1/pose.3 tidak diperbesar.
+Diagnostic health_gate membedakan stale receive dari frontend_reason ICP.
+29 ROS tests termasuk konkurensi/dropout lulus; belum flight validated.

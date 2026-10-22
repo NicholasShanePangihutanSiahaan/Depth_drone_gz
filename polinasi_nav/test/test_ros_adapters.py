@@ -437,3 +437,66 @@ def test_depth_queue_projects_newest_transformable_original_stamp_and_rejects_dr
     assert fake.depth_stats['last_valid_stamp']==20.2
     assert fake.depth_stats['submitted_frames']==2
     assert fake.depth_stats['rejection']=='no_valid_depth_rays'
+
+
+def test_localisation_receives_IMU_and_clock_during_scan_without_integrating_future(monkeypatch):
+    import threading
+    import time
+    from rclpy.executors import MultiThreadedExecutor
+    from rclpy.node import Node
+    from rclpy.parameter import Parameter
+    from rclpy.qos import QoSProfile,ReliabilityPolicy,qos_profile_sensor_data
+    from rosgraph_msgs.msg import Clock
+    from geometry_msgs.msg import TransformStamped
+    from polinasi_nav.ros_nodes import ConfigNode
+    original_init=ConfigNode.__init__;original_get=LocalisationNode.get_parameter
+    def sensor_config(self,*args,**kwargs):
+        original_init(self,*args,**kwargs)
+        self.c.update(sensor_fixed_localisation=True,lidar_fixed=True,sensor_gimbals_enabled=False)
+    def get_parameter(self,name):
+        return Parameter('mode',Parameter.Type.STRING,'sensor') if name=='mode' else original_get(self,name)
+    monkeypatch.setattr(ConfigNode,'__init__',sensor_config)
+    monkeypatch.setattr(LocalisationNode,'get_parameter',get_parameter)
+    node=LocalisationNode();peer=Node('test_localisation_input_source')
+    executor=MultiThreadedExecutor(num_threads=2)
+    executor.add_node(node);executor.add_node(peer)
+    entered=threading.Event();release=threading.Event()
+    def slow_registration(*args):entered.set();release.wait(4.);return False
+    node.estimator.scan=slow_registration
+    node.last_stamp=.98;node.last_imu=.99;node.estimator.last_imu=.98
+    node.estimator.last_good=.98;node.estimator.reason='tracking_fixture'
+    node.pending_imu.append((.99,np.zeros(3),np.array([0.,0.,9.81])))
+    node.sensor_debug_snapshot=node.estimator_snapshot()
+    node.status=Mock();node.localisation_diagnostics=Mock()
+    transform=TransformStamped();transform.transform.rotation.w=1.
+    node.mount_buffer=Mock();node.mount_buffer.lookup_transform.return_value=transform
+    clocks=peer.create_publisher(Clock,'/clock',QoSProfile(depth=1,reliability=ReliabilityPolicy.BEST_EFFORT))
+    imu=peer.create_publisher(Imu,'/simulation/body_imu',qos_profile_sensor_data)
+    runner=threading.Thread(target=executor.spin,daemon=True);runner.start()
+    def wait_for(condition,seconds=2.):
+        deadline=time.monotonic()+seconds
+        while time.monotonic()<deadline:
+            if condition():return True
+            time.sleep(.005)
+        return False
+    try:
+        assert node.parallel_sensor_inputs and node.scan_callback_group is not node.default_callback_group
+        assert wait_for(lambda:imu.get_subscription_count()>0 and clocks.get_subscription_count()>0)
+        cloud=point_cloud2.create_cloud_xyz32(Header(frame_id='mid360',stamp=Time(nanosec=990000000)),[(2.,0.,0.)])
+        node.queue_scan(cloud)
+        clocks.publish(Clock(clock=Time(sec=1)))
+        assert entered.wait(2.)
+        for nanos in (995000000,1000000000):
+            msg=Imu(header=Header(frame_id='base_link',stamp=Time(sec=nanos//1000000000,nanosec=nanos%1000000000)))
+            msg.linear_acceleration.z=9.81;imu.publish(msg)
+        assert wait_for(lambda:node.last_imu>=1.)
+        assert not release.is_set() and node.estimator.last_imu<=.99+1e-9
+        with node.input_lock:assert any(abs(row[0]-1.)<1e-9 for row in node.pending_imu)
+        # A real IMU dropout must still be reported WHILE the scan is busy.
+        clocks.publish(Clock(clock=Time(sec=1,nanosec=200000000)))
+        assert wait_for(lambda:node.localisation_diagnostics.publish.call_args is not None
+            and json.loads(node.localisation_diagnostics.publish.call_args.args[0].data).get('health_gate')=='imu_receive_stale')
+        assert not node.status.publish.call_args.args[0].data
+    finally:
+        release.set();executor.shutdown(timeout_sec=2.);runner.join(timeout=2.)
+        node.destroy_node();peer.destroy_node()

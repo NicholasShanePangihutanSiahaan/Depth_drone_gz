@@ -1909,3 +1909,90 @@ Build tiga paket berhasil;478 tests lulus274.85 s,0 errors/failures/skipped.
 Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_health_precision_build.log.
 Commit/push sebelum run16. Tidak menjalankan flight saat regresi berat.
 Fix numeric boundary belum flight validated; genuine late pose tetap abort.
+
+
+### 22 Oktober 2026 sore — run16 IMU callback tertahan saat ICP
+
+Flight15675a7, reports/fixed_lidar_validation_20261022_194004,
+registered session .dependencies/ros_sensor_palm_farm_flowers_20261022_194012_19507_mapping.
+Berhenti30.30 s simulasi/localisation_loss, BRAKE/APPROACH tree1.
+210 pasangan pose: RMSE .00962039932 m, maksimum .02349342026 m.
+Session stopped=true; belum scan/dua pohon/return/landing/disarm. Tidak ada
+GUI, hardware atau proses sesi lain yang dihentikan. Recovery depth sempat
+pulih29.10 s; tidak menambah deadline. Fix roundoff run15 bukan solusi
+terhadap flag estimator false pada run ini.
+
+Bukti pembeda: sensor_freshness pose30.1/age.2, cloud30.2/age.1,
+IMU langsung navigation30.295/age.005; localisation_ok=False.
+Last localisation debug30.266: ICP reason tracking tetapi healthy=False,
+received_imu_stamp30.11 (umur .156 s), core IMU/scan30.1, pending2.
+ICP residual .0514527 m, translation correction .0097005 m, inlier .94148;
+ini tidak membuktikan ICP gagal permanen atau drift besar. IMU200 Hz masih
+diterima node navigasi, tetapi input callback frontend tertinggal sendiri.
+
+Audit kode membuktikan run() memakai rclpy.spin single-thread dan scan timer,
+IMU, clock serta health semuanya default mutually-exclusive group. imu()
+hanya enqueue, namun tidak mendapat kesempatan saat scan() integrasi lalu
+registrasi ICP berjalan. Setelah callback panjang, health dapat dipanggil
+sebelum antrean IMU dikosongkan dan menolak raw last_imu age>.1. Node health
+sebelumnya menampilkan e.reason tracking, sehingga alasan gate tidak jelas.
+Ada bukti interval staleness dan struktur serial; belum ada trace tiap
+scheduler event untuk menyatakan semua jitter sistem hanya berasal dari ICP.
+
+Rujukan primer callback groups ROS2:
+https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/nodes/Working-with-nodes/Using-callback-groups.rst
+Dokumentasi menjelaskan grup mutually-exclusive mencegah callback satu grup
+berjalan bersamaan; menambah multi-thread executor saja tetap serial bila
+semuanya ada pada grup yang sama. Kode rclpy Humble terpasang
+/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/time_source.py
+menempatkan subscription /clock pada default group. Karena itu memindahkan
+IMU saja tanpa memisahkan scan juga dapat membuat clock tertahan dan
+menolak IMU baru sebagai future timestamp. Ini analisis engineering terhadap
+source terpasang, bukan klaim hard real-time guarantee dari ROS executor.
+
+Perbaikan fixed sensor frontend:
+- Scan timer memakai grup mutually-exclusive terpisah; imu/cloud enqueue,
+  clock, FCU feedback/TF reception dan health tetap pada default group.
+  run() memakai MultiThreadedExecutor(num_threads=2) hanya untuk sensor body-IMU
+  frontend (fixed flag aktif). GT dan node lain, termasuk final setpoint
+  publisher, tetap executor lama. Hanya SATU scan callback dapat mengubah
+  estimator. Tidak menambah estimator atau publisher odometry kedua.
+- Input Lock melindungi enqueue, raw IMU timestamp dan pemindahan batch.
+  imu() tidak mengintegrasikan core. Scan hanya mengambil sampel<=timestamp
+  scan (tolerance numeric yang sama), lalu melepas lock sebelum ICP. Sampel
+  yang lebih baru tetap antre. Buffer500 IMU dan DDS QoS256 tidak diubah;
+  overflows dicatat. Tidak mengoreksi scan lalu menerapkan IMU pre-scan lagi.
+- Pending cloud yang baru tiba saat lookup TF tidak ikut dihapus ketika
+  selected cloud lama diproses/ditolak. Frame/transform tetap pada timestamp
+  asli, tidak memakai latest TF atau merestamp predicted pose.
+- Health membaca snapshot hasil estimator yang sudah selesai, bukan membaca
+  e.p/e.r/registration ketika sedang dimutasi koreksi ICP. Received IMU dan
+  pose measurement timestamps tetap live. Scan processing busy/start/end sim
+  dan monotonic wall, pending IMU/overflows, pose/IMU ages serta health_gate
+  dicatat. reason kini memberi imu_receive_stale/pose_measurement_stale/
+  no_good_pose; frontend_reason terpisah menyimpan alasan ICP sebelumnya.
+  Ini tidak mengabaikan false health selama ICP: jika actual IMU hilang atau
+  accepted pose benar-benar aged-out, gate tetap false walau scan sibuk.
+- Gate pose dan input/health IMU memakai fresh_stamp inklusif yang sama,
+  hanya numeric tolerance1e-9, limit .3/.1 tidak dinaikkan. Lateness .109
+  pada .1 tetap invalid. Source health memakai last_good yang sudah diterima,
+  tidak membuat hasil rejected scan menjadi accepted pose baru.
+
+Regresi ROS lama awal27 lulus1.80 s. Tambahan race test memastikan newer
+cloud saat TF lookup tetap pending. Tes konkurensi memakai executor ROS2
+aktual dan scan stub yang ditahan Event, bukan simulasi penerbangan: clock
+1.0 dan IMU .995/1.0 masuk saat ICP callback belum selesai; core integrasi
+hanya sampai scan.99 dan IMU1.0 tetap antre. Saat clock maju1.2 tanpa IMU
+baru, health_gate imu_receive_stale/BoolFalse tetap keluar SEBELUM ICP
+selesai. Ini membuktikan penerimaan/clock independen dan dropout tidak ditutupi.
+29 ROS targeted tests lulus1.87 s. API QoS clock tes dibuat eksplisit memakai
+QoSProfile(depth=1,BEST_EFFORT), karena Humble ini tidak mengekspor alias
+qos_profile_clock. Tidak menambah dependency atau mengubah QoS sensor global.
+
+Batas: dua thread bukan jaminan deadline hardware; jika ICP sendiri lebih
+lambat dari pose timeout, pose tetap stale. Snapshot diagnostic mewakili hasil
+proses selesai, sedangkan freshness memakai accepted measurement time.
+Belum flight validated, belum membuktikan semua jitter/IMU drop hilang,
+masih estimator eksperimental scan-to-map ICP+body IMU, bukan FAST-LIO.
+Full build/regresi selesai: 480 tests lulus, 0 error/failure/skipped,
+278.13 s; tiga package build berhasil. Belum misi bunga COMPLETE/disarm.

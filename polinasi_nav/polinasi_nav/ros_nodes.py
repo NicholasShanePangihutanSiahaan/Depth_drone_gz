@@ -4,6 +4,8 @@ import json
 import math
 import multiprocessing
 import time
+import threading
+from contextlib import nullcontext
 from types import SimpleNamespace
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
@@ -12,7 +14,8 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 import rclpy
 from rclpy.node import Node
-from rclpy.executors import ExternalShutdownException
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.qos import qos_profile_sensor_data, QoSProfile, DurabilityPolicy
 from rclpy.time import Time
 from geometry_msgs.msg import PoseStamped, TransformStamped
@@ -26,6 +29,7 @@ from tf2_ros import Buffer, TransformBroadcaster, StaticTransformBroadcaster, Tr
 from .config import load_config
 from .control import MissionController
 from .localisation import LidarImuOdometry
+from .time_checks import fresh_stamp
 from .mapping import VoxelMap, FREE, OCCUPIED, integrate_snapshot
 from .map_log import MapLog, write_snapshot
 from .survey import SurveyController
@@ -129,29 +133,36 @@ class LocalisationNode(ConfigNode):
         self.last_stamp = -math.inf
         self.last_imu = -math.inf
         self.pending_imu = deque(maxlen=500)
+        self.input_lock=threading.Lock()
+        self.pending_imu_overflows=0
         self.rolling_sensor=bool(self.mode=='sensor' and (self.c.get('sensor_rolling_localisation') or self.c.get('sensor_fixed_localisation')))
         self.estimator = LidarImuOdometry(self.c['lidar_mount'], self.c['initial_pose'],body_imu=self.rolling_sensor,
             bootstrap_duration=2.2 if self.rolling_sensor else 0.,
             robust_planes=bool(self.c.get('sensor_fixed_localisation')))
+        self.parallel_sensor_inputs=self.rolling_sensor
+        self.scan_callback_group=MutuallyExclusiveCallbackGroup() if self.parallel_sensor_inputs else None
         self.pending_scan=deque(maxlen=1)
         self.scan_input_diagnostics={}
         self.localisation_diagnostics=self.create_publisher(String,'/localisation/debug',10)
         self.mount_rejection=''
+        self.sensor_debug_snapshot=None
+        self.scan_processing={}
         if self.rolling_sensor:
             self.localisation_fcu_state=None
             self.localisation_fcu_stamp=-math.inf
             self.create_subscription(State,'/mavros/state',self.localisation_state,qos_profile_sensor_data)
             self.mount_buffer=Buffer()
             self.mount_listener=TransformListener(self.mount_buffer,self)
-            self.create_timer(.01,self.rolling_scan)
+            self.create_timer(.01,self.rolling_scan,callback_group=self.scan_callback_group)
         self.send_static()
         if self.mode == 'ground_truth':
             self.create_subscription(Odometry, '/simulation/ground_truth/odom', self.truth, qos_profile_sensor_data)
             self.get_logger().warning('GROUND-TRUTH LOCALISATION: planner isolation only')
         else:
             self.create_subscription(Imu, '/simulation/body_imu' if self.rolling_sensor else '/livox/imu', self.imu, localisation_imu_qos())
-            self.create_subscription(PointCloud2, '/livox/lidar',self.pending_scan.append if self.rolling_sensor else self.scan, qos_profile_sensor_data)
+            self.create_subscription(PointCloud2, '/livox/lidar',self.queue_scan if self.rolling_sensor else self.scan, qos_profile_sensor_data)
             self.get_logger().warning('SENSOR LOCALISATION: experimental IMU-predicted ICP')
+        self.sensor_debug_snapshot=self.estimator_snapshot()
         self.create_timer(0.1, self.health)
 
     def send_static(self):
@@ -180,7 +191,7 @@ class LocalisationNode(ConfigNode):
 
     def valid_time(self, stamp):
         value = seconds(stamp)
-        return value > self.last_stamp and 0 <= self.now()-value <= self.c['pose_timeout']
+        return value > self.last_stamp and fresh_stamp(self.now(),value,self.c['pose_timeout'])
 
     def publish(self, stamp, p, matrix, v_world, omega_body, covariance):
         if not np.all(np.isfinite(np.concatenate((p, v_world, omega_body)))):
@@ -218,27 +229,36 @@ class LocalisationNode(ConfigNode):
 
     def imu(self, msg):
         stamp = seconds(msg.header.stamp)
-        if msg.header.frame_id != ('base_link' if self.rolling_sensor else 'mid360_imu') or not 0 <= self.now()-stamp <= 0.1 or stamp <= self.last_imu:
+        if msg.header.frame_id != ('base_link' if self.rolling_sensor else 'mid360_imu') or not fresh_stamp(self.now(),stamp,.1):
             return
-        if not np.all(np.isfinite(np.r_[vector(msg.angular_velocity),vector(msg.linear_acceleration)])):
-            return
-        # Clouds can arrive after newer IMU packets. Integrate only through a
-        # scan's measurement time, never stamp a future-predicted pose as old.
-        self.pending_imu.append((stamp, vector(msg.angular_velocity), vector(msg.linear_acceleration)))
-        self.last_imu = stamp
+        gyro,acceleration=vector(msg.angular_velocity),vector(msg.linear_acceleration)
+        if not np.all(np.isfinite(np.r_[gyro,acceleration])):return
+        # This callback ONLY enqueues measurements, never mutates the estimator.
+        with getattr(self,'input_lock',nullcontext()):
+            if stamp<=self.last_imu:return
+            if len(self.pending_imu)==self.pending_imu.maxlen:
+                self.pending_imu_overflows=getattr(self,'pending_imu_overflows',0)+1
+            self.pending_imu.append((stamp,gyro,acceleration))
+            self.last_imu=stamp
+
+    def queue_scan(self,msg):
+        with self.input_lock:self.pending_scan.append(msg)
 
     def localisation_state(self,msg):
         self.localisation_fcu_state=msg
         self.localisation_fcu_stamp=self.now()
 
     def rolling_scan(self):
-        if not self.pending_scan:return
-        msg=self.pending_scan[-1]
+        with getattr(self,'input_lock',nullcontext()):
+            if not self.pending_scan:return
+            msg=self.pending_scan[-1]
+            received_imu=self.last_imu
         if not self.valid_time(msg.header.stamp):
-            self.pending_scan.clear()
+            with getattr(self,'input_lock',nullcontext()):
+                if self.pending_scan and self.pending_scan[-1] is msg:self.pending_scan.clear()
             self.mount_rejection='scan_too_old_or_out_of_order'
             return
-        if self.last_imu+1e-9<seconds(msg.header.stamp):
+        if received_imu+1e-9<seconds(msg.header.stamp):
             # Do not correct the state at scan time then integrate leftover
             # pre-scan IMU packets as if they belonged AFTER the correction.
             self.mount_rejection='waiting_for_scan_time_imu'
@@ -253,7 +273,9 @@ class LocalisationNode(ConfigNode):
         self.estimator.bootstrap_stationary=bool(self.localisation_fcu_state is not None
             and not self.localisation_fcu_state.armed and self.now()-self.localisation_fcu_stamp<1.)
         self.mount_rejection=''
-        self.pending_scan.clear()
+        with getattr(self,'input_lock',nullcontext()):
+            # A newer cloud can arrive during timestamped TF lookup. Retain it.
+            if self.pending_scan and self.pending_scan[-1] is msg:self.pending_scan.clear()
         self.scan(msg)
 
     def scan(self, msg):
@@ -263,8 +285,13 @@ class LocalisationNode(ConfigNode):
         input_r=self.estimator.r.copy()
         integrated=[]
         imu_intervals=[]
-        while self.pending_imu and self.pending_imu[0][0] <= stamp+1e-9:
-            imu_stamp, gyro, acceleration = self.pending_imu.popleft()
+        batch=[]
+        with getattr(self,'input_lock',nullcontext()):
+            while self.pending_imu and self.pending_imu[0][0]<=stamp+1e-9:
+                batch.append(self.pending_imu.popleft())
+        self.scan_processing=dict(busy=True,scan_stamp=stamp,started_sim=self.now(),
+            started_wall_ns=time.monotonic_ns(),imu_samples=len(batch))
+        for imu_stamp,gyro,acceleration in batch:
             if self.estimator.last_imu is not None:
                 imu_intervals.append(imu_stamp-self.estimator.last_imu)
             self.estimator.imu(gyro, acceleration, imu_stamp)
@@ -286,33 +313,55 @@ class LocalisationNode(ConfigNode):
         keep = ~self_mask(body,self.c)
         if e.scan(points[keep], seconds(msg.header.stamp)):
             self.publish(msg.header.stamp, e.p, e.r, e.v, e.omega, e.covariance)
+        # Atomic immutable snapshot: the health callback never reads a partially
+        # predicted/corrected state while the serialized scan callback is active.
+        self.sensor_debug_snapshot=self.estimator_snapshot()
+        self.scan_processing=dict(self.scan_processing,busy=False,completed_sim=self.now(),
+                                  completed_wall_ns=time.monotonic_ns())
+
+    def estimator_snapshot(self):
+        e=self.estimator
+        return copy.deepcopy(dict(has_good_pose=e.last_good is not None,reason=e.reason,
+            position=e.p.tolist(),imu_stamp=e.last_imu,scan_stamp=e.last_scan,
+            orientation_rpy=Rotation.from_matrix(e.r).as_euler('xyz').tolist(),velocity=e.v.tolist(),
+            calibrated_gravity_mps2=e.gravity_magnitude,gyro_bias=e.gyro_bias.tolist(),
+            keyframes=len(e.keyframes),translation_information=e.translation_information,
+            registration=e.last_registration,scan_inputs=getattr(self,'scan_input_diagnostics',{}),
+            imu_shock_until=e.imu_shock_until if np.isfinite(e.imu_shock_until) else None,
+            registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
+            reference_points=0 if e.reference is None else len(e.reference)))
 
     def health(self):
-        fresh = 0 <= self.now()-self.last_stamp < self.c['pose_timeout']
-        if self.mode == 'sensor':
-            # One rejected scan is not a valid new pose; keep only the previous
-            # accepted measurement within the existing pose-age bound. No
-            # rejected result or restamped prediction enters ExternalNav.
-            fresh = fresh and self.estimator.last_good is not None and 0 <= self.now()-self.last_imu < 0.1
+        now=self.now()
+        fresh=fresh_stamp(now,self.last_stamp,self.c['pose_timeout'])
+        gate=None if fresh else 'pose_measurement_stale'
+        snapshot=None
+        with getattr(self,'input_lock',nullcontext()):
+            received_imu=self.last_imu
+            pending_imu=len(getattr(self,'pending_imu',()))
+        if self.mode=='sensor':
+            snapshot=getattr(self,'sensor_debug_snapshot',None)
+            if snapshot is None:snapshot=LocalisationNode.estimator_snapshot(self)
+            if not snapshot['has_good_pose']:fresh=False;gate='no_good_pose'
+            elif not fresh_stamp(now,received_imu,.1):fresh=False;gate='imu_receive_stale'
         self.status.publish(Bool(data=bool(fresh)))
         if self.mode=='sensor':
-            e=self.estimator
-            self.localisation_diagnostics.publish(String(data=json.dumps(dict(
-                stamp=self.now(),mode='sensor',algorithm='experimental_scan_to_map_ICP_body_IMU' if self.rolling_sensor else 'experimental_scan_to_map_ICP',
-                healthy=bool(fresh),reason=self.mount_rejection or e.reason,
-                position=e.p.tolist(),imu_stamp=e.last_imu,scan_stamp=e.last_scan,
-                orientation_rpy=Rotation.from_matrix(e.r).as_euler('xyz').tolist(),velocity=e.v.tolist(),
-                calibrated_gravity_mps2=e.gravity_magnitude,gyro_bias=e.gyro_bias.tolist(),
-                keyframes=len(e.keyframes),translation_information=e.translation_information,
-                registration=e.last_registration,
-                scan_inputs=getattr(self,'scan_input_diagnostics',{}),
-                received_imu_stamp=self.last_imu if math.isfinite(self.last_imu) else None,
-                pending_imu_count=len(getattr(self,'pending_imu',())),
-                imu_shock_until=e.imu_shock_until if np.isfinite(e.imu_shock_until) else None,
-                registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
-                reference_points=0 if e.reference is None else len(e.reference),
+            debug=dict(snapshot)
+            debug.pop('has_good_pose')
+            debug.update(stamp=now,mode='sensor',
+                algorithm='experimental_scan_to_map_ICP_body_IMU' if self.rolling_sensor else 'experimental_scan_to_map_ICP',
+                healthy=bool(fresh),health_gate=gate,frontend_reason=snapshot['reason'],
+                reason=gate or self.mount_rejection or snapshot['reason'],
+                pose_measurement_stamp=self.last_stamp if math.isfinite(self.last_stamp) else None,
+                pose_age_seconds=now-self.last_stamp if math.isfinite(self.last_stamp) else None,
+                received_imu_stamp=received_imu if math.isfinite(received_imu) else None,
+                received_imu_age_seconds=now-received_imu if math.isfinite(received_imu) else None,
+                pending_imu_count=pending_imu,imu_queue_overflows=getattr(self,'pending_imu_overflows',0),
+                scan_processing=dict(getattr(self,'scan_processing',{})),
+                parallel_sensor_inputs=bool(getattr(self,'parallel_sensor_inputs',False)),
                 dynamic_extrinsics=bool(self.c.get('simulation_continuous_roll')),
-                fixed_lidar=bool(self.c.get('lidar_fixed')),ground_truth_input=False),allow_nan=False)))
+                fixed_lidar=bool(self.c.get('lidar_fixed')),ground_truth_input=False)
+            self.localisation_diagnostics.publish(String(data=json.dumps(debug,allow_nan=False)))
 
 
 class ExternalNavNode(ConfigNode):
@@ -1492,8 +1541,15 @@ class RangeBridge(ConfigNode):
 def run(node_type, args=None):
     rclpy.init(args=args)
     node = node_type()
+    executor=None
     try:
-        rclpy.spin(node)
+        if getattr(node,'parallel_sensor_inputs',False):
+            # Heavy scan work has its own mutually exclusive group; clock,
+            # IMU and health keep the default group and can run during ICP.
+            executor=MultiThreadedExecutor(num_threads=2)
+            executor.add_node(node)
+            executor.spin()
+        else:rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     except Exception:
@@ -1502,6 +1558,7 @@ def run(node_type, args=None):
         if rclpy.ok():
             raise
     finally:
+        if executor is not None:executor.shutdown()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
