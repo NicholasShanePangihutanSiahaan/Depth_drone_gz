@@ -391,3 +391,49 @@ def test_sensor_auditor_depth_recovery_is_bounded_and_never_masks_sensor_loss():
     assert bounded.check(dict(nav,simulation_time=35.05),113.)=='stale_depth_camera'
     missing=dict(nav);missing.pop('depth_motion_recovery')
     assert module.RecoveryWatch().check(missing,100.)=='depth_recovering'
+
+
+def test_depth_queue_projects_newest_transformable_original_stamp_and_rejects_dropout():
+    from polinasi_nav.mapping_io import MappingIONode
+    from polinasi_nav.depth_queue import DepthTransformQueue
+    from sensor_msgs.msg import Image,CameraInfo
+    from geometry_msgs.msg import TransformStamped
+    from tf2_ros import TransformException
+    clock=[20.4];tf_until=[20.1];lookups=[]
+    def lookup(target,source,at):
+        stamp=at.nanoseconds*1e-9;lookups.append((target,stamp))
+        if stamp>tf_until[0]+1e-9:raise TransformException('future transform')
+        tf=TransformStamped();tf.transform.rotation.w=1.
+        if target=='map':tf.transform.translation.x=stamp
+        return tf
+    info=CameraInfo(width=3,height=3,k=[100.,0.,1.,0.,100.,1.,0.,0.,1.])
+    info.header.frame_id='zed_camera_optical'
+    fake=SimpleNamespace(c=dict(depth_camera_timeout=1.,depth_min_range=.3,depth_max_range=20.,
+        depth_mapping_stride=1,depth_mapping_budget=9,drone_dimensions=[.2,.2,.2],self_filter_padding=.01),
+        depth_frames=DepthTransformQueue(6),depth_info=info,depth_submitted_stamp=-np.inf,
+        depth_sequence=0,depth_stats=dict(received_frames=0,submitted_frames=0),
+        now=lambda:clock[0],buffer=Mock(),depth_cloud_pub=Mock(),map_log=None,
+        mapping_region=lambda world:None)
+    fake.buffer.lookup_transform.side_effect=lookup
+    def image(stamp,value=2.):
+        msg=Image(width=3,height=3,encoding='32FC1',step=12)
+        msg.header=Header(stamp=Time(sec=int(stamp),nanosec=round((stamp-int(stamp))*1e9)),frame_id='zed_camera_optical')
+        msg.data=np.full((3,3),value,dtype='<f4').tobytes()
+        return msg
+    MappingIONode.depth_image(fake,image(20.))
+    MappingIONode.depth_image(fake,image(20.2))
+    observed=MappingIONode.depth_observation(fake)
+    assert observed[0][2]==20. and observed[0][0][0]==20.
+    assert any(target=='map' and abs(stamp-20.2)<1e-9 for target,stamp in lookups)
+    assert ('base_link',20.) in lookups
+    assert fake.depth_submitted_stamp==20. and fake.depth_frames.status()['pending']==1
+    clock[0]=20.5;tf_until[0]=20.3
+    assert MappingIONode.depth_observation(fake)[0][2]==20.2
+    assert fake.depth_stats['last_valid_stamp']==20.2
+    # An invalid latest image provides no free ray or timestamp refresh.
+    clock[0]=22.1;tf_until[0]=22.1
+    MappingIONode.depth_image(fake,image(22.,float('nan')))
+    assert MappingIONode.depth_observation(fake)==()
+    assert fake.depth_stats['last_valid_stamp']==20.2
+    assert fake.depth_stats['submitted_frames']==2
+    assert fake.depth_stats['rejection']=='no_valid_depth_rays'

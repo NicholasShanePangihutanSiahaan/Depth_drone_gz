@@ -1759,3 +1759,84 @@ Build tiga paket berhasil;469 tes lulus276.62 s,0 errors/failures/skipped.
 Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_arrival_build.log.
 Tidak ada flight saat suite berat dijalankan. Commit/push sebelum run14;
 perbaikan kedatangan entry dan pemendekan recovery brake belum flight validated.
+
+
+### 22 Oktober 2026 sore — run14 early stale depth, antrean menunggu TF
+
+Flight86adf75, reports/fixed_lidar_validation_20261022_190710,
+registered session .dependencies/ros_sensor_palm_farm_flowers_20261022_190718_12602_mapping.
+Auditor menghentikan pada21.052 s simulasi/stale_depth_camera tepat setelah
+TAKEOFF→APPROACH tree1.116 pasangan pose: RMSE .00817304639 m,
+maksimum .0192399526 m. Belum lintasan approach/scan/dua pohon/return/landing.
+Session stopped=true. Fixed entry arrival fix dan fast backup belum flight
+validated oleh run ini, karena belum ada kurva atau recovery dieksekusi.
+Tidak membuka GUI/RViz, tidak menjalankan hardware atau menghentikan sesi lain.
+
+Berbeda dari run12: valid depth DAN integrated depth sama-sama20.0 s,
+umur1.052 s melewati timeout1.0; depth_safety action fail, stationary_safe
+true. DepthMotionRecovery inactive, recoveries0: drone sudah diam, bukan
+recovery settling deadline. Cloud age .152 s, map measurement age .552 s.
+Frame kamera tetap diterima105,40 submitted (jangan menganggap65 sisanya
+semuanya gagal karena TF). Last received20.8; penolakan aktual terakhir:
+lookup requested20.6, latest TF20.5, extrapolation into future. Job20.66
+mengintegrasikan LiDAR20.5 tanpa depth, selesai20.88; depth map tetap20.0.
+Tidak menyimpulkan kamera mati atau error ICP dari failure string tersebut.
+
+Mekanisme kode yang dapat direproduksi: MappingIONode sebelumnya menyimpan
+satu depth_pending terbaru. depth_observation memproyeksikan frame kemudian
+lookup exact-stamp map dan base_link TF; bila TF belum sampai stamp frame,
+fungsi return, tetapi callback image berikut dapat menimpa frame tertunda
+sebelum dicoba lagi. Jika urutan callback berulang menempatkan gambar baru
+di depan TF, frame lama yang sebenarnya sudah transformable tidak pernah
+dipakai. Log membuktikan mismatch timestamp dan frame terima terus berjalan;
+belum merekam semua urutan event per frame untuk mengklaim mekanisme ini
+sebagai satu-satunya penyebab seluruh run14. Tes reproduksi deterministik
+memastikan pola starvation ini ada pada kebijakan latest-only.
+
+Rujukan primer: ROS2 official tutorial tf2_ros::MessageFilter,
+https://github.com/ros2/ros2_documentation/blob/rolling/source/ROS-Framework/client-libraries/Working-with-Client-Libraries/Tf2/Using-Stamped-Datatypes-With-Tf2-Ros-MessageFilter.rst
+Tutorial menjelaskan sensor message disimpan sampai transform ke frame target
+tersedia. Implementasi Python lokal ini antrean nonblocking sendiri, bukan
+klaim memasang MessageFilter C++ baru atau mengubah ROS distro/dependencies.
+Tidak memakai latest TF, extrapolation, pergeseran timestamp, label-frame
+fix atau ground-truth transform pada mode sensor.
+
+Perbaikan: DepthTransformQueue kapasitas6 frame, sorted menurut stamp,
+bukan antrean tak berbatas. Pada pemrosesan, buang frame <=last submitted,
+future atau aged>=timeout yang SAMA seperti sebelumnya. Cari frame TERBARU
+yang dua transform pada header.stamp aslinya tersedia. Frame lebih baru yang
+belum transformable tetap menunggu; lookup tidak blocking/spin-wait. Baru
+setelah transform tersedia, proyeksi dan body self-filter berjalan. Setelah
+berhasil, last_valid/submitted tetap stamp akuisisi asli, bukan receipt/now;
+frame lama dibuang/superseded. Mapping integration/health gate tetap memakai
+stamp sensor, timeout1.0 dan recovery2.0 tidak diubah. Kapasitas6 adalah
+pilihan rekayasa bounded untuk depth5 Hz simulator, bukan tuning hardware
+ZED/Jetson yang sudah tervalidasi.
+
+Intrinsics mismatch, invalid projection atau no_valid_depth_rays membuang
+frame tersebut tanpa menyegarkan last_valid; NaN/dropout tidak memberi free
+space. Queue stats mencatat pending/capacity/oldest/newest, overflow/expired/
+obsolete/superseded, TF wait attempts, selected original stamp, receive delay,
+queue wait dan acquisition age. Metadata transform memakai lookup map dan
+base_link pada waktu yang SAMA; perubahan mounting/extrinsic tidak dilakukan.
+Sumber proyeksi simulator tetap simulated_RGBD_not_ZED_stereo, tidak diklaim
+hasil ZED2i fisik.
+
+Lima regresi pure queue:20 siklus gambar datang satu periode sebelum TF
+masih memproses stamp sebelumnya secara monoton; stale/obsolete tidak
+menyegarkan; overflow, out-of-order dan duplikat bounded; unavailable TF dan
+invalid frame tidak commit; lookup menggunakan stamp20.0 ketika latest20.2
+belum tersedia, bukan transform pada waktu processing20.4.5 tes lulus.03 s.
+Adapter ROS memakai Image+CameraInfo, exact-time transform stub dengan origin
+tergantung stamp; frame20.0 diproyeksikan memakai TF20.0,20.2 diproses saat TF
+menyusul, frame NaN22.0 tidak menghasilkan rays atau memperbarui valid20.2.
+30 queue/ROS adapter tests lulus1.83 s. Tes awal29 lulus/1 gagal karena
+perbandingan float lookup20.200000000000003 dengan20.2 secara persis; tes
+memakai toleransi1e-9 untuk representasi, bukan memperbesar gate umur data.
+Build/regresi penuh sedang berjalan. Belum flight validated atau misi bunga
+COMPLETE/disarm.
+
+Build tiga paket berhasil;475 tests lulus275.78 s,0 errors/failures/skipped.
+Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_depth_queue_build.log.
+Commit/push sebelum run15. Antrean TF depth, arrival-entry fix dan fast brake
+belum flight validated sebagai solusi misi dua pohon pada map bunga.

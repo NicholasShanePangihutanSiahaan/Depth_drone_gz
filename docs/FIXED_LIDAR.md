@@ -307,3 +307,13 @@ limit, radius, unknown, buffer dan timeout tidak diubah. Exact snapshot replay
 mendapat kurva11.14 s menuju entry alternatif pada pohon yang sama; belum
 flight validated. Snapshot baru menyimpan pusat pohon aktif/angle/view target
 secara langsung agar replay tidak memakai katalog pusat yang lebih baru.
+
+
+Run86adf75 berhenti21.052 s dengan valid/integrated depth age1.052 s;
+frame kamera masih datang tetapi exact-stamp TF terakhir tertinggal. Mapping
+sekarang menyimpan maksimal6 frame dan memilih frame terbaru yang TF map
+serta base_link pada stamp aslinya tersedia. Ini menghindari latest-only
+replacement ketika TF terlambat; tidak memperbesar timeout, memakai latest
+TF atau menyegarkan health dari receipt. `depth_mapping.transform_queue`
+menyimpan umur/antrean/drops. NaN tetap tidak memberi free rays atau freshness.
+30 queue/ROS adapter tests lulus; perubahan ini belum flight validated.

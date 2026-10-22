@@ -23,6 +23,7 @@ from .coverage_mapping import navigation_window, SparseHistory, initialise_rolli
 from .map_log import MapLog
 from .map_transport import encode_window
 from .runtime import CallbackTiming, measured
+from .depth_queue import DepthTransformQueue
 
 
 class MappingIONode(ConfigNode):
@@ -84,7 +85,8 @@ class MappingIONode(ConfigNode):
             ('survey_pub', PathMsg, '/navigation/survey_route')):
             setattr(self, attribute, self.create_publisher(message, topic, visual_qos))
         self.simulation_ray_stats = {}
-        self.depth_pending, self.depth_info = None, None
+        self.depth_frames=DepthTransformQueue(6)
+        self.depth_info=None
         self.depth_submitted_stamp = -math.inf
         self.depth_sequence = 0
         self.depth_stats = dict(enabled=bool(self.c.get('depth_camera_enabled')),
@@ -136,30 +138,39 @@ class MappingIONode(ConfigNode):
         if msg.header.frame_id!='zed_camera_optical' or not 0<=self.now()-stamp<self.c['depth_camera_timeout']:
             self.depth_stats['rejection'] = 'depth_frame_or_timestamp_invalid'
             return
-        if self.depth_pending is None or stamp>seconds(self.depth_pending.header.stamp):
-            self.depth_pending = msg
+        self.depth_frames.push(stamp,msg,self.now())
+        self.depth_stats['transform_queue']=self.depth_frames.status()
 
     @measured('depth_projection_and_handoff')
     def depth_observation(self):
-        msg,info = self.depth_pending,self.depth_info
-        if msg is None or info is None:
+        info=self.depth_info
+        if info is None:return ()
+        last_tf_error=[]
+        def lookup(msg):
+            try:
+                at=Time.from_msg(msg.header.stamp)
+                return (self.buffer.lookup_transform('map',msg.header.frame_id,at),
+                        self.buffer.lookup_transform('base_link',msg.header.frame_id,at))
+            except TransformException as exc:
+                last_tf_error.append(str(exc)[:160]);return None
+        selected=self.depth_frames.select(self.now(),self.c['depth_camera_timeout'],
+                                          self.depth_submitted_stamp,lookup)
+        self.depth_stats['transform_queue']=self.depth_frames.status()
+        if selected is None:
+            if last_tf_error:self.depth_stats['rejection']='depth_stamp_TF_pending:'+last_tf_error[0]
             return ()
-        stamp = seconds(msg.header.stamp)
-        if stamp<=self.depth_submitted_stamp:
-            return ()
-        if not 0<=self.now()-stamp<self.c['depth_camera_timeout']:
-            self.depth_stats['rejection'] = 'stale_depth_image'
-            return ()
+        msg,(tf,body_tf)=selected
+        stamp=seconds(msg.header.stamp)
         if (info.header.frame_id!=msg.header.frame_id or info.width!=msg.width or info.height!=msg.height):
-            self.depth_stats['rejection'] = 'depth_intrinsics_mismatch'
+            self.depth_stats['rejection']='depth_intrinsics_mismatch'
+            self.depth_frames.discard(stamp)
+            self.depth_stats['transform_queue']=self.depth_frames.status()
             return ()
         try:
             from .depth_mapping import project_depth
             points,stats = project_depth(bytes(msg.data),msg.width,msg.height,msg.step,msg.encoding,
                 msg.is_bigendian,info.k,self.c['depth_min_range'],self.c['depth_max_range'],
                 self.c['depth_mapping_stride'],self.c['depth_mapping_budget'],self.depth_sequence)
-            tf = self.buffer.lookup_transform('map',msg.header.frame_id,Time.from_msg(msg.header.stamp))
-            body_tf = self.buffer.lookup_transform('base_link',msg.header.frame_id,Time.from_msg(msg.header.stamp))
             body = points@rotation(body_tf.transform.rotation).T+vector(body_tf.transform.translation)
             from .self_filter import self_mask
             keep = ~self_mask(body,self.c)
@@ -167,13 +178,19 @@ class MappingIONode(ConfigNode):
             points = points[keep]
             if not len(points):
                 self.depth_stats.update(stats,rejection='no_valid_depth_rays')
+                self.depth_frames.discard(stamp)
+                self.depth_stats['transform_queue']=self.depth_frames.status()
                 return ()
             origin = vector(tf.transform.translation)
             world = points@rotation(tf.transform.rotation).T+origin
         except (ValueError,TransformException) as exc:
-            self.depth_stats['rejection'] = 'depth_projection_or_stamp_TF_unavailable:'+str(exc)[:160]
+            self.depth_stats['rejection'] = 'depth_projection_invalid:'+str(exc)[:160]
+            self.depth_frames.discard(stamp)
+            self.depth_stats['transform_queue']=self.depth_frames.status()
             return ()
         self.depth_submitted_stamp = stamp
+        self.depth_frames.acknowledge(stamp)
+        self.depth_stats['transform_queue']=self.depth_frames.status()
         self.depth_sequence += 1
         self.depth_stats.update(stats,last_valid_stamp=stamp,rejection='',
             submitted_frames=self.depth_stats['submitted_frames']+1,
