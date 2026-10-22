@@ -10,7 +10,7 @@ depth_avoidance_controller:
     clearance_margin: 0.35
     vehicle_half_height: 0.30
     grid_resolution: 0.20
-    planning_radius: 7.0
+    planning_radius: 12.0
     max_depth: 10.0
     lookahead: 0.65
     yaw_tolerance_degrees: 12.0
