@@ -47,7 +47,7 @@ class DepthAvoidanceController(Node):
             'clearance_margin': 0.35,
             'vehicle_half_height': 0.30,
             'grid_resolution': 0.20,
-            'planning_radius': 7.0,
+            'planning_radius': 12.0,
             'max_depth': 10.0,
             'lookahead': 0.65,
             'yaw_tolerance_degrees': 12.0,
@@ -91,6 +91,7 @@ class DepthAvoidanceController(Node):
         self.frame = None
         self.events = 0
         self.obstacle_points = 0
+        self.nearest_obstacle = None
         self.last_camera_error = ''
         self.create_subscription(PoseStamped, '/mavros/local_position/pose',
                                  self.pose_cb, qos_profile_sensor_data)
@@ -222,6 +223,8 @@ class DepthAvoidanceController(Node):
             'status': status, 'holding': hold, 'orbit_paused': paused,
             'depth_age_s': round(now-self.depth_time, 3) if self.view else None,
             'obstacle_voxels': self.obstacle_points, 'detour_events': self.events,
+            'nearest_obstacle_xy_m': self.nearest_obstacle,
+            'waypoint_xy': self.waypoint.tolist() if self.waypoint is not None else None,
             'fsm_state': self.state, 'camera_error': self.last_camera_error,
         })))
         if path is not None:
@@ -264,6 +267,8 @@ class DepthAvoidanceController(Node):
         desired = np.array([goal.pose.position.x, goal.pose.position.y])
         obstacles = self.memory.slice(p.z, self.p['vehicle_half_height'])
         self.obstacle_points = len(obstacles)
+        self.nearest_obstacle = (round(float(np.min(np.linalg.norm(
+            obstacles-start, axis=1))), 3) if len(obstacles) else None)
         clearance = self.p['vehicle_radius']+self.p['clearance_margin']
         grid = LocalGrid(start, obstacles, self.p['grid_resolution'],
                          self.p['planning_radius'], clearance)
@@ -305,7 +310,8 @@ class DepthAvoidanceController(Node):
         # the circle farther CCW, after planning every leg around the obstacle.
         if not path and centre is not None:
             angle = math.atan2(*(start-centre)[::-1])
-            advances = (30, 50, 70, 90) if orbit else (25, -25, 45, -45, 70, -70, 90, -90)
+            advances = ((30, 50, 70, 90) if orbit else
+                        (25, -25, 45, -45, 70, -70, 90, -90, 135, -135, 180))
             for advance in advances:
                 theta = angle+math.radians(advance)
                 candidate = centre+self.p['orbit_radius']*np.array([
