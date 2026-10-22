@@ -533,3 +533,39 @@ def test_tree_detector_keeps_exact_transformable_scan_and_does_not_reuse_stale_c
     TreeDetectorNode.tick(fake)
     assert fake.worker.submit.call_count==1
     assert fake.pending.status()['pending']==0
+
+
+def test_mapping_handoff_selects_exact_transformable_scan_and_preserves_newer(monkeypatch):
+    from polinasi_nav import ros_nodes
+    from polinasi_nav.depth_queue import DepthTransformQueue
+    from polinasi_nav.config import load_config
+    from geometry_msgs.msg import TransformStamped
+    from tf2_ros import TransformException
+    c=load_config();c.update(sensor_gimbals_enabled=False,fixed_fov_assumptions=False)
+    clock=[21.];tf_until=[20.8]
+    def lookup(target,source,at):
+        if at.nanoseconds*1e-9>tf_until[0]+1e-9:raise TransformException('future transform')
+        tf=TransformStamped();tf.transform.rotation.w=1.
+        return tf
+    fake=SimpleNamespace(c=c,now=lambda:clock[0],pending=DepthTransformQueue(6),
+        separate_mapping=False,controller=SimpleNamespace(health=SimpleNamespace(cloud_stamp=-np.inf)),
+        map_future=None,last_integrated_cloud=20.4,buffer=Mock(),grid=Mock(),rolling_map=True,
+        map_log=None,pose=np.array([0.,0.,2.]),flight_stage='MISSION',range_stamp=-np.inf,
+        map_worker=Mock())
+    fake.buffer.lookup_transform.side_effect=lookup
+    monkeypatch.setattr(ros_nodes,'rolling_input',lambda grid:'unchanged_grid_snapshot')
+    for stamp in (20.7,20.8,20.9):
+        msg=point_cloud2.create_cloud_xyz32(Header(frame_id='mid360',
+            stamp=Time(sec=20,nanosec=round((stamp-20)*1e9))),[[2.,0.,1.]])
+        NavigationNode.cloud(fake,msg)
+    NavigationNode.map_pending(fake)
+    assert fake.map_worker.submit.call_count==1
+    args=fake.map_worker.submit.call_args.args
+    assert args[3]=='unchanged_grid_snapshot' and args[7]==pytest.approx(20.8)
+    assert fake.pending.status()['pending']==1
+    assert fake.controller.health.cloud_stamp==pytest.approx(20.9)
+    # No restamping, reprocessing or integration submission after data expire.
+    fake.map_future=None;clock[0]=22.;tf_until[0]=22.
+    NavigationNode.map_pending(fake)
+    assert fake.map_worker.submit.call_count==1
+    assert fake.pending.status()['pending']==0

@@ -66,7 +66,6 @@ def test_mapping_process_has_no_control_or_flight_command_publishers(monkeypatch
         assert '/mapping/navigation_snapshot' in topics and '/navigation/occupancy' in topics
         assert not any(t.startswith('/mavros/setpoint') or t.startswith('/flight/cmd') or
                        t == '/control/safe_target_pose' for t in topics)
-        assert node.pending.maxlen == 1
         node.state.armed = True
         node.fcu_state(node.state)
         assert node.flight_stage == 'MISSION'

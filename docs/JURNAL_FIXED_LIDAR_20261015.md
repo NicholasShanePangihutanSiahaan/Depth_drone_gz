@@ -2032,3 +2032,50 @@ Tes adapter mereproduksi cloud13.6/13.7/13.8 dengan TF sampai13.7: submit13.7,
 simpan13.8, lalu clock15 tanpa data baru tidak submit ulang cloud kedaluwarsa.
 Targeted43 tes lulus16.24s; build tiga package berhasil dan full481 tes
 lulus275.31s, tanpa error/failure/skipped. Perbaikan belum flight validated.
+
+
+### 22 Oktober 2026 — run18: setup lolos, depth map stale sesudah takeoff
+
+Commit2308c6f dipush, run reports/fixed_lidar_validation_20261022_204312,
+session .dependencies/ros_sensor_palm_farm_flowers_20261022_204320_30402_mapping.
+Setup/alignment/arming lolos. Log detector membuktikan scan5.2 dipilih dengan
+age.20/queuewait.128s meskipun newer scan5.3 pending; perbaikan antrean detector
+berjalan live. Takeoff lalu SURVEY/APPROACH tree1 pada20.75s, belum trajectory
+approach aktif. Run dihentikan auditor pada21.401: stale_depth_camera,
+last_valid=last_integrated20.4, age1.001>timeout1s. lastreceived20.8 adalah
+snapshot stats, bukan bukti kamera berhenti pada20.8. Map LiDAR20.5 age.901,
+cloud21.3 age.101. Recovery inactive karena belum trajectory/commandv aktif;
+actualspeed.049325, reference speed.001439. Tidak menambah timeout/dropout grace.
+121 pasangan audit RMSE.0082818933m, max.0178873294m. Tidak ada terminal
+localisation_loss; ini belum membuktikan IMU/pose deadline selalu terpenuhi.
+
+Pipeline map20.5: receive-to-submit942.865ms wall, mapworker1421.992ms,
+result delivery280.189ms, snapshot/decode80.318ms; total2964.138ms wall
+measurement-to-publish.5sim s. Ini membuktikan keterlambatan pipeline, bukan
+bukti suatu aplikasi host tertentu penyebabnya. Pembuat peta memakai pending
+maxlen1 dan exact latest scan TF: pola starvation sama dengan detector.
+Kontribusi relatif TF wait vs komputasi pada run18 belum terukur per tick.
+
+Perbaikan terbatas pada MappingIONode: bounded queue6 memakai helper sama,
+pilih newest exact map/mount-transformable dalam cloud_timeout.5s yang sama,
+pertahankan newer TF-pending, ack submitted stamp monotonik. NavigationNode
+map_pending mendukung queue ini, legacy deque jalur lain tetap sesuai semula.
+Statistik mapping_lidar_transform_queue ikut snapshot; freshness cloud receive,
+map LiDAR, depth valid dan depth integrated tetap terpisah. Tidak mengganti
+timestamp, menganggap data hilang sebagai free, atau menambah producer kontrol.
+Tes adapter memasukkan20.7/20.8/20.9 dengan TF sampai20.8, memverifikasi submit
+map20.8 dan simpan20.9; clock22 tanpa scan baru tidak submit data expired.
+38 targeted ROS/mapping/queue tests lulus2.86s. Build tiga package berhasil.
+Suite penuh:481 passed,1 failed/482 pada274.34s. Satu failure berasal dari
+assert lama test_mapping_isolation node.pending.maxlen==1, yang mengasumsikan
+implementasi antrean lama. Assert itu dihapus; pemeriksaan semua publisher
+kontrol/flight tetap ada. Tes perilaku antrean baru memeriksa original stamp,
+exact TF, newer retention, expiry, dan tidak refresh saat dropout.
+Recheck via colcon -k mapping_process_has_no_control_or_flight_command_publishers:
+1 passed1.89s,481 deselected; colcon test-result0failure. Jadi seluruh482 kasus
+sudah mendapat hasil lulus melalui suite+recheck, bukan satu full invocation
+482pass. Kode runtime tidak berubah sesudah suite penuh tersebut.
+Perbaikan belum flight validated dan belum jaminan seluruh backlog teratasi.
+Run18 stopped=true terverifikasi pada session.json; peta map.json/map.html
+masing-masing12MB dan navigation_debug.jsonl tersimpan di reports/ros_sensor_*
+run18/map_3d, tidak dimasukkan commit.

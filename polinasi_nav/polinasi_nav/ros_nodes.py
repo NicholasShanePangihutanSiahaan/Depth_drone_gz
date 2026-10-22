@@ -691,7 +691,8 @@ class NavigationNode(ConfigNode):
             # A sparse valid scan is not a dropout and never makes unknown free.
             self.controller.health.cloud_stamp = stamp
             if not self.separate_mapping:
-                self.pending.append(msg)
+                if hasattr(self.pending,'select'):self.pending.push(stamp,msg,self.now())
+                else:self.pending.append(msg)
                 if not hasattr(self, 'scan_receipts'):
                     self.scan_receipts = {}
                 self.scan_receipts[stamp] = time.monotonic_ns()
@@ -760,21 +761,33 @@ class NavigationNode(ConfigNode):
             except Exception as exc:
                 self.get_logger().error(f'map update failed: {exc}')
             self.map_future = None
-        if not self.pending:
-            return
-        msg = self.pending[-1]
-        stamp = seconds(msg.header.stamp)
-        if not 0 <= self.now()-stamp < self.c['cloud_timeout']:
+        def exact_transform(msg):
+            try:
+                transform=self.buffer.lookup_transform('map',msg.header.frame_id,Time.from_msg(msg.header.stamp))
+                matrix=rotation(transform.transform.rotation)
+                body_tf=(self.buffer.lookup_transform('base_link',msg.header.frame_id,Time.from_msg(msg.header.stamp))
+                         if self.c.get('sensor_gimbals_enabled') else None)
+                return transform,matrix,body_tf
+            except (TransformException,ValueError):return None
+        if hasattr(self.pending,'select'):
+            selected=self.pending.select(self.now(),self.c['cloud_timeout'],
+                getattr(self,'last_submitted_cloud',self.last_integrated_cloud),exact_transform)
+            if selected is None:return
+            msg,(transform,matrix,body_tf)=selected
+            stamp=seconds(msg.header.stamp)
+            self.pending.acknowledge(stamp)
+            self.last_submitted_cloud=stamp
+        else:
+            if not self.pending:return
+            msg=self.pending[-1]
+            stamp=seconds(msg.header.stamp)
+            if not 0<=self.now()-stamp<self.c['cloud_timeout']:
+                self.pending.clear()
+                return
+            transforms=exact_transform(msg)
+            if transforms is None:return
+            transform,matrix,body_tf=transforms
             self.pending.clear()
-            return
-        try:
-            transform = self.buffer.lookup_transform('map', msg.header.frame_id, Time.from_msg(msg.header.stamp))
-            matrix = rotation(transform.transform.rotation)
-            if self.c.get('sensor_gimbals_enabled'):
-                body_tf = self.buffer.lookup_transform('base_link',msg.header.frame_id,Time.from_msg(msg.header.stamp))
-        except (TransformException, ValueError):
-            return
-        self.pending.clear()
         points = cloud_points(msg)
         mount = self.c['lidar_mount']
         mr = rotation(body_tf.transform.rotation) if self.c.get('sensor_gimbals_enabled') else Rotation.from_euler('xyz', mount[3:]).as_matrix()

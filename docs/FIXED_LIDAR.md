@@ -345,3 +345,9 @@ Statistik antrean ada di `perception_statistics.transform_queue` dan ros.log
 (`Tree scan transform queue`). Katalog kosong dapat menahan alignment FCU
 sebelum arming. Nilai Infinity pada setup position_difference bisa berarti TF
 alignment belum ada; periksa health_reason/fcu_frame_aligned sebelum menyebut drift.
+
+Pembuat peta pada proses MappingIO memakai antrean LiDAR enam scan dengan
+pemilihan exact-time-transformable yang sama; statistiknya berada pada
+`mapping_lidar_transform_queue`. Umur peta tetap waktu observasi asli,
+bukan waktu pengiriman snapshot. Antrean tidak mengizinkan penggunaan scan
+yang melewati cloud_timeout dan tidak menutupi keterlambatan integrasi depth.

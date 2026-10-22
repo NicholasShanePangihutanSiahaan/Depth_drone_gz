@@ -52,7 +52,7 @@ class MappingIONode(ConfigNode):
         self.pending_ranges=deque(maxlen=12)
         self.range_tf_waits=0
         self.state = State()
-        self.pending, self.executed = deque(maxlen=1), deque(maxlen=6000)
+        self.pending, self.executed = DepthTransformQueue(6), deque(maxlen=6000)
         self.last_map = self.last_integrated_cloud = -math.inf
         self.last_status, self.planned = {}, []
         self.last_snapshot_version = -1
@@ -242,6 +242,7 @@ class MappingIONode(ConfigNode):
             return
         statistics = dict(global_known_voxels=len(self.history.cells),
             mapping_poll_period_sim_seconds=.02,
+            mapping_lidar_transform_queue=self.pending.status(),
             depth_mapping=dict(self.depth_stats,
                 last_integrated_stamp=getattr(self.grid,'depth_integrated_stamp',None),
                 current_job=getattr(self,'depth_job_trace',{}),
