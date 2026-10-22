@@ -72,6 +72,13 @@ def stem_target_height(tree,config):
     return float(tree['observed_stem_top'])-config.get('scan_stem_top_offset',0.)
 
 
+def scan_floor(config,initial_height,departure=False):
+    """Keep a safe low entry; takeoff height is not a compulsory scan floor."""
+    minimum=float(config.get('exploration_min_altitude',1.))
+    limit=minimum if departure else min(float(config['takeoff_altitude']),float(initial_height))
+    return max(minimum,limit,float(initial_height)-config.get('scan_target_max_descent',.6))
+
+
 def canopy_profile(grid,waypoints,index,current,tree,config,initial_height):
     result=np.asarray(waypoints).copy()
     stop=min(len(result),index+config.get('survey_batch_points',6))
@@ -80,7 +87,7 @@ def canopy_profile(grid,waypoints,index,current,tree,config,initial_height):
     guarded_grid=canopy_guard_grid(grid,guard)
     camera_z=config.get('camera_mount',[0.,0.,0.])[2]
     target=min(5.5,stem_target_height(tree,config)-camera_z)
-    floor=max(config['takeoff_altitude'],initial_height-config.get('scan_target_max_descent',.6))
+    floor=scan_floor(config,initial_height)
     resolution=min(.1,grid.res/2)
     entries=[]
     previous=np.asarray(current).copy()

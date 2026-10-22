@@ -1461,3 +1461,129 @@ Tes targeted awal67 lulus/1 gagal karena ekspektasi guard satu voxel pada
 fixture resolusi .1 m; diperbaiki memakai ceil(.2/res-1e-9), bukan mengubah
 implementasi pembulatan atau ukuran reserve. Full suite setelahnya lulus.
 Commit/push dilakukan sebelum run11; flight belum tervalidasi.
+
+
+### 22 Oktober 2026 — run11 mencapai transisi pohon, entry kedua blocked
+
+Flight b0ba099, reports/fixed_lidar_validation_20261022_075552,
+registered session .dependencies/ros_sensor_palm_farm_flowers_20261022_075555_19872_mapping.
+Sensor-mode: ground truth hanya auditor, estimator eksperimental scan-to-map
+ICP+IMU, bukan FAST-LIO. Auditor menghentikan run pada320.90 s simulasi,
+blocked_route, BRAKE/APPROACH tree3. Session stopped=true.3115 pasangan
+pose: RMSE .01129093568 m, maksimum .0247004473 m. Tidak ada health fault
+lokalisasi tercatat. Tidak ada GUI/RViz atau hardware yang dioperasikan.
+
+Milestone dari navigation JSONL: APPROACH tree1 mulai20.50 s dan ASCEND
+mulai73.85 s, durasi approach53.35 s SIMULASI. SCAN mulai77.10 s, enam
+sektor valid selesai259.95 s; APPROACH tree3 mulai260.00 s. Pusat tree1
+[-8.49279660,-.42920296], tree3[-4.59039740,-10.24937155]. Enam view
+first-tree memiliki camera_policy continuous_front_tree dan inspeksi valid.
+Anchor terakhir direpair dari2.1 ke1.9 m pada255.3 s dengan reserve transit,
+kemudian berhasil berangkat ke pohon lain. Ini flight pertama loop terkini
+yang membuktikan exit-anchor/transisi bekerja, belum misi bunga dua pohon.
+Belum RETURN, landing atau disarm.
+
+Recovery bounded: route_changed pada82.2→83.8,91.3→92.25 dan
+164.45→164.85 s. Yang terakhir reference_feedback_reserve_revoked,
+curve suffix sendiri masih aman: finite feedback-stop scenario menolak
+calon referensi, command belum diganti, backup terakhir dieksekusi.
+Snapshot accepted/revoked/critical tersedia. Depth recovery kedua pohon
+tercatat268.25→270.00,280.25→282.20,300.85→301.90 s; gate .1 s/2 s
+recovery tetap, tanpa pelonggaran timeout.
+
+Masalah efisiensi belum selesai: kurva scan sekitar125.05 s memiliki total
+142.9415768 s; segment2 awal local speed profile .021 m/s (dibatasi karena
+feedback braking_box_blocked), duration optimization118.8364514 s lalu dua
+local retimes memberi segmen2 78.82106635 s dan total142.94 s. Replan setelah
+recovery164.85 menghasilkan kurva56.9562263 s. Ini bottleneck geometri/
+pengereman, bukan bukti menaikkan maximum speed akan menyelesaikannya.
+Tidak menjalankan suite berat atau mengubah parameter saat flight.
+
+Kegagalan akhir berbeda: tujuan entry tree3
+[-4.99684253,-8.29242717,2.0] repeatedly newly_observed_occupied_view.
+route_blockage occupied_blocked/goal_not_safe, unknown_count0,
+occupied_count57;80 scan baru tanpa kandidat pengganti sampai deadline.
+Obstacle sampel sekitar[-5.5,-7.3,2.1..2.7],[-5.7,-7.5,2.5..2.9], dekat
+jalur masuk pohon kedua. Tanpa semantic ID tidak dapat membuktikan daun
+milik pohon mana, walau lebih dekat ke tree3 daripada tree1.
+
+Penyebab kode terbukti: preset tree_view_distances=[2.] dan entry tetap pada
+satu tree_angle/height2.0. Ketika target occupied, ia ditolak, views kosong,
+lalu fallback membentuk koordinat occupied yang sama. Rejected log berulang
+identik. Ini bukan izin menghapus obstacle atau menambah toleransi goal.
+Run11 critical snapshot terakhir masih164.1 s karena blocked_route bukan
+critical reason dan8 ordinary slots habis. Map akhir320.7 s lengkap tetap
+tersimpan di map_3d/map.json (occupied/free/prior/observation timestamp),
+point cloud dan map.html. Bukti akhir direkonstruksi dari export sensor itu,
+bukan dari geometri/ground truth world; tidak sama dengan exact frozen
+navigation window saat timeout.
+
+Perbaikan entry (preset fixed inspection opt-in):
+- fixed_approach_target_repair=True. Pencarian bounded24 arah di sekitar
+  pusat pohon terukur, hanya radius konfigurasi2 m; tinggi target asli2 m
+  serta voxel centres di bawahnya sampai exploration_min_altitude1 m.
+  Target tidak dibulatkan naik melewati cap. Candidate harus point-safe,
+  supercover-connectable ke centre dan berada pada komponen free yang sama
+  dengan start dalam transit guard. Ini destination proposal, bukan flight
+  certificate; history A*, local curve, feedback stop dan live checks tetap.
+- Jika entry occupied terukur, sudah memiliki blocked_since, tidak ada
+  kandidat tersambung dan ada kandidat pohon terkonfirmasi lain, entry itu
+  dapat ditunda30 s (defer_blocked_tree_entry=True). Log deferred_tree_entries
+  menyimpan ID, posisi, alasan, timestamp dan inspected=False. Tidak menambah
+  completed_trees atau sektor dan tidak mereset blocked/history deadlines.
+  Mission memilih dua pohon terukur berbeda, bukan daftar ID wajib. Tidak
+  mengklaim pohon yang ditunda sudah diinspeksi atau selamanya unreachable.
+  Tanpa alternatif, original observation/failure policy tetap berlaku.
+  Jika kandidat hanya tertunda dan demo dua pohon belum terpenuhi, timeout
+  pencarian menjadi no_reachable_tree_entry, bukan COMPLETE dengan satu.
+- scan_floor shared profile/repair mempertahankan safe low entry: regular
+  floor=max(exploration_min, min(takeoff_altitude,initial_scan_height),
+  initial_scan_height-max_descent). Untuk entry normal>2 m kebijakan lama
+  tetap. Departure floor tetap memakai minimum transit dan bounded descent.
+  Tidak memaksa scan naik ke2 m dari entry1.3 m yang sudah diketahui aman.
+- Fatal blocked_route kini menyimpan current blockage/destination/deadline
+  dan critical snapshot meskipun budget ordinary habis. Dua evidence slots
+  accepted/revoked tetap terpisah dan bounded.
+
+Analisis replay: pada export akhir semua entry radius2 m pada1.9–2.1 m
+terblokir. Sejumlah point-safe entries1.1–1.5 m ditemukan, tetapi komponennya
+terpisah dari start. Audit DIAGNOSTIK dengan unknown dikeluarkan dari sumber
+inflasi pun tetap terpisah; mask audit itu TIDAK dipakai planner/kontrol.
+Tidak menyimpulkan cukup menunggu scan, atau mengubah unknown menjadi free.
+Memperbesar cost preference/bobot juga sebelumnya tidak mengubah rute.
+
+Frozen supervisor replay dari[-3.6998,-7.1,1.103] pada export320.7:
+menunda tree3, memilih confirmed tree4; completed tetap[1], blocked_since
+308.6 tetap308.6. Proposed goal[3.08470637,-8.15655652,2]. Restorasi
+SparseHistory mempertahankan known-cell timestamps, surveyed-pad flags dan
+FOV derivation timestamps, bukan memalsukan fresh observations. History
+menemukan detour PARTIAL sampai[-.3,-5.3,1.9], bukan mengklaim goal tercapai.
+Untuk pemeriksaan geometri TERPISAH saja, harness mengosongkan timer abort
+yang memang sudah habis pada run asli: full preparation prefix menuju
+[-.54,-5.42,1.78] berhasil, kurva51.1849882 s, tanpa failure. Tidak mengubah
+preset flight atau mengklaim stopped flight boleh diteruskan melewati timeout.
+Replay ini belum membuktikan tree4 bisa diinspeksi, return atau landing.
+
+Rujukan primer pemisahan supervisor/waypoint failure: dokumentasi resmi Nav2
+Waypoint Follower dan source nav2_waypoint_follower/waypoint_follower.cpp,
+https://docs.nav2.org/rolling/configuration_and_development/configuration_guide/core_servers/waypoint_follower/
+https://github.com/ros-navigation/navigation2/blob/main/nav2_waypoint_follower/src/waypoint_follower.cpp
+Nav2 membedakan waypoint gagal dan sukses serta menyediakan kebijakan
+melanjutkan waypoint berikutnya. Implementasi fixed ini supervisor tree-entry
+rekayasa sendiri, bukan port Nav2/SUPER atau klaim penelitian algoritme baru.
+Syarat inspeksi dua pohon dan6 sektor/tree tetap berlaku; failed entry tidak
+berubah menjadi success. Default stop_on_failure Nav2 tidak disalin.
+
+Regresi baru: blocked entry resampling mempertahankan radius/cap/mask dan
+lulus A*; unknown wall memisahkan safe island dan tidak dibuka; deferral
+memilih ID lain tanpa menghitung inspeksi atau reset deadline, dapat dicoba
+lagi sesudah30 s dengan sensor tetap wajib sehat; tanpa alternatif tidak
+mengarang completion; deferred-only tidak menyelesaikan demo kurang dua;
+safe low scan floor tidak dipaksa ke takeoff height; critical timeout
+snapshot tersimpan setelah8 ordinary slots.26 targeted lulus5.95 s sebelum
+regresi critical snapshot terakhir ditambahkan; full suite sedang berjalan.
+
+Build tiga paket berhasil;464 tes lulus99.62 s,0 errors/failures/skipped.
+Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_entry_build.log.
+Commit/push sebelum run12. Belum flight validated untuk pemilihan entry/
+deferral baru atau keberhasilan dua pohon pada map bunga.

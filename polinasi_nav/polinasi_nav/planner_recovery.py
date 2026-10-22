@@ -13,7 +13,7 @@ def save_failure_snapshot(controller,detail,points=None,grid=None,evidence_slot=
     try:
         directory.mkdir(parents=True,exist_ok=True)
         # Bound disk/CPU cost per run. Keep exact first failures for replay.
-        critical=detail.get('reason') in ('pid_final_safety','emergency_braking_invalidated','global_route_unavailable','reference_feedback_reserve_revoked')
+        critical=detail.get('reason') in ('pid_final_safety','emergency_braking_invalidated','global_route_unavailable','reference_feedback_reserve_revoked','blocked_route')
         if evidence_slot is not None and evidence_slot not in ('accepted','revoked'):
             raise ValueError('invalid evidence slot')
         if evidence_slot is None and len(list(directory.glob('failure_*.npz')))>=8 and not critical:return

@@ -30,6 +30,7 @@ def main(scenario='palm_farm'):
         c['self_filter_shapes'] = shapes
         if stage == 'inspection':
             c.update(feedback_speed_envelope=True,velocity_uncertainty_mps=.03,
+                     fixed_approach_target_repair=True,defer_blocked_tree_entry=True,
                      transit_observation_guard=.2,transit_lateral_observation_guard=.2,
                      transit_clearance_preference=.4,transit_clearance_cost_weight=2.,
                      duration_optimisation=True,trajectory_spacing_m=1.,explicit_backup_enabled=True,

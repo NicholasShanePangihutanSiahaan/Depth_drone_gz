@@ -142,8 +142,8 @@ class ContinuousTreeInspectionController(TreeInspectionController):
         # The final scan anchor also prepares departure under nearby leaves.
         # Use the transit altitude floor within the SAME bounded scan descent;
         # map/body/ground clearance still decides whether any candidate is safe.
-        floor_limit=self.c.get('exploration_min_altitude',1.) if self._scan_exit_endpoint() else self.c['takeoff_altitude']
-        floor=max(float(floor_limit),float(nominal[2])-self.c.get('scan_target_max_descent',.6))
+        from .canopy_scan import scan_floor
+        floor=scan_floor(self.c,float(nominal[2]),self._scan_exit_endpoint())
         step=self.grid.res
         rejects=dict(occupied=0,unknown_or_outside=0,terminal_reserve=0)
         candidates=[]

@@ -56,6 +56,8 @@ class TreeInspectionController(SurveyController):
         self.ascent_map_pauses = 0
         self.ascent_map_resumes = 0
         self.subgoal_diagnostics = {}
+        self.approach_target_diagnostics = {}
+        self.deferred_tree_entries = {}
 
     def _same_altitude_exploration(self):
         return bool(self.c.get('tree_exploration_same_altitude') and self.tree_phase in ('APPROACH','SCAN'))
@@ -242,6 +244,7 @@ class TreeInspectionController(SurveyController):
 
     def candidates(self):
         return [t for t in self.catalog if t['id'] not in self.completed_trees
+                and self.survey_now>=self.deferred_tree_entries.get(t['id'],{}).get('retry_after',-math.inf)
                 and self.survey_now-t['last_seen'] < 30.
                 and not any(np.linalg.norm(np.asarray(t['xy'])-xy) < 1.
                             for xy in self.completed_centres)]
@@ -297,6 +300,9 @@ class TreeInspectionController(SurveyController):
             if not choices:
                 self.search_started = self.survey_now if self.search_started is None else self.search_started
                 if self.survey_now-self.search_started >= self.c.get('tree_search_wait',10.):
+                    if self.deferred_tree_entries and len(self.completed_trees)<self.c.get('tree_demo_limit',0):
+                        self.fail('no_reachable_tree_entry')
+                        return False
                     self.finish_reason = 'no_unvisited_confirmed_visible_tree_not_entire_farm'
                     self.state = 'RETURN'
                     return super()._choose_goal(current)
@@ -311,15 +317,44 @@ class TreeInspectionController(SurveyController):
             self.ascent_stop_reason = ''
             self.inspection_view = 0
         tree = self.active_tree
-        if self.view_target is not None and self.grid.occupied_goal(self.view_target):
+        occupied_entry=(self.view_target is not None and self.grid.occupied_goal(self.view_target))
+        if occupied_entry:
             self.rejected_views.append(dict(tree_id=tree['id'],view=int(self.inspection_view),
                 position=self.view_target.tolist(),stamp=float(self.grid.last_observation_stamp),
                 reason='newly_observed_occupied_view'))
             self.rejected_views = self.rejected_views[-32:]
             self.view_target = None
-        # Re-evaluate an unobserved view at rest after exploration: a newly
-        # measured safe alternative can avoid chasing the original blind spot.
-        if self.view_target is None or not self.grid.safe(self.view_target):
+        # Fixed entry may need another angle/height under the same canopy.
+        # Selection is only a destination proposal; A*/curve/stop gates remain.
+        resample=(self.tree_phase=='APPROACH' and self.c.get('fixed_approach_target_repair'))
+        target_safe=self.view_target is not None and self.grid.safe(self.view_target)
+        if resample:
+            from .approach_target import approach_grid,connected_endpoint,select_approach_target
+            target_safe=(self.view_target is not None and
+                connected_endpoint(approach_grid(self.grid,self.c),self.view_target))
+            if not target_safe:
+                selected,self.approach_target_diagnostics=select_approach_target(
+                    self.grid,current,tree,self.tree_angle,self.c)
+                if selected is not None:
+                    self.view_target=selected;target_safe=True
+                elif (occupied_entry and self.blocked_since is not None
+                        and self.c.get('defer_blocked_tree_entry')
+                        and self.approach_target_diagnostics.get('result')=='no_safe_connected_entry'
+                        and any(t['id']!=tree['id'] for t in self.candidates())):
+                    # The task selects two measured trees, not mandatory IDs.
+                    # Defer this failed ENTRY, never count an inspection or reset
+                    # the existing blocked/history deadlines to conceal failure.
+                    self.deferred_tree_entries[tree['id']]=dict(
+                        tree_id=tree['id'],xy=list(tree['xy']),stamp=float(self.survey_now),
+                        retry_after=float(self.survey_now+30.),
+                        reason='observed_occupied_entry_no_known_connected_alternative',
+                        inspected=False,entry_diagnostics=self.approach_target_diagnostics)
+                    self.active_tree=self.view_target=self.goal=None
+                    self.tree_phase='SEARCH';self.global_route={}
+                    return self._choose_goal(current)
+        # No candidate: retain the existing observation/timeout policy, never
+        # authorize an unsafe fallback target just to make progress.
+        if not target_safe:
             angle = self.tree_angle+(self.inspection_view*2*math.pi/self.c['tree_view_count'] if self.tree_phase=='SCAN' else 0.)
             top = float(np.clip(tree['observed_stem_top']-.4,2.,5.5))
             if (self.auto_mounts() or self.c.get('continuous_tree_scanning')) and self.tree_phase=='APPROACH':
@@ -485,6 +520,8 @@ class TreeInspectionController(SurveyController):
             continuous_ascent=self.ascent_reference.diagnostics if self.ascent_reference is not None else {},
             ascent_map_pauses=self.ascent_map_pauses,ascent_map_resumes=self.ascent_map_resumes,
             inspection_subgoal_diagnostics=self.subgoal_diagnostics,
+            approach_target_diagnostics=self.approach_target_diagnostics,
+            deferred_tree_entries=list(self.deferred_tree_entries.values()),
             perception_statistics=self.perception_statistics,
             tree_candidates=self.catalog, tree_catalog_stamp=self.catalog_stamp if math.isfinite(self.catalog_stamp) else None,
             inspection_tree_id=self.active_tree['id'] if self.active_tree else None,

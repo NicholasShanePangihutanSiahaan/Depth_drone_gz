@@ -272,3 +272,16 @@ Untuk membandingkan sebelum/sesudah perubahan map, planner_failures kini
 menyimpan dua slot bounded evidence_accepted.npz dan evidence_revoked.npz,
 selain failure_critical.npz. Bukti peta lama tetap tidak tersedia untuk run10;
 perbaikan berikutnya belum tervalidasi flight.
+
+
+Runb0ba099 pada palm_farm_flowers: approach pertama53.35 s simulasi,
+enam sektor tree1 selesai259.95 s, transit ke tree3 berhasil. Berhenti320.90 s
+blocked_route karena entry tree3 occupied berulang. Belum dua pohon/return/
+landing/disarm. Fixed inspection kini opt-in bounded entry repair (24 arah,
+radius tetap2 m, tinggi minimum transit hingga cap approach) dan deferral
+entry terblokir jika ada confirmed tree lain. ID yang ditunda tercatat
+`deferred_tree_entries`, inspected=false; tidak menambah completion/sektor
+atau mereset timeout. `scan_floor` menjaga entry rendah yang aman, tetap
+bounded descent/ground/unknown checks. Perubahan ini lulus frozen replay
+prefix ke kandidat tree4, belum flight validated. Blocked_route sekarang
+menyimpan critical snapshot/current cause meskipun ordinary budget penuh.

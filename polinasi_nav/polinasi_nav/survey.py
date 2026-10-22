@@ -202,6 +202,13 @@ class SurveyController(MovingHandoff, MissionController):
     def _prepare_trajectory(self, now, position, range_value=None, range_stamp=None):
         # A pending worker must not postpone the existing blocked timeout.
         if self.blocked_since is not None and now-self.blocked_since>self.c['blocked_timeout']:
+            self.route_failure_diagnostics=dict(reason='blocked_route',
+                blocked_since=float(self.blocked_since),stamp=float(now),
+                route_blockage=dict(self.route_blockage),
+                destination=None if self.route_destination() is None else self.route_destination().tolist(),
+                previous_candidate_diagnostics=self.route_failure_diagnostics)
+            from .planner_recovery import save_failure_snapshot
+            save_failure_snapshot(self,self.route_failure_diagnostics)
             self.fail('blocked_route')
             return False
         destination=self.route_destination()
@@ -316,7 +323,7 @@ class SurveyController(MovingHandoff, MissionController):
         for key in ('tree_phase','active_tree','view_target','inspection_view','search_started',
                     'finish_reason','tree_angle','rejected_views','mount_phase_started',
                     'mount_settled_since','mount_angle_index','inspection_altitude','ascent_stop_reason',
-                    'subgoal_diagnostics'):
+                    'subgoal_diagnostics','approach_target_diagnostics','deferred_tree_entries'):
             if hasattr(clone,key):
                 setattr(self,key,getattr(clone,key))
         self.route_speed_profile = getattr(clone, 'route_speed_profile', {})
