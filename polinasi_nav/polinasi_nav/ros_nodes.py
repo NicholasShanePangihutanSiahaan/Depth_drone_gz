@@ -1097,6 +1097,7 @@ class NavigationNode(ConfigNode):
         from .fixed_fov import status as fov_status
         status = {'fixed_fov_assumptions':fov_status(self.grid),'simulation_time': float(now), 'mode': self.get_parameter('mode').value, 'flight': self.flight_stage,
                    'route_blockage': self.controller.route_blockage,
+                   'sensor_freshness': self.controller.health.status(now,self.c),
                    'speed_diagnostics': getattr(self.controller, 'speed_diagnostics', {}),
                    'predictive_alignment': getattr(self, 'predictive_alignment', {}),
                    'callback_wall_max_ms': dict(self.callback_timing.max_ms),

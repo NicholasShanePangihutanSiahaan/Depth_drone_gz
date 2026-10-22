@@ -317,3 +317,12 @@ replacement ketika TF terlambat; tidak memperbesar timeout, memakai latest
 TF atau menyegarkan health dari receipt. `depth_mapping.transform_queue`
 menyimpan umur/antrean/drops. NaN tetap tidak memberi free rays atau freshness.
 30 queue/ROS adapter tests lulus; perubahan ini belum flight validated.
+
+
+Run065e9a2 menunjukkan depth queue memproses frame tertunda dan recovery
+pendek pulih, tetapi berhenti29.900000000000002 s stale_localisation: pose29.6
+menghasilkan age.3000000000000007 pada gate inklusif.3. Health kini berbagi
+helper fresh_stamp dengan depth, toleransi roundoff1e-9 s yang eksplisit;
+timeout fisik dan health flag tidak diubah. `sensor_freshness` menyimpan
+stamps/ages/limits agar kasus numeric boundary berbeda dari lateness nyata.
+30 targeted tests lulus; perbaikan roundoff belum flight validated.

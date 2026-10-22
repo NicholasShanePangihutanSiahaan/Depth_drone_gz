@@ -1,10 +1,11 @@
 """A stale integrated camera map never authorizes motion into unknown space."""
 import math
 import numpy as np
+from .time_checks import fresh_stamp
 
 
 def fresh_depth(now,stamp,timeout):
-    return stamp is not None and math.isfinite(stamp) and -1e-9<=now-stamp<=timeout+1e-9
+    return fresh_stamp(now,stamp,timeout)
 
 
 class DepthHoldGuard:

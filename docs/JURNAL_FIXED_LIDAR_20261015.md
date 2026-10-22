@@ -1840,3 +1840,72 @@ Build tiga paket berhasil;475 tests lulus275.78 s,0 errors/failures/skipped.
 Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_depth_queue_build.log.
 Commit/push sebelum run15. Antrean TF depth, arrival-entry fix dan fast brake
 belum flight validated sebagai solusi misi dua pohon pada map bunga.
+
+
+### 22 Oktober 2026 sore — run15 exact pose timeout gagal karena float
+
+Flight065e9a2, reports/fixed_lidar_validation_20261022_192302,
+registered session .dependencies/ros_sensor_palm_farm_flowers_20261022_192310_16124_mapping.
+Auditor menghentikan pada29.900000000000002 s simulasi/stale_localisation,
+BRAKE/APPROACH tree1.204 pasangan pose: RMSE .01032581906 m,
+maksimum .02055307581 m. Session dihentikan melalui mekanisme registered run;
+belum scan/dua pohon/return/landing/disarm. Tidak ada GUI atau hardware.
+
+Depth queue benar-benar dipakai: pada18.45 selected stamp18.0 dengan
+acquisition age.14 s saat proyeksi, receive delay.017 s dan queue wait.123 s;
+18 TF wait attempts, pending1. Tidak boleh menyebut queue menghapus semua
+jeda mapping: pada28.65 integrated/valid depth age.65 s memicu preventive
+recovery, reference baru mulai bergerak sangat kecil; backup.3 s. Recovery
+pulih29.30 s tanpa menambah hold timeout2 s. Pada abort29.90 depth age.90 s,
+masih dalam camera timeout1.0. Penerbangan ini menunjukkan antrean bekerja dan
+recovery depth pendek berhasil, bukan bukti fast brake pada kecepatan tinggi
+atau deferral/entry/dua pohon sudah tervalidasi.
+
+Diagnosis stale_localisation TERBUKTI dari angka log, bukan dugaan CPU/drift:
+last accuracy pose stamp29.6 dan position
+[.02926677160,-.03344435085,1.9802770715] sama persis dengan measured position
+pada last_navigation/depth_motion_recovery. Waktu pemeriksaan
+29.900000000000002 minus29.6 = .3000000000000007, config pose_timeout=.3.
+Health.reason menggunakan0<=age<=timeout tanpa toleransi, sehingga threshold
+yang secara desimal tepat.3 ditolak. Last localisation diagnostic29.8 masih
+healthy/tracking, scan/IMU29.6,20 sampel IMU dengan max interval.005 s,
+ICP correction.00243 m dan residual RMSE.04891 m. Ini tidak membuktikan ICP
+permanen gagal atau drift besar. Timestamps pose match memberi bukti sebab
+lebih kuat daripada hanya healthy flag setelah abort.
+
+Sumber primer representasi numerik: dokumentasi resmi Python menjelaskan
+fraksi desimal umumnya tidak tepat dalam binary float dan perbandingan angka
+hasil operasi harus memperhitungkan rounding,
+https://docs.python.org/3/tutorial/floatingpoint.html
+Perbaikan Health memakai helper fresh_stamp inklusif dengan tolerance1e-9 s
+untuk roundoff yang SUDAH dipakai fresh_depth. Fresh_depth kini delegasi helper
+sama. Nilai timeout fisik pose/IMU.3, LiDAR.5, depth1.0 dan flag localisation_ok
+TIDAK diubah. Toleransi satu nanodetik dicatat eksplisit pada sensor_freshness;
+bukan izin jeda puluhan milidetik. NaN/infinity/missing/future timestamps tetap
+invalid. Contoh genuinely late.109 s pada gate.1 s tetap ditolak; tidak
+menyalin pelonggaran dari sesi rotating atau menyamakan kasus itu dengan
+roundoff. local frontend gate.1 s pada IMU tidak diubah.
+
+Status ROS kini menambah sensor_freshness berisi measurement stamps,
+pose/cloud/IMU ages, thresholds, numeric tolerance dan localisation_ok.
+Missing/nonfinite diagnostics diubah None untuk JSON audit yang valid;
+stamp tidak diubah menjadi receipt/now dan tidak dipalsukan agar fresh.
+Regresi exact recorded29.900000000000002−29.6 lewat;10 ns extra di luar.3,
+real pose/LiDAR/IMU lateness dan future/nonfinite tetap ditolak, serta JSON
+status tidak mengandung NaN/Infinity.30 targeted tests lulus43.90 s; full
+build/regresi sedang berjalan.
+
+Risiko timing belum selesai: pose saat abort memang sudah berada DI batas
+usia sehingga margin kecil; pada run ini mapping worker terakhir sekitar
+1508 ms wall dan planner7996 ms wall. Audit host setelah run hanya membaca
+CPU/memori (available sekitar11 GiB, load3.50), tidak menghentikan aplikasi
+pengguna. Belum ada bukti bahwa background app tertentu menyebabkan fault;
+tidak mengubah prioritas/power setting. Fix roundoff tidak menjamin keterlambatan
+nyata berikutnya tidak terjadi. Gate umur data tetap wajib menghentikan jika
+melewati batas secara nyata. Perubahan belum flight validated atau misi bunga
+COMPLETE/disarm.
+
+Build tiga paket berhasil;478 tests lulus274.85 s,0 errors/failures/skipped.
+Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_health_precision_build.log.
+Commit/push sebelum run16. Tidak menjalankan flight saat regresi berat.
+Fix numeric boundary belum flight validated; genuine late pose tetap abort.

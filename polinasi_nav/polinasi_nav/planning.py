@@ -3,6 +3,7 @@ import heapq
 import itertools
 import math
 from dataclasses import dataclass
+from .time_checks import fresh_stamp
 import numpy as np
 
 
@@ -179,13 +180,22 @@ class Health:
     def reason(self, now, config, sensor_mode=False, require_lidar=True):
         if not self.localisation_ok:
             return 'localisation_loss'
-        if not 0 <= now-self.pose_stamp <= config['pose_timeout']:
+        if not fresh_stamp(now,self.pose_stamp,config['pose_timeout']):
             return 'stale_localisation'
-        if require_lidar and not 0 <= now-self.cloud_stamp <= config['cloud_timeout']:
+        if require_lidar and not fresh_stamp(now,self.cloud_stamp,config['cloud_timeout']):
             return 'stale_lidar'
-        if sensor_mode and not 0 <= now-self.imu_stamp <= config['pose_timeout']:
+        if sensor_mode and not fresh_stamp(now,self.imu_stamp,config['pose_timeout']):
             return 'stale_imu'
         return ''
+
+    def status(self,now,config):
+        def finite(value):return float(value) if value is not None and math.isfinite(value) else None
+        return dict(pose_stamp=finite(self.pose_stamp),cloud_stamp=finite(self.cloud_stamp),
+            imu_stamp=finite(self.imu_stamp),pose_age=finite(now-self.pose_stamp),
+            cloud_age=finite(now-self.cloud_stamp),imu_age=finite(now-self.imu_stamp),
+            pose_timeout_seconds=float(config['pose_timeout']),
+            cloud_timeout_seconds=float(config['cloud_timeout']),
+            numeric_roundoff_tolerance_seconds=1e-9,localisation_ok=bool(self.localisation_ok))
 
 
 def brake_safe(grid, position, velocity, config, acceleration=None, actual=False, diagnostics=None):
