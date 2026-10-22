@@ -66,10 +66,12 @@ from launch.actions import (
     SetEnvironmentVariable,
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition
+from launch_ros.actions import ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 
 
 def generate_launch_description():
@@ -87,7 +89,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             "world",
-            default_value="plantation_hilly.sdf",
+            default_value="plantation.sdf",
             description=(
                 "Gazebo world file. Use plantation.sdf for the flat baseline."
             ),
@@ -112,6 +114,38 @@ def generate_launch_description():
             launch_arguments={
                 "gz_args": [gz_args, " ", world_file],
             }.items(),
+        ),
+        
+        
+        Node(
+            package='robot_state_publisher',
+            executable='robot_state_publisher',
+            name='robot_state_publisher',
+            output='screen',
+            parameters=[{
+                # Command(['cat ', file]) reads the file and outputs its contents as a string
+                'robot_description': Command(['cat ', model_file])
+            }],
+            remappings=[
+                # Map standard ROS /joint_states to the bridged Gazebo topic
+                ('/joint_states', '/plantation_uav/joint_states')
+            ]
+        ),
+
+
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='model_to_base_link_tf',
+            output='screen',
+            arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom']
+        ),
+
+        Node(
+            package='uav_localization',
+            executable='tf_broadcaster',
+            name='tf_casting',
+            output='screen',
         ),
 
         Node(
@@ -138,6 +172,26 @@ def generate_launch_description():
                 "-z", spawn_z,
                 "-Y", "0.0",
             ],
+        ),
+        ComposableNodeContainer(
+            name='depth_processor_container',
+            namespace='',
+            package='rclcpp_components',
+            executable='component_container',
+            composable_node_descriptions=[
+                ComposableNode(
+                    package='depth_image_proc',
+                    plugin='depth_image_proc::PointCloudXyzNode',
+                    name='point_cloud_xyz_node',
+                    # Remap input/output topics to match your depth camera configurations
+                    remappings=[
+                        ('image_rect', '/zed2i/depth/depth_registered'),
+                        ('camera_info', '/zed2i/depth/camera_info'),
+                        ('points', '/zed2i/depth/points')
+                    ]
+                )
+            ],
+            output='screen'
         ),
         Node(package="ros_gz_sim", executable="create", output="screen",
              name="spawn_depth_avoidance_fixture",

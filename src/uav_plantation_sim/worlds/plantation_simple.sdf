@@ -1,0 +1,86 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <world name="plantation">
+    <physics name="uav_physics" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+
+    <scene>
+      <ambient>0.36 0.38 0.40 1</ambient>
+      <background>0.70 0.82 0.94 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <light type="directional" name="sun_key">
+      <pose>-10 -10 18 0.35 0.55 -0.75</pose>
+      <cast_shadows>false</cast_shadows>
+      <diffuse>0.95 0.90 0.78 1</diffuse>
+      <specular>0.25 0.24 0.20 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.55 0.25 -0.80</direction>
+    </light>
+
+    <model name="textured_ground">
+      <static>true</static>
+      <link name="ground">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>120 120</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="grass_soil">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>120 120</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.26 0.34 0.18 1</ambient>
+            <diffuse>0.32 0.44 0.22 1</diffuse>
+            <specular>0.05 0.05 0.04 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="soil_lanes">
+      <static>true</static>
+      <link name="lanes">
+        <visual name="lane_00"><pose>0 -27.2798 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_01"><pose>0 -21.2176 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_02"><pose>0 -15.1554 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_03"><pose>0 -9.0933 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_04"><pose>0 -3.0311 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_05"><pose>0 3.0311 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_06"><pose>0 9.0933 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_07"><pose>0 15.1554 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_08"><pose>0 21.2176 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+        <visual name="lane_09"><pose>0 27.2798 0.006 0 0 0</pose><geometry><box><size>110 3.0 0.01</size></box></geometry><material><ambient>0.20 0.20 0.20 1</ambient><diffuse>0.28 0.28 0.28 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- Oil palm rows: pola segitiga sama sisi, jarak antar sawit 7.0 m
+         (jarak antar barisan 6.062 m, barisan ganjil digeser 3.5 m). -->
+    <include><name>tree_00_00</name><uri>model://oil_palm</uri><pose>5 -2.5 0 0 0 -0.08</pose></include>
+    <include><name>tree_00_01</name><uri>model://oil_palm</uri><pose>14 -2.5 0 0 0 -0.08</pose></include>
+  </world>
+</sdf>

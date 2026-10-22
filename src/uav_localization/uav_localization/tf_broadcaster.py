@@ -30,7 +30,7 @@ class TFBroadcaster(Node):
 
         self.create_subscription(
             Odometry,
-            "/localization/odom",
+            "/mavros/odometry/out",
             self.odom_callback,
             qos_sensor
         )
