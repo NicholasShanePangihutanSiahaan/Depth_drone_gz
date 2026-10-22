@@ -120,3 +120,40 @@ def test_blocked_timeout_retains_current_map_after_failure_snapshot_budget(tmp_p
         assert meta['diagnostics']['reason']=='blocked_route'
         assert meta['diagnostics']['route_blockage']['planner_reason']=='goal_not_safe'
         np.testing.assert_array_equal(d['state'],ctl.grid.state)
+
+
+def arrival_wall_fixture():
+    c,g=fixture();c.update(feedback_speed_envelope=True,velocity_uncertainty_mps=.03,
+        pid_enabled=True,pid_correction_acceleration=.15,reaction_time=.35)
+    y=g.centers(np.column_stack([np.zeros(g.shape[1]),np.arange(g.shape[1]),np.zeros(g.shape[1])]))[:,1]
+    g.state[g.indices([1.3,0.,2.])[0],np.abs(y)<.31,:]=OCCUPIED
+    g.rebuild(0.)
+    current=np.array([3.5,.05,2.]);tree=dict(id=1,xy=[.02,.05],observed_stem_top=4.,last_seen=0.)
+    return c,g,current,tree,np.array([2.02,.05,2.])
+
+
+def test_free_entry_can_fail_arrival_stop_and_resampling_checks_actual_A_star_edge():
+    from polinasi_nav.local_braking_retime import route_terminal_reserve_check
+    c,g,current,tree,old=arrival_wall_fixture();view=approach_grid(g,c)
+    assert connected_endpoint(view,old) and view.line_safe(current,old)
+    old_route=plan(view,current,old)
+    assert not route_terminal_reserve_check(old_route,view,c)[0]
+    selected,detail=select_approach_target(g,current,tree,0.,c)
+    assert selected is not None and np.linalg.norm(selected-old)>.01
+    assert detail['rejected']['terminal_reserve']>0
+    assert detail['route_candidates_evaluated']<=12
+    assert route_terminal_reserve_check(plan(view,current,selected),view,c)[0]
+
+
+def test_live_arrival_rejection_reselects_point_safe_entry_without_resetting_deadline():
+    from polinasi_nav.local_braking_retime import route_terminal_reserve_check
+    c,g,current,tree,old=arrival_wall_fixture();view=approach_grid(g,c)
+    _,failure=route_terminal_reserve_check(plan(view,current,old),view,c)
+    ctl=TreeInspectionController(c,g,asynchronous=False)
+    ctl.state='SURVEY';ctl.tree_phase='APPROACH';ctl.command=current;ctl.active_tree=tree
+    ctl.view_target=old.copy();ctl.tree_angle=0.;ctl.blocked_since=4.
+    ctl.global_route_diagnostics=dict(terminal_reserve_rejections=[dict(point=old.tolist(),check=failure['check'])])
+    assert ctl._choose_goal(current)
+    assert np.linalg.norm(ctl.view_target-old)>.01
+    assert ctl.approach_target_diagnostics['rejected']['live_arrival_rejected']==1
+    assert ctl.blocked_since==4. and ctl.completed_trees==[]

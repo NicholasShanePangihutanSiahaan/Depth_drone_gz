@@ -296,3 +296,14 @@ checks tetap. Ini bounded straight-stop search, bukan optimizer SUPER penuh.
 Depth recovery menampilkan failure_gate dan vektor referensi/pengukuran untuk
 audit. Timeout, gate sensor dan settling tidak dilonggarkan.467 regresi lulus;
 perbaikan settling serta deferral entry masih perlu flight berikutnya.
+
+
+Runc5a8d3a berhenti83.15 s pada approach pertama: tujuan point/line-safe,
+tetapi actual arrival uncertainty/PID stop menyentuh buffer. Entry selector
+kini memeriksa terminal reserve dari actual final A* edge, maksimal12 kandidat,
+dan mengevaluasi ulang goal yang dicabut oleh live terminal check pada map
+version yang sama. Candidate/smoothing/braking tetap harus lulus seluruh gate;
+limit, radius, unknown, buffer dan timeout tidak diubah. Exact snapshot replay
+mendapat kurva11.14 s menuju entry alternatif pada pohon yang sama; belum
+flight validated. Snapshot baru menyimpan pusat pohon aktif/angle/view target
+secara langsung agar replay tidak memakai katalog pusat yang lebih baru.

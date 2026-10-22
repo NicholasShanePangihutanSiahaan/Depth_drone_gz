@@ -1675,3 +1675,87 @@ build diperiksa py_compile dan8 depth-health tests lulus.38 s.
 Bukti build_ros/polinasi_nav/pytest.xml, /tmp/fixed_fast_backup_build.log,
 /tmp/fixed_fast_backup_replay.log. Perubahan belum flight validated dan
 belum ada misi bunga dua pohon yang COMPLETE/disarm. Commit/push sebelumrun13.
+
+
+### 22 Oktober 2026 — run13 entry point-safe tetapi arrival reserve gagal
+
+Flightc5a8d3a, reports/fixed_lidar_validation_20261022_091757,
+registered session .dependencies/ros_sensor_palm_farm_flowers_20261022_091800_30379_mapping.
+Berhenti83.15 s simulasi/blocked_route, BRAKE/APPROACH pohon pertama ID2.
+Session stopped=true.741 pasangan pose: RMSE .01051978785 m,
+maksimum .0196707233 m. Tidak ada recovery depth atau health fault tercatat;
+optimasi backup durasi baru belum tervalidasi terhadap kegagalan run12.
+Belum scan/inspeksi dua pohon/return/landing/disarm. Tidak ada GUI atau
+hardware yang dioperasikan; kode seluruh run sudah push sebelum launch.
+
+Snapshot fatal baru berfungsi: failure_critical.npz merekam map657,
+observasi82.8, command[-6.5,-.9,1.9], tujuan
+[-6.584355166,-.853671854,2.0], blocked_since71.10. Pada status akhir,
+route_blockage planner_no_route/goal_not_safe, unknown_count0,
+occupied_count0. Label goal_not_safe berasal dari _choose_goal=False secara
+generik; bukan bukti single-cell tujuan occupied. History result justru
+observed_frontier_reached dengan terminal_reserve_rejections pada tujuan.
+Raw/guard point-safe dan line_safe menuju tujuan TRUE pada replay exact
+snapshot, tetapi route_terminal_reserve_check FALSE: uncertainty+forward PID
+menyentuh guard cell centre[-6.7,-.9,2.1]. Footprint raw blocker kosong karena
+witness adalah mask yang sudah diperluas buffer, bukan raw cell tujuan.
+Jadi ini inkonsistensi pemilihan entry dan kedatangan, bukan kehilangan GPS,
+ICP failure atau bukti obstacle dihapus. Tidak menghapus guard.
+
+Penyebab kode: selektor baru hanya menilai safe point, connector dan komponen
+free; jika endpoint tetap point-safe ia dipertahankan, meskipun history/live
+arrival check sudah menolaknya. Dengan demikian tujuan yang geometri
+posisinya sah tetapi near-zero robust arrival-nya gagal dipilih berulang
+sampai blocked timeout12 s. Ini mirip pelajaran scan terminal direction,
+tetapi sekarang pada entry APPROACH yang baru ditambahkan, bukan klaim
+perbaikan scan sebelumnya sudah menangani semua supervisor.
+
+Perbaikan: candidate geometris diurutkan dengan skor yang sama, kemudian
+maksimal12 kandidat menjalani A* dengan limit expansions yang sama dan
+route_terminal_reserve_check dari edge akhir A* yang SEBENARNYA. Tidak
+mengasumsikan arah masuk radial/XY sama dengan detour 3D. Diagnostic
+route_candidates_evaluated, rejected.route/terminal_reserve dan witness
+menjelaskan penolakan. Budget habis dinyatakan entry_search_budget, bukan
+membuka unknown atau menambah budget A*. Seluruh smoothing/full-curve/
+braking/live validation tetap menentukan flight.
+
+Selektor juga membaca terminal_reserve_rejections live history, atau terminal
+failure hasil kurva, yang witness map_version-nya sama dengan snapshot saat
+ini. Jika point tujuan cocok, entry dievaluasi ulang meski single-cell tetap
+free; kandidat dengan koordinat yang baru ditolak tidak dipilih lagi pada
+snapshot itu. Ini bukan permanent blacklist obstacle/goal antar-map dan tidak
+mereset blocked/history deadlines. No-terminal-safe-entry dapat ditunda hanya
+dengan syarat occupied-entry/alternatif yang sama seperti sebelumnya.
+
+Replay exact raw mask critical83.15 dan guard yang sama. Pusat aktif belum
+tersimpan di snapshot lama: direkonstruksi dari katalog19.6 s sebagai
+[-8.539690995,-.433360307], radius ke recorded target tepat2.0 m dan selected
+offset sebelumnya -15 derajat. Tidak memakai pusat katalog terbaru yang
+sudah bergeser sekitar2.5 cm; pergeseran itu dapat menghasilkan terminal
+check berbeda dan tidak boleh diklaim exact old mission. Metadata snapshot
+berikutnya kini langsung menyimpan active_tree, tree_angle dan view_target
+untuk menghindari rekonstruksi ini. Ini sensor mission state, bukan GT.
+
+Pada replay selektor menolak target lama dan alternatif ketinggian1.9 m
+(uncertainty-only menyentuh guard cell[-6.7,-.9,1.9]), lalu memilih entry
+[-6.759766252,-1.345428237,2.0], offset -30 derajat dari arah masuk awal.
+Dua route candidates diperiksa; sekitar103 ms pada satu replay offline,
+bukan benchmark flight. Radius tetap2 m, cap2 m dan minimum transit1 m.
+Dengan actual local A* path dari snapshot dipasok lewat interface history
+(source jelas frozen_local_A_star_not_live_history), full preparation
+berhasil, kurva11.1426071 s setelah certified retiming. Perubahan goal pada
+flight tetap menunggu route history baru; replay ini tidak membuktikan route
+worker live atau flight lolos. Tidak mengosongkan timer run asli untuk
+mengklaim abort boleh dilanjutkan.
+
+Dua regresi baru membuat measured partial wall: entry point/connector/chord
+free tetapi near-zero feedback stop gagal; selektor memakai actual A* edge
+untuk memilih alternatif yang terminal-safe. Live same-map arrival rejection
+memicu seleksi ulang tanpa mereset blocked_since atau menghitung inspeksi.
+21 targeted tests lulus7.11 s. Full build/regresi sedang berjalan; belum
+flight validated atau berhasil dua pohon pada palm_farm_flowers.
+
+Build tiga paket berhasil;469 tes lulus276.62 s,0 errors/failures/skipped.
+Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_arrival_build.log.
+Tidak ada flight saat suite berat dijalankan. Commit/push sebelum run14;
+perbaikan kedatangan entry dan pemendekan recovery brake belum flight validated.

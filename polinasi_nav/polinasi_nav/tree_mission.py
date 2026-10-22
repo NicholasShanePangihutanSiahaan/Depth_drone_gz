@@ -332,14 +332,27 @@ class TreeInspectionController(SurveyController):
             from .approach_target import approach_grid,connected_endpoint,select_approach_target
             target_safe=(self.view_target is not None and
                 connected_endpoint(approach_grid(self.grid,self.c),self.view_target))
+            # The live history-prefix check can revoke arrival reserve even
+            # while the destination point/centre connector remains free.
+            rejected_entries=[]
+            terminal_rejections=list(self.global_route_diagnostics.get('terminal_reserve_rejections',[]))
+            if self.route_failure_diagnostics.get('reason')=='terminal_robust_reserve_unavailable':
+                terminal_rejections.append(dict(point=self.route_failure_diagnostics['position'],
+                    check=self.route_failure_diagnostics.get('check',{})))
+            for rejected in terminal_rejections:
+                witness=rejected.get('check',{}).get('blockage',{})
+                if witness.get('map_version')==self.grid.version:
+                    rejected_entries.append(np.asarray(rejected['point']))
+            if self.view_target is not None and any(np.linalg.norm(self.view_target-p)<1e-6 for p in rejected_entries):
+                target_safe=False
             if not target_safe:
                 selected,self.approach_target_diagnostics=select_approach_target(
-                    self.grid,current,tree,self.tree_angle,self.c)
+                    self.grid,current,tree,self.tree_angle,self.c,excluded=rejected_entries)
                 if selected is not None:
                     self.view_target=selected;target_safe=True
                 elif (occupied_entry and self.blocked_since is not None
                         and self.c.get('defer_blocked_tree_entry')
-                        and self.approach_target_diagnostics.get('result')=='no_safe_connected_entry'
+                        and self.approach_target_diagnostics.get('result') in ('no_safe_connected_entry','no_terminal_safe_entry')
                         and any(t['id']!=tree['id'] for t in self.candidates())):
                     # The task selects two measured trees, not mandatory IDs.
                     # Defer this failed ENTRY, never count an inspection or reset
