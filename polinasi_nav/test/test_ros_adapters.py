@@ -569,3 +569,42 @@ def test_mapping_handoff_selects_exact_transformable_scan_and_preserves_newer(mo
     NavigationNode.map_pending(fake)
     assert fake.map_worker.submit.call_count==1
     assert fake.pending.status()['pending']==0
+
+
+def test_accepted_pose_refreshes_health_immediately_without_waiting_for_timer(monkeypatch):
+    from polinasi_nav.ros_nodes import ConfigNode
+    from rclpy.parameter import Parameter
+    original_init=ConfigNode.__init__;original_get=LocalisationNode.get_parameter
+    def sensor_config(self,*args,**kwargs):
+        original_init(self,*args,**kwargs)
+        self.c.update(sensor_fixed_localisation=True,lidar_fixed=True,sensor_gimbals_enabled=False)
+    def get_parameter(self,name):
+        return Parameter('mode',Parameter.Type.STRING,'sensor') if name=='mode' else original_get(self,name)
+    monkeypatch.setattr(ConfigNode,'__init__',sensor_config)
+    monkeypatch.setattr(LocalisationNode,'get_parameter',get_parameter)
+    node=LocalisationNode()
+    try:
+        node.now=lambda:21.501
+        node.last_stamp=21.2;node.last_imu=21.5;node.estimator.last_good=21.2
+        node.sensor_debug_snapshot=node.estimator_snapshot()
+        node.status=Mock();node.localisation_diagnostics=Mock()
+        node.health()
+        assert not node.status.publish.call_args.args[0].data
+        def accept(points,stamp):
+            node.estimator.last_good=stamp;node.estimator.last_scan=stamp
+            node.estimator.reason='tracking';return True
+        node.estimator.scan=accept
+        cloud=point_cloud2.create_cloud_xyz32(Header(frame_id='mid360',
+            stamp=Time(sec=21,nanosec=300000000)),[[2.,0.,1.]])
+        node.scan(cloud)
+        assert node.last_stamp==pytest.approx(21.3)
+        assert node.status.publish.call_args.args[0].data
+        assert node.last_scan_processing['registration_wall_ms']>=0
+        # A new accepted scan does not clear an actual IMU receive failure.
+        node.last_imu=21.3
+        cloud.header.stamp.nanosec=400000000
+        node.scan(cloud)
+        assert not node.status.publish.call_args.args[0].data
+        debug=json.loads(node.localisation_diagnostics.publish.call_args.args[0].data)
+        assert debug['health_gate']=='imu_receive_stale'
+    finally:node.destroy_node()

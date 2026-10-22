@@ -2079,3 +2079,48 @@ Perbaikan belum flight validated dan belum jaminan seluruh backlog teratasi.
 Run18 stopped=true terverifikasi pada session.json; peta map.json/map.html
 masing-masing12MB dan navigation_debug.jsonl tersimpan di reports/ros_sensor_*
 run18/map_3d, tidak dimasukkan commit.
+
+
+### 22 Oktober 2026 — run19: health pose lama tertinggal setelah pose baru masuk
+
+Commit9854251 dipush. Run reports/fixed_lidar_validation_20261022_205704,
+session .dependencies/ros_sensor_palm_farm_flowers_20261022_205712_34185_mapping.
+Setup/arming/takeoff lolos, lalu terminal localisation_loss21.55s,
+APPROACH tree1 belum trajectory aktif/sektor inspeksi.119 audit pairs,
+RMSE.0093413510m/max.0213694729m. Depth integrated20.8 age.75 masih fresh;
+valid21 age.55, received21.2. Mapping queue memilih scan21.0 age.26s,
+newer21.1 pending. Jadi antrean mapper berfungsi live, tetapi ini belum
+validasi bebas depth timeout sepanjang flight.
+
+Localisation debug21.501: healthyFalse/pose_measurement_stale,
+acceptedpose21.2 age.301>limit.3 (nyata, bukan roundoff). IMU21.5 age.001,
+queue39/overflow0, ICP scan21.3 berjalan sejak21.423, frontend_reason tracking.
+Residual scan21.2 .050574m, inlier.93944, correction.01262m, tidak membuktikan
+kegagalan ICP permanen/drift. Pada navigation21.55, pose21.3 SUDAH diterima
+(age.25), tetapi localisation_ok masihFalse dari timer health sebelumnya.
+Sumber LocalisationNode menerbitkan health hanya timer.1s, bukan saat pose
+accepted, sehingga kondisi gagal pose lama bertahan sampai timer selanjutnya.
+IMU queue input fix tetap bekerja: raw IMU age.001 saat ICP busy.
+
+Perbaikan: commit accepted pose, estimator diagnostic snapshot, dan health
+update segera pada scan selesai di bawah RLock keluaran yang sama dengan
+timer health. Heavy ICP tetap di luar lock; input IMU tidak mengambil lock
+keluaran. Tidak mengabaikan False, tidak menambah debounce/grace, tidak
+mengubah limit pose.3/IMU.1. Timer tetap menerbitkan kegagalan yang nyata
+selama ICP busy; accepted scan baru mengevaluasi ulang semua gate segera,
+sehingga tidak menunggu tick.1s untuk menerbitkan sehat bagi pose baru.
+Jika navigator benar-benar memeriksa saat pose stale sebelum hasil baru
+tersedia, fault tetap sah dan masih mungkin. Ini perbaikan publikasi status,
+BUKAN klaim ICP latency sudah diperbaiki. Menggunakan praktik serialisasi
+callback output ROS2 yang dirujuk sebelumnya, bukan implementasi SUPER.
+
+Tambahan last_scan_processing menyimpan stage waktu wall IMU, preprocessing,
+registration, start/end sim/wall, accepted flag melintasi scan berikutnya;
+scan_processing live tetap menunjukkan pekerjaan busy. Diperlukan untuk
+audit biaya ICP bila deadline tetap gagal. Tes actual node mereproduksi
+False pada21.501 untuk pose21.2, accepted21.3 langsung menerbitkanTrue tanpa
+timer; accepted berikutnya dengan IMU stale tetap menerbitkanFalse.
+41 targeted ROS/sync/localisation tes lulus2.50s; build tiga package berhasil
+dan seluruh483 tes full suite lulus276.25s,0error/failure/skipped.
+Ini sekaligus memverifikasi ulang semua kasus antrean mapping/isolasi pada
+satu invocation penuh. Flight perbaikan health belum tervalidasi.

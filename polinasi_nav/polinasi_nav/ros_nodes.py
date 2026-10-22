@@ -134,6 +134,7 @@ class LocalisationNode(ConfigNode):
         self.last_imu = -math.inf
         self.pending_imu = deque(maxlen=500)
         self.input_lock=threading.Lock()
+        self.health_lock=threading.RLock()
         self.pending_imu_overflows=0
         self.rolling_sensor=bool(self.mode=='sensor' and (self.c.get('sensor_rolling_localisation') or self.c.get('sensor_fixed_localisation')))
         self.estimator = LidarImuOdometry(self.c['lidar_mount'], self.c['initial_pose'],body_imu=self.rolling_sensor,
@@ -291,6 +292,7 @@ class LocalisationNode(ConfigNode):
                 batch.append(self.pending_imu.popleft())
         self.scan_processing=dict(busy=True,scan_stamp=stamp,started_sim=self.now(),
             started_wall_ns=time.monotonic_ns(),imu_samples=len(batch))
+        imu_started=time.monotonic_ns()
         for imu_stamp,gyro,acceleration in batch:
             if self.estimator.last_imu is not None:
                 imu_intervals.append(imu_stamp-self.estimator.last_imu)
@@ -304,6 +306,7 @@ class LocalisationNode(ConfigNode):
             peak_acceleration_mps2=max((s[2] for s in integrated),default=0.),
             predicted_rotation_delta_rad=float(np.linalg.norm(Rotation.from_matrix(self.estimator.r@input_r.T).as_rotvec())),
             mount_rotation_rpy=Rotation.from_matrix(self.estimator.mount_r).as_euler('xyz').tolist())
+        preprocessing_started=time.monotonic_ns()
         points = cloud_points(msg)
         ranges = np.linalg.norm(points, axis=1)
         points = points[(ranges >= self.c['lidar_min_range']) & (ranges < self.c['lidar_range']-0.05)]
@@ -311,13 +314,22 @@ class LocalisationNode(ConfigNode):
         body = points@e.mount_r.T+e.mount_p
         from .self_filter import self_mask
         keep = ~self_mask(body,self.c)
-        if e.scan(points[keep], seconds(msg.header.stamp)):
-            self.publish(msg.header.stamp, e.p, e.r, e.v, e.omega, e.covariance)
-        # Atomic immutable snapshot: the health callback never reads a partially
-        # predicted/corrected state while the serialized scan callback is active.
-        self.sensor_debug_snapshot=self.estimator_snapshot()
-        self.scan_processing=dict(self.scan_processing,busy=False,completed_sim=self.now(),
-                                  completed_wall_ns=time.monotonic_ns())
+        registration_started=time.monotonic_ns()
+        accepted=e.scan(points[keep], seconds(msg.header.stamp))
+        registration_finished=time.monotonic_ns()
+        snapshot=self.estimator_snapshot()
+        # Serialize pose commit with timed health publication. A new accepted
+        # measurement must not wait another 0.1 s timer to clear old health.
+        with getattr(self,'health_lock',nullcontext()):
+            if accepted:self.publish(msg.header.stamp,e.p,e.r,e.v,e.omega,e.covariance)
+            self.sensor_debug_snapshot=snapshot
+            self.scan_processing=dict(self.scan_processing,busy=False,completed_sim=self.now(),
+                completed_wall_ns=time.monotonic_ns(),accepted=bool(accepted),
+                imu_wall_ms=(preprocessing_started-imu_started)/1e6,
+                preprocessing_wall_ms=(registration_started-preprocessing_started)/1e6,
+                registration_wall_ms=(registration_finished-registration_started)/1e6)
+            self.last_scan_processing=dict(self.scan_processing)
+            if accepted:LocalisationNode.publish_health(self)
 
     def estimator_snapshot(self):
         e=self.estimator
@@ -332,6 +344,9 @@ class LocalisationNode(ConfigNode):
             reference_points=0 if e.reference is None else len(e.reference)))
 
     def health(self):
+        with getattr(self,'health_lock',nullcontext()):LocalisationNode.publish_health(self)
+
+    def publish_health(self):
         now=self.now()
         fresh=fresh_stamp(now,self.last_stamp,self.c['pose_timeout'])
         gate=None if fresh else 'pose_measurement_stale'
@@ -358,6 +373,7 @@ class LocalisationNode(ConfigNode):
                 received_imu_age_seconds=now-received_imu if math.isfinite(received_imu) else None,
                 pending_imu_count=pending_imu,imu_queue_overflows=getattr(self,'pending_imu_overflows',0),
                 scan_processing=dict(getattr(self,'scan_processing',{})),
+                last_scan_processing=dict(getattr(self,'last_scan_processing',{})),
                 parallel_sensor_inputs=bool(getattr(self,'parallel_sensor_inputs',False)),
                 dynamic_extrinsics=bool(self.c.get('simulation_continuous_roll')),
                 fixed_lidar=bool(self.c.get('lidar_fixed')),ground_truth_input=False)

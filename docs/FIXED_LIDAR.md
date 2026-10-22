@@ -351,3 +351,9 @@ pemilihan exact-time-transformable yang sama; statistiknya berada pada
 `mapping_lidar_transform_queue`. Umur peta tetap waktu observasi asli,
 bukan waktu pengiriman snapshot. Antrean tidak mengizinkan penggunaan scan
 yang melewati cloud_timeout dan tidak menutupi keterlambatan integrasi depth.
+
+Health lokalisasi dievaluasi ulang segera setelah pose diterima, selain timer
+.1 s. Publikasi pose/health diserialisasi agar status pose lama tidak menunggu
+satu periode timer setelah pose baru masuk. Batas freshness tetap sama;
+pose yang benar-benar terlambat masih menyebabkan fault. Rincian biaya scan
+terakhir tersimpan dalam `/localisation/debug.last_scan_processing`.
