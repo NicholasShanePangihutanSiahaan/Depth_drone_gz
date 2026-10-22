@@ -4,12 +4,15 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 import time
 
+import numpy as np
+
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Bool
 
 from beehive_drone.depth_avoidance_controller import DepthAvoidanceController
 from beehive_drone.position_setpoint_controller import PositionSetpointController
 from beehive_drone.mission_state_machine import MissionStateMachine
+from beehive_drone.depth_navigation import DepthView, ObstacleMemory
 
 
 def test_supervisor_missing_depth_holds_during_return_home():
@@ -62,3 +65,29 @@ def test_hold_message_updates_independent_wallclock_watchdog():
     PositionSetpointController.avoidance_cb(node, Bool(data=True))
     assert node.avoidance_hold
     assert time.monotonic()-node.avoidance_time < 0.1
+
+
+def test_occupied_approach_point_uses_alternative_entry_on_same_circle():
+    pose = PoseStamped()
+    pose.pose.orientation.w = 1.0
+    pose.pose.position.z = 1.5
+    goal = deepcopy(pose)
+    goal.pose.position.x = 2.4  # trunk at (5, 0), radius 2.6
+    now = time.monotonic()
+    node = SimpleNamespace(
+        pose=pose, pose_time=now, depth_time=now, latched_fault=None,
+        p={'pose_timeout': .5, 'depth_timeout': .8, 'goal_timeout': 1.,
+           'vehicle_half_height': .3, 'vehicle_radius': .4, 'clearance_margin': .35,
+           'grid_resolution': .2, 'planning_radius': 7., 'orbit_radius': 2.6,
+           'lookahead': .65, 'yaw_tolerance_degrees': 12., 'blocked_timeout': 30.},
+        state='APPROACH_TREE', goals={'fsm': goal}, goal_times={'fsm': now},
+        ready_pub=Mock(), output=Mock(), orbit_centre=None, detour_goal=None,
+        waypoint=None, blocked_since=None,
+        yaw=DepthAvoidanceController.yaw,
+        memory=SimpleNamespace(slice=lambda *args: np.array([[2.4, 0.]])),
+        view=DepthView(np.full((80,100), 10.), (60.,60.,49.5,39.5),
+                       np.array([0.,0.,1.5]), np.eye(3)))
+    DepthAvoidanceController.tick(node)
+    assert node.detour_goal is not None
+    assert abs(np.linalg.norm(node.detour_goal-[5.,0.])-2.6) < 1e-6
+    assert node.output.call_args.args[1] in ('DETOUR', 'LOOK_BEFORE_MOVE')
