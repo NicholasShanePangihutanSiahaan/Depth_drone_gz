@@ -1587,3 +1587,91 @@ Build tiga paket berhasil;464 tes lulus99.62 s,0 errors/failures/skipped.
 Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_entry_build.log.
 Commit/push sebelum run12. Belum flight validated untuk pemilihan entry/
 deferral baru atau keberhasilan dua pohon pada map bunga.
+
+
+### 22 Oktober 2026 — run12 fresh depth tetapi settling deadline habis
+
+Flight5ce3e3b, reports/fixed_lidar_validation_20261022_084830,
+registered session .dependencies/ros_sensor_palm_farm_flowers_20261022_084832_26394_mapping.
+Session stopped=true pada176.90 s simulasi/stale_depth_camera,
+HOLD_ABORT/APPROACH tree4.1678 pasangan pose: RMSE .01218397703 m,
+maksimum .0233123625 m. Sensor ICP+IMU tanpa ground truth input.
+Approach pertama20.60→72.201 s (51.601 s simulasi), SCAN mulai75.45.
+Enam sektor pohon pertama (ID2 pada run ini) selesai dan sudah berangkat
+ke pohon kedua ID4. ID katalog dapat berbeda antar-run; tidak mencocokkan
+pohon fisik hanya dari nomor ID. Belum return/landing/disarm. Entry deferral
+baru belum tervalidasi flight: run berakhir SEBELUM kegagalan entry run11.
+Tidak membandingkan waktu ini sebagai benchmark kausal sebelum/sesudah SUPER.
+
+Bukti sensor: pada176.9 integrated/valid depth stamp176.6, age .30 s,
+cloud age .10 s dan depth_safety action fresh, threshold depth1.0 s.
+DepthMotionRecovery dimulai174.85 karena integrated age .65 s melewati
+preventive .6, valid age .25. Data kembali fresh175.0 tetapi recovery belum
+boleh resume sebelum brake selesai, actual velocity<.04, reference<.01,
+post-start map fresh serta body-safe. Cadangan yang dieksekusi berdurasi
+1.9805796995 s, v bound .3346830, a bound .2686519, jerk bound .6290619.
+Pada176.4 actual .01138 m/s tetapi reference masih .03532 dan brake belum
+selesai. Pada176.8 HOLD_ABORT/reference≈0 tetapi actual .06262 m/s;
+176.9 actual .07440 dan deadline2.0 s sudah terlewati (elapsed2.05).
+Kode mengubah failure menjadi stale_depth_camera walau image/integrasi fresh.
+Ini bukti kegagalan settling deadline, bukan bukti kamera mati/lokalisasi loss
+atau ICP drift. Tidak menaikkan timeout atau ambang actual settling.
+
+Log juga memuat depth TF extrapolation: requested176.8, latest TF176.7.
+Itu membuktikan setidaknya satu frame tidak diproyeksikan karena transform
+pada timestamp belum tersedia. Belum membuktikan starvation antrean permanen
+atau akar seluruh integration lag; tidak mengganti TF dengan latest stamp,
+mengganti label frame atau menyatakan dropout aman. Perbaikan antrean kamera
+belum diimplementasikan pada perubahan ini.
+
+Masalah model: konstruksi base Brake memilih durasi konservatif dari
+max(.3,3*|v|/a_max,sqrt(12*|v|/j_max),3*|a|/j_max), lalu runtime explicit_backup
+memakainya selama valid. Pencarian durasi lebih singkat yang sudah ada hanya
+aktif ketika base gagal, sehingga base1.98 s yang valid tetap dipilih meski
+batas a/j masih menyisakan ruang. Hampir seluruh recovery2 s habis untuk
+kurva referensi, tanpa cukup waktu settling aktual. Belum membuktikan durasi
+lebih pendek pasti menyelesaikan tracking/settling closed-loop.
+
+Perbaikan fixed inspection opt-in explicit_backup_duration_optimisation=True:
+periksa tiga kandidat straight-stop (base, .85x, .70x). Initial PVA tetap,
+terminal v/a=0, endpoint disesuaikan sepanjang displacement base dan koefisien
+quintic dihitung ulang, bukan sekadar mempercepat replay sampel. Kandidat
+diurutkan menurut durasi dan pertama yang memenuhi derivative hull speed/a/j
+serta seluruh live inflated-mask path dipilih. Tidak mengubah limits atau
+menganggap slew limiter bukti aman. Bila tak ada yang valid, existing bounded
+endpoint fallback tetap berlaku; zero-speed case tetap satu kandidat .3 s.
+Perubahan berlaku pada sertifikasi planner dan cached backup final publisher
+sehingga brake yang dieksekusi sama dengan kandidat tersertifikasi.
+
+Sumber primer: SUPER backup_traj_optimizer_s4.cpp mengoptimalkan waktu,
+initial/terminal state dan posisi dalam koridor dengan batas dinamika,
+https://github.com/hku-mars/SUPER/blob/master/super_planner/src/traj_opt/backup_traj_optimizer_s4.cpp
+Referensi implementasi melibatkan MINCO/L-BFGS/corridor; perubahan fixed ini
+pencarian diskret terbatas tiga quintic stops sendiri, bukan port optimizer
+SUPER dan bukan klaim optimum global. Toleransi1.2x bounds yang tampak pada
+salah satu check source SUPER TIDAK disalin; hard bounds lokal tetap sama.
+
+Replay sembilan snapshot run12 mempertahankan exact blocked mask dan PVA
+metadata: moving examples1.9776146→1.6809724,2.0868015→1.4607611,
+2.0856705→1.4599694,1.9563706→1.3694594,1.8437221→1.5671638 s;
+zero-speed cases tetap .3→.3 s. Semua kandidat hasil lulus batas yang sama.
+Pengukuran wall sekitar1–2 ms/call saat offline replay BERSAMA regresi,
+bukan benchmark timing flight atau jaminan Jetson. Snapshot exact PVA trigger
+174.85 tidak tersedia, sehingga ini bukan exact replay closed-loop abort.
+
+Diagnostic DepthMotionRecovery kini menyimpan failure_gate
+(valid_frame_stale/recovery_settling_deadline), actual/reference speed,
+brake presence/duration, post-start-map dan vektor reference PVA serta
+measured position/velocity. Failure string/gates/deadline tetap agar auditor
+tidak menyembunyikan kegagalan. Diagnostic lintasan lama117.7 s pada status
+akhir run12 tidak dipakai sebagai penyebab depth failure.
+
+Regresi baru: shorter backup menjaga initial PVA dan terminal v/a nol,
+lulus full path/derivative bounds; occupied start tetap ditolak dan zero speed
+bounded; fresh depth tidak membatalkan settling deadline, dengan failure_gate
+jelas.53 targeted lulus39.10 s; build tiga paket dan467 full tests lulus
+100.77 s (0 errors/failures/skipped). Penambahan vektor diagnostic setelah
+build diperiksa py_compile dan8 depth-health tests lulus.38 s.
+Bukti build_ros/polinasi_nav/pytest.xml, /tmp/fixed_fast_backup_build.log,
+/tmp/fixed_fast_backup_replay.log. Perubahan belum flight validated dan
+belum ada misi bunga dua pohon yang COMPLETE/disarm. Commit/push sebelumrun13.

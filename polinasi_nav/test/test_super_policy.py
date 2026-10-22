@@ -650,3 +650,33 @@ def test_evidence_snapshots_preserve_acceptance_and_revocation_separately(tmp_pa
     # Latest evidence replaces the fixed slot: no unbounded snapshot backlog.
     save_failure_snapshot(ctl,dict(reason='certified_candidate'),evidence_slot='accepted')
     assert len(list(tmp_path.glob('*.npz')))==11
+
+
+def test_fast_straight_backup_preserves_PVA_and_all_hard_bounds():
+    c,g=fixture();p=np.array([0.,0.,2.]);v=np.array([.33,0.,0.]);a=np.array([.06,0.,0.])
+    base,original=explicit_backup(g,p,v,a,c)
+    c['explicit_backup_duration_optimisation']=True
+    faster,detail=explicit_backup(g,p,v,a,c)
+    assert faster is not None and faster.duration<base.duration
+    np.testing.assert_allclose(faster.coeff[0],p)
+    np.testing.assert_allclose(faster.coeff[1],v)
+    np.testing.assert_allclose(2*faster.coeff[2],a)
+    t=faster.duration
+    velocity=sum(k*t**(k-1)*faster.coeff[k] for k in range(1,6))
+    acceleration=sum(k*(k-1)*t**(k-2)*faster.coeff[k] for k in range(2,6))
+    np.testing.assert_allclose(velocity,0.,atol=1e-8)
+    np.testing.assert_allclose(acceleration,0.,atol=1e-8)
+    assert faster.path_safe(g) and detail['candidate_count']==3
+    for key,limit in (('speed_mps','speed'),('acceleration_mps2','acceleration'),('jerk_mps3','jerk')):
+        assert detail['derivative_bounds'][key]<=c[limit]+1e-8
+    assert detail['search_mode']=='bounded_straight_duration_search'
+
+
+def test_fast_backup_still_rejects_occupied_start_and_keeps_zero_speed_bounded():
+    c,g=fixture();c['explicit_backup_duration_optimisation']=True
+    p=np.array([0.,0.,2.]);zero=np.zeros(3)
+    stop,detail=explicit_backup(g,p,zero,zero,c)
+    assert stop is not None and detail['candidate_count']==1
+    g.state[tuple(g.indices(p))]=OCCUPIED;g.rebuild(0.)
+    stop,detail=explicit_backup(g,p,[.33,0.,0.],zero,c)
+    assert stop is None and not detail['start_safe']

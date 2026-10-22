@@ -43,10 +43,13 @@ class DepthMotionRecovery:
         age = math.inf if integrated is None else now-integrated
         threshold = timeout*.6
         action = 'inactive'
+        failure_gate=None
         if self.started is not None:
             if controller.failure != 'depth_recovering':
                 action = 'superseded_by_failure'
             elif not fresh_depth(now, valid, timeout) or now-self.started > hold_timeout:
+                failure_gate=('valid_frame_stale' if not fresh_depth(now,valid,timeout)
+                    else 'recovery_settling_deadline')
                 controller.failure = 'stale_depth_camera'
                 action = 'fail'
             elif (controller.state == 'HOLD_ABORT' and controller.brake is None
@@ -80,5 +83,16 @@ class DepthMotionRecovery:
         self.status = dict(action=action,started=self.started,recoveries=self.count,
             integrated_age=None if integrated is None else age,
             valid_age=None if valid is None else now-valid,
-            preventive_threshold_seconds=threshold,hold_timeout_seconds=hold_timeout)
+            preventive_threshold_seconds=threshold,hold_timeout_seconds=hold_timeout,
+            failure_gate=failure_gate,actual_speed_mps=float(np.linalg.norm(velocity)),
+            commanded_speed_mps=float(np.linalg.norm(controller.command_v)),
+            reference_position_m=np.asarray(controller.command).tolist(),
+            reference_velocity_mps=np.asarray(controller.command_v).tolist(),
+            reference_acceleration_mps2=np.asarray(controller.command_a).tolist(),
+            measured_position_m=np.asarray(position).tolist(),
+            measured_velocity_mps=np.asarray(velocity).tolist(),
+            brake_present=controller.brake is not None,
+            brake_duration_seconds=(float(controller.brake.duration) if controller.brake is not None
+                else controller.backup_diagnostics.get('duration_seconds')),
+            post_start_map=(integrated is not None and self.started is not None and integrated>self.started))
         return action

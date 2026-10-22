@@ -285,3 +285,14 @@ atau mereset timeout. `scan_floor` menjaga entry rendah yang aman, tetap
 bounded descent/ground/unknown checks. Perubahan ini lulus frozen replay
 prefix ke kandidat tree4, belum flight validated. Blocked_route sekarang
 menyimpan critical snapshot/current cause meskipun ordinary budget penuh.
+
+
+Run5ce3e3b menyelesaikan enam sektor pohon pertama dan approach ke pohon
+kedua, tetapi berhenti176.90 s stale_depth_camera. Depth sudah fresh .30 s;
+penyebab terbukti adalah recovery2 s habis sebelum settling aktual, dengan
+base brake1.98 s. `explicit_backup_duration_optimisation=True` kini mencoba
+base/.85/.70 dengan initial PVA, terminal v/a dan hard derivative/collision
+checks tetap. Ini bounded straight-stop search, bukan optimizer SUPER penuh.
+Depth recovery menampilkan failure_gate dan vektor referensi/pengukuran untuk
+audit. Timeout, gate sensor dan settling tidak dilonggarkan.467 regresi lulus;
+perbaikan settling serta deferral entry masih perlu flight berikutnya.

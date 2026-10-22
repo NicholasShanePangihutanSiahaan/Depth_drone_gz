@@ -34,7 +34,7 @@ def main(scenario='palm_farm'):
                      transit_observation_guard=.2,transit_lateral_observation_guard=.2,
                      transit_clearance_preference=.4,transit_clearance_cost_weight=2.,
                      duration_optimisation=True,trajectory_spacing_m=1.,explicit_backup_enabled=True,
-                     explicit_backup_fallback_search=True,
+                     explicit_backup_fallback_search=True,explicit_backup_duration_optimisation=True,
                      command_speed=.4,navigation_transit_speed=.4,navigation_scan_speed=.3,
                      navigation_default_speed=.3,
                      scan_adaptive_height=True,scan_target_repair=True,

@@ -205,12 +205,22 @@ def optimise_durations(trajectory,grid,c):
 def explicit_backup(grid,p,v,a,c,optimise=False):
     """Materialized PVA-continuous stop; no frame or setpoint publisher.
 
-    Runtime uses the bounded straight-stop candidate. Planner/evaluation can
-    search duration and terminal positions, including lateral/vertical detours.
+    Runtime can check three bounded straight-stop durations. Planner/evaluation
+    can also search terminal positions, including lateral/vertical detours.
     Final curve checks use both inflated body geometry and derivative hulls.
     """
     base=Brake(p,v,a,c)
     candidates=[base];p=np.asarray(p);v=np.asarray(v);a=np.asarray(a)
+    quick_duration_search=bool(c.get('explicit_backup_duration_optimisation')) and not optimise
+    if quick_duration_search and np.linalg.norm(v)>.02:
+        end=sum(base.duration**k*base.coeff[k] for k in range(6))
+        for scale in (.7,.85):
+            t=base.duration*scale;q=p+(end-p)*scale
+            trial=copy.copy(base);coeff=np.zeros((6,3));coeff[:3]=[p,v,a/2]
+            matrix=[[t**3,t**4,t**5],[3*t*t,4*t**3,5*t**4],[6*t,12*t*t,20*t**3]]
+            coeff[3:]=np.linalg.solve(matrix,[q-p-v*t-a*t*t/2,-v-a*t,-a])
+            trial.coeff=coeff;trial.duration=t;candidates.append(trial)
+        candidates.sort(key=lambda candidate:candidate.duration)
     if optimise and np.linalg.norm(v)>.02:
         direction=v/np.linalg.norm(v);side=np.cross(direction,[0.,0.,1.])
         if np.linalg.norm(side)<1e-8:side=np.array([1.,0.,0.])
@@ -245,6 +255,7 @@ def explicit_backup(grid,p,v,a,c,optimise=False):
             continue
         if best is None or t<best.duration:
             best=candidate;best_bounds=bounds;best_index=candidate_index
+            if quick_duration_search:break  # Sorted durations: first feasible is fastest of three.
     if best is None:
         if not optimise and c.get('explicit_backup_fallback_search'):
             started=time.perf_counter()
@@ -262,7 +273,8 @@ def explicit_backup(grid,p,v,a,c,optimise=False):
         derivative_bounds=dict(speed_mps=float(best_bounds[0]),
             acceleration_mps2=float(best_bounds[1]),jerk_mps3=float(best_bounds[2])),
         candidate_count=len(candidates),accepted_candidate_index=best_index,
-        search_mode='bounded_duration_endpoint_search' if optimise else 'base_stop',
+        search_mode=('bounded_duration_endpoint_search' if optimise else
+            'bounded_straight_duration_search' if quick_duration_search else 'base_stop'),
         provenance='measured_plus_explicit_FOV_prior' if c.get('fixed_fov_assumptions') else 'measured_free',
         conditional_on_FOV_assumptions=bool(c.get('fixed_fov_assumptions')))
 

@@ -96,3 +96,13 @@ def test_preventive_depth_threshold_uses_same_roundoff_tolerance_as_freshness():
     assert not ctl.failure
     assert guard.update(33.05,depth,ctl,ctl.command,ctl.command_v,1.)=='certified_brake_started'
     assert ctl.failure=='depth_recovering'
+
+
+def test_fresh_depth_does_not_override_settling_deadline_and_reason_is_explicit():
+    ctl=moving_controller();guard=DepthMotionRecovery()
+    guard.update(3.7,dict(last_integrated_stamp=3.,last_valid_stamp=3.6),ctl,ctl.command,ctl.command_v,1.)
+    depth=dict(last_integrated_stamp=5.6,last_valid_stamp=5.6)
+    assert guard.update(5.75,depth,ctl,ctl.command,[.074,0.,0.],1.)=='fail'
+    assert guard.status['failure_gate']=='recovery_settling_deadline'
+    assert guard.status['integrated_age']<.6 and guard.status['actual_speed_mps']>.04
+    assert ctl.failure=='stale_depth_camera'
