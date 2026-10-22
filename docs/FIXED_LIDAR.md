@@ -336,3 +336,12 @@ untuk health. Clock/IMU tetap dapat diproses selama ICP. Sampel sesudah
 scan tetap antre, pose tidak direstamp, gate IMU.1/pose.3 tidak diperbesar.
 Diagnostic health_gate membedakan stale receive dari frontend_reason ICP.
 29 ROS tests termasuk konkurensi/dropout lulus; belum flight validated.
+
+
+Detector pohon juga mempertahankan hingga enam scan sambil menunggu TF pada
+waktu pengambilan scan. Ia memilih scan terbaru yang transformasinya tersedia
+dalam batas cloud_timeout asli .5 s; dropout tidak memperbarui waktu katalog.
+Statistik antrean ada di `perception_statistics.transform_queue` dan ros.log
+(`Tree scan transform queue`). Katalog kosong dapat menahan alignment FCU
+sebelum arming. Nilai Infinity pada setup position_difference bisa berarti TF
+alignment belum ada; periksa health_reason/fcu_frame_aligned sebelum menyebut drift.

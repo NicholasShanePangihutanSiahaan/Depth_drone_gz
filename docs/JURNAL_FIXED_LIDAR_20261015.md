@@ -1996,3 +1996,39 @@ Belum flight validated, belum membuktikan semua jitter/IMU drop hilang,
 masih estimator eksperimental scan-to-map ICP+body IMU, bukan FAST-LIO.
 Full build/regresi selesai: 480 tests lulus, 0 error/failure/skipped,
 278.13 s; tiga package build berhasil. Belum misi bunga COMPLETE/disarm.
+
+
+### 22 Oktober 2026 — run17: katalog pohon belum tersedia sebelum arming
+
+Commit 2f4352d sudah push; run headless reports/fixed_lidar_validation_20261022_200619,
+session .dependencies/ros_sensor_palm_farm_flowers_20261022_200627_24316_mapping.
+Runner membatalkan setup setelah tiga pemeriksaan, tanpa arming/flight.
+setup.json: localisation_healthy=true, measurements_fresh=true, kontrol satu
+producer=true, depth fresh=true; fcu_externalnav_aligned=false. Pada snapshot
+13.95 s, health_reason=waiting_for_confirmed_measured_tree, tree_catalog_stamp=null,
+perception_statistics={}, fcu_frame_aligned=false. Pose stamp13.7, cloud13.8.
+Tidak ada exception tree detector selama run. Infinity pada position_difference
+adalah sentinel check_ros_simulation ketika lookup map<-fcu_local gagal,
+BUKAN bukti posisi estimator Inf atau drift. Alignment dibuat NavigationNode
+hanya setelah seluruh prasyarat termasuk measured tree tersedia.
+
+Audit sumber TreeDetectorNode membuktikan antrean maxlen1 selalu diganti cloud
+terbaru dan lookup memakai timestamp cloud tersebut. Dengan TF pose13.7 dan
+cloud13.8, cloud terbaru belum transformable. Scan lama yang TF-nya menyusul
+bisa hilang sebelum tick berikutnya. Ini mekanisme starvation yang dapat
+mereproduksi katalog tidak keluar; belum ada trace lookup per tick pada run17,
+jadi frekuensi kegagalan TF live run17 belum terbukti. Tidak mengubah batas
+alignment, freshness atau validasi kandidat untuk meloloskan setup.
+
+Perbaikan memakai kembali bounded DepthTransformQueue6 pada detector:
+pilih cloud TERBARU yang exact-time map<-mid360 tersedia, simpan newer pending,
+expire dengan cloud_timeout .5 yang sama, acknowledge monotonic submitted stamp.
+Tidak memakai latest transform, label frame palsu, atau restamp. Submit tetap
+maksimum1/s dengan satu worker. Queue age/drop/wait/selected stamp dicatat
+setiap1sim s pada ros.log serta hasil katalog/perception_statistics. Tidak ada
+GT masuk estimator, deteksi, planner atau kontrol. Ini prinsip stamped message
+filter yang sudah dirujuk pada perbaikan depth sebelumnya, bukan algoritma SUPER.
+Tes adapter mereproduksi cloud13.6/13.7/13.8 dengan TF sampai13.7: submit13.7,
+simpan13.8, lalu clock15 tanpa data baru tidak submit ulang cloud kedaluwarsa.
+Targeted43 tes lulus16.24s; build tiga package berhasil dan full481 tes
+lulus275.31s, tanpa error/failure/skipped. Perbaikan belum flight validated.

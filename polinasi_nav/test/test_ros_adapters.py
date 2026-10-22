@@ -500,3 +500,36 @@ def test_localisation_receives_IMU_and_clock_during_scan_without_integrating_fut
     finally:
         release.set();executor.shutdown(timeout_sec=2.);runner.join(timeout=2.)
         node.destroy_node();peer.destroy_node()
+
+
+def test_tree_detector_keeps_exact_transformable_scan_and_does_not_reuse_stale_cloud():
+    from polinasi_nav.tree_detector_node import TreeDetectorNode
+    from polinasi_nav.depth_queue import DepthTransformQueue
+    from geometry_msgs.msg import TransformStamped
+    from tf2_ros import TransformException
+    clock=[13.95];tf_until=[13.7];lookups=[]
+    def lookup(target,source,at):
+        stamp=at.nanoseconds*1e-9;lookups.append(stamp)
+        if stamp>tf_until[0]+1e-9:raise TransformException('future transform')
+        tf=TransformStamped();tf.transform.rotation.w=1.
+        return tf
+    fake=SimpleNamespace(pending=DepthTransformQueue(6),future=None,last_submit=-np.inf,
+        last_submitted_stamp=-np.inf,last_queue_log=-np.inf,now=lambda:clock[0],
+        c=dict(cloud_timeout=.5,lidar_range=20.),worker=Mock(),buffer=Mock(),
+        get_logger=lambda:Mock())
+    fake.buffer.lookup_transform.side_effect=lookup
+    fake.exact_transform=lambda msg:TreeDetectorNode.exact_transform(fake,msg)
+    for stamp in (13.6,13.7,13.8):
+        msg=point_cloud2.create_cloud_xyz32(Header(frame_id='mid360',
+            stamp=Time(sec=13,nanosec=round((stamp-13)*1e9))),[[2.,0.,1.]])
+        TreeDetectorNode.receive(fake,msg)
+    TreeDetectorNode.tick(fake)
+    assert fake.worker.submit.call_count==1
+    assert abs(fake.worker.submit.call_args.args[2]-13.7)<1e-9
+    assert abs(lookups[0]-13.8)<1e-9
+    assert fake.pending.status()['pending']==1
+    # Repeated ticks and later TF cannot turn an expired cloud into new evidence.
+    fake.future=None;clock[0]=15.;tf_until[0]=15.
+    TreeDetectorNode.tick(fake)
+    assert fake.worker.submit.call_count==1
+    assert fake.pending.status()['pending']==0
