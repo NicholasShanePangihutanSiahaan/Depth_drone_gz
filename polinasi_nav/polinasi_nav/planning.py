@@ -13,12 +13,24 @@ def plan(grid, start, goal, max_expansions=50000, diagnostics=None):
         diagnostics['reason'] = 'endpoint_not_safe'
     if not grid.safe(start) or not grid.safe(goal):
         return None
-    if grid.line_safe(start, goal):
+    from .path_cost import clearance_cost_field,line_travel_cost
+    field=clearance_cost_field(grid)
+    if diagnostics is not None and field is not None:
+        diagnostics.update(clearance_preference_m=grid.c['planner_clearance_preference'],
+            clearance_cost_weight=grid.c['planner_clearance_cost_weight'],
+            clearance_basis='distance_to_inflated_blocked_mask_not_physical_clearance')
+    direct_safe=grid.line_safe(start, goal)
+    direct_cost=line_travel_cost(grid,start,goal,field) if direct_safe else math.inf
+    def direct_result(fallback=None):
         if diagnostics is not None:
-            diagnostics['reason'] = 'direct'
-        return [start, goal]
+            diagnostics.update(reason='direct',travel_cost=float(direct_cost))
+            if fallback:diagnostics['clearance_search_fallback']=fallback
+        return [start,goal]
+    if direct_safe and (field is None or direct_cost<=np.linalg.norm(goal-start)+1e-9):
+        return direct_result()
     s, g = tuple(grid.indices(start)), tuple(grid.indices(goal))
     if not grid.line_safe(start, grid.centers(s)) or not grid.line_safe(grid.centers(g), goal):
+        if direct_safe:return direct_result('endpoint_grid_connection')
         if diagnostics is not None:
             diagnostics['reason'] = 'endpoint_grid_connection'
         return None
@@ -37,16 +49,25 @@ def plan(grid, start, goal, max_expansions=50000, diagnostics=None):
                 u = parent[u]
                 ids.append(u)
             points = [start] + [grid.centers(i) for i in reversed(ids)] + [goal]
-            # Greedy shortening only where the complete replacement edge is safe.
+            # Shortcut only if safe AND no more expensive than the removed
+            # subpath. Otherwise shortening would restore obstacle-hugging.
+            prefix=np.r_[0.,np.cumsum([line_travel_cost(grid,a,b,field)
+                for a,b in zip(points[:-1],points[1:])])]
             result, index = [points[0]], 0
             while index < len(points)-1:
                 nxt = len(points)-1
-                while nxt > index+1 and not grid.line_safe(points[index], points[nxt]):
+                while nxt > index+1 and (not grid.line_safe(points[index], points[nxt])
+                        or (field is not None and line_travel_cost(grid,points[index],points[nxt],field)
+                            > prefix[nxt]-prefix[index]+1e-9)):
                     nxt -= 1
                 result.append(points[nxt])
                 index = nxt
+            result_cost=sum(line_travel_cost(grid,a,b,field)
+                for a,b in zip(result[:-1],result[1:]))
+            if direct_safe and direct_cost<=result_cost+1e-9:
+                return direct_result()
             if diagnostics is not None:
-                diagnostics.update(reason='detour', expansions=len(closed))
+                diagnostics.update(reason='detour', expansions=len(closed),travel_cost=result_cost)
             return result
         for move in moves:
             v = tuple(np.asarray(u)+move)
@@ -64,11 +85,12 @@ def plan(grid, start, goal, max_expansions=50000, diagnostics=None):
             if not corner_safe:
                 continue
             distance = np.linalg.norm(move)*grid.res
-            candidate = costs[u] + distance
+            candidate = costs[u] + distance*(1. if field is None else (field[u]+field[v])/2)
             if candidate < costs.get(v, math.inf):
                 costs[v], parent[v] = candidate, u
                 h = np.linalg.norm(np.asarray(v)-g)*grid.res
                 heapq.heappush(queue, (candidate+h, v))
+    if direct_safe:return direct_result('search_limit' if queue else 'disconnected')
     if diagnostics is not None:
         diagnostics.update(reason='search_limit' if queue else 'disconnected', expansions=len(closed))
     return None

@@ -1335,3 +1335,66 @@ Build tiga paket berhasil;450 tes lulus96.94 s,0 errors/failures/skipped.
 Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_endpoint_build.log.
 Commit/push sebelum run9; validasi flight perubahan endpoint masih belum
 tersedia dan keberhasilan misi dua pohon pada map bunga belum tercapai.
+
+
+### 22 Oktober 2026 — run9 dan preferensi jarak lunak pada transit
+
+Run9 commit42691db: reports/fixed_lidar_validation_20261022_071758,
+registered session .dependencies/ros_sensor_palm_farm_flowers_20261022_071801_12657_mapping.
+Run dihentikan oleh auditor pada64.55 s simulasi, BRAKE/APPROACH tree2,
+global_route_unavailable/history_start_not_safe; belum selesai approach.
+554 pasangan pose audit: RMSE .0098459693 m, maksimum .0226603413 m.
+Tidak ada bukti fault lokalisasi sebagai penyebab. Session stopped=true.
+
+Pada49.3 s map407, live suffix tidak lagi memenuhi reserve atas/lateral,
+sementara pemeriksaan badan nominal dan aktual masih aman. Brake pulih
+sekitar50.85 s; planner menunggu rute dari52.501 hingga64.55 s. History
+request22/map62.6 menolak start[-4.30993860,-1.44565333,1.49892530],
+goal[-6.51486298,-.33515512,2]. Critical snapshot map538/observasi64.3
+tersimpan di reports/ros_sensor_palm_farm_flowers_20261022_071801_12657_mapping/map_3d/planner_failures/failure_critical.npz.
+Rebuild raw mask identik: posisi berhenti aman untuk mask nominal, tetapi
+terblokir pada transit reserve. Ada occupied[-4.3,-.3,2.3] yang mempengaruhi
+mask tetangga. Snapshot akhir tidak membuktikan kapan voxel itu pertama
+terlihat dan tidak cukup untuk menyimpulkan drift. Tidak menambahkan escape
+yang membolehkan lintasan menerobos reserve dari start yang sudah blocked.
+
+Perbaikan prospektif: A* transit diberi biaya jarak dari mask yang SUDAH
+di-inflate. Preset transit_clearance_preference=.4 m dan
+transit_clearance_cost_weight=2; biaya 1+2*max(0,1-distance/.4)^2.
+Ini preferensi lunak, bukan perubahan hard clearance atau jaminan aman
+terhadap seluruh pembaruan map. Unknown, measured occupied, user FOV prior,
+health, timeout, kecepatan, reserve .2 m atas/lateral tetap sama. Hanya view
+transit mengaktifkan biaya; scan memakai kebijakan geometrinya sendiri.
+A* memakai heuristic Euclidean yang tetap admissible karena biaya>=1.
+Shortcut tidak boleh menaikkan biaya lintasan yang digantikannya. Kandidat
+chord langsung yang sudah line-safe tetap dapat dipakai jika lebih murah
+atau pencarian preferensi habis anggaran. Chord tetap menjalani validasi
+kurva dan pengereman; bila chord blocked, batas pencarian tidak dilonggarkan.
+
+Rujukan prinsip cost-aware A*: dokumentasi primer Nav2 Humble Smac,
+https://api.nav2.org/nav2-humble/html/md_nav2_smac_planner_README.html
+(cost_travel_multiplier memberi preferensi menjauhi area berbiaya tinggi,
+dengan tambahan beban pencarian). Implementasi ini biaya 3D rekayasa sendiri,
+bukan port Nav2, CIRI, MINCO atau SUPER penuh.
+
+Replay dari posisi lebih awal[-2.8,-1,1.5] ke[-6.5,-.3,1.9] pada snapshot
+AKHIR run9, bukan exact map49.3 dan bukan recovery dari start gagal:
+tanpa biaya, rute melewati[-3.3,-1.3,1.1],[-5.5,-1.3,1.1]; dengan biaya,
+rute mengambil sisi[-3.7,-1.7,1.3],[-5.1,-1.7,1.3]. Keduanya lulus full
+controller/curve/backup checks. Durasi kurva39.8219034 menjadi19.1280823 s;
+A*177 menjadi411 expansions dan74.42 menjadi197.67 ms. Full preparation
+2890.45 menjadi1601.56 ms pada satu replay; bukan benchmark atau hasil
+flight. History dimatikan hanya pada harness replay untuk mengisolasi local
+planner; tidak pada preset flight. Tidak memasukkan ground truth ke planner.
+
+Lima regresi baru: preferensi menjauhi dinding tanpa mengubah mask/state;
+shortcut mempertahankan biaya; chord pendek dan batas pencarian tetap;
+unknown wall tetap blocked; opt-in hanya transit; pertumbuhan satu voxel
+memblokir chord lama namun preferred polyline dan smoothed curve tetap aman.
+61 tes targeted lulus24.44 s. Build/regresi penuh dan flight berikutnya
+akan dicatat setelah selesai. Belum ada keberhasilan dua pohon pada map bunga.
+
+Build tiga paket berhasil;455 tes lulus96.99 s,0 errors/failures/skipped.
+Bukti build_ros/polinasi_nav/pytest.xml; log /tmp/fixed_cost_build.log.
+Audit host sebelum flight berikutnya: port9002/14650/5762 bebas dan tidak
+ada proses Gazebo/SITL/RViz. Perubahan akan di-commit/push sebelum run10.

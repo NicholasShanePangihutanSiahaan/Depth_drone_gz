@@ -31,6 +31,7 @@ def main(scenario='palm_farm'):
         if stage == 'inspection':
             c.update(feedback_speed_envelope=True,velocity_uncertainty_mps=.03,
                      transit_observation_guard=.2,transit_lateral_observation_guard=.2,
+                     transit_clearance_preference=.4,transit_clearance_cost_weight=2.,
                      duration_optimisation=True,trajectory_spacing_m=1.,explicit_backup_enabled=True,
                      explicit_backup_fallback_search=True,
                      command_speed=.4,navigation_transit_speed=.4,navigation_scan_speed=.3,

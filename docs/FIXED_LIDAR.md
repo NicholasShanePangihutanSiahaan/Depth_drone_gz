@@ -249,3 +249,15 @@ disambungkan menghasilkan reachable partial prefix, dengan goal asli tetap
 tercatat. Diagnostic `goal_connection` menjelaskan penolakannya. Shortcut
 dekat tujuan juga memerlukan line_safe. Runce3bb66 berhenti85.20 s karena
 endpoint_grid_connection; perbaikan berikutnya lulus replay, belum flight.
+
+
+Run42691db pada map bunga berhenti64.55 s: sesudah pembaruan observasi,
+posisi berhenti nominal-safe tetapi gagal transit reserve (history_start_not_safe).
+Transit kini mempunyai preferensi lunak jarak dari mask inflated:
+`transit_clearance_preference=.4` m, `transit_clearance_cost_weight=2`.
+A* dan shortcut mempertimbangkan biaya tersebut untuk mengurangi rute yang
+menempel batas aman. Hard reserve/unknown/sensor gates tetap sama; scan tidak
+mengaktifkan biaya ini. Ini mitigasi prospektif, bukan escape dari start
+blocked atau jaminan terhadap deteksi terlambat. Replay kurva39.82→19.13 s
+pada snapshot akhir belum merupakan hasil flight. Bukti dan batas validasi
+ada pada jurnal22 Oktober2026.

@@ -21,6 +21,9 @@ def transit_guard_grid(grid, vertical, lateral):
         view.blocked=maximum_filter(view.blocked,size=(2*extra_xy+1,2*extra_xy+1,1),
                                     mode='constant',cval=True)
     view.transit_lateral_guard_cells=getattr(grid,'transit_lateral_guard_cells',0)+extra_xy
+    view.c=dict(grid.c,
+        planner_clearance_preference=grid.c.get('transit_clearance_preference',0.),
+        planner_clearance_cost_weight=grid.c.get('transit_clearance_cost_weight',0.))
     return view
 
 
