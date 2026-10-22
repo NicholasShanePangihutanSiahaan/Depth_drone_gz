@@ -1262,3 +1262,76 @@ Tes targeted41 pass42.26 s. Build tiga paket berhasil;448 tes lulus108.83 s,
 0 errors/failures/skipped. Bukti build_ros/polinasi_nav/pytest.xml dan
 /tmp/fixed_reference_build.log. Commit/push sebelum run8; belum validasi
 flight pre-commit recovery atau penyelesaian dua pohon di flowers map.
+
+
+## 22 Oktober 2026 — audit run8 dan perbaikan sambungan endpoint
+
+Baseline tetap ce3bb66 pada worktree /home/abin/polinasi_lidar_fixed;
+rotating-lidar6779baf dan perubahan lokal pengguna di workspace asal tidak
+diubah. User menghentikan simulasi, lalu meminta masuk loop kembali.
+Tidak ada AGENTS.md yang berlaku di ancestor/worktree. Runtime host audit
+tidak menemukan Gazebo/SITL/RViz atau port9002/14650/5762 aktif sebelum tes.
+
+Run8 reports/fixed_lidar_validation_20261020_230814, registered session
+.dependencies/ros_sensor_palm_farm_flowers_20261020_230817_52090_mapping,
+berhenti85.20 s BRAKE/APPROACH tree1 global_route_unavailable.761 pasangan
+pose, RMSE .00774778236 m, maksimum .01944069591 m, tanpa health fault.
+Sebelumnya map-change brake37.85 pulih39.65; diagnosis menunjukkan revokasi
+geometry suffix, bukan bukti flight gate feedback baru sudah terpicu.
+Session stopped=true; stop pengguna sesudahnya idempotent tanpa signal luar.
+Belum selesai approach, belum inspeksi dua pohon pada map bunga.
+
+History request32/stamp83.733/map83.4 mengembalikan endpoint_grid_connection,
+path kosong. Start[-6.3125,-.65,1.75], target approach
+[-6.486624940,-.326961701,2.0]. Wait_since73.15; timeout sekitar12 s
+berakhir85.20. Current nominal safe=true dan actual speed sekitar.0063 m/s.
+Ini berbeda dari history_start_not_safe pada transisi run5 dan PID fault
+run6/7. Tidak menyebutnya collision, GPS loss atau ICP failure.
+
+Penyebab kode: goal dianggap full bila single-cell grid.safe(goal) dan
+komponen grid sama, tanpa memeriksa sambungannya ke centre. A* kemudian
+memeriksa supercover connector dan menolak endpoint_grid_connection.
+Goal2.0 berada di muka voxel: pada search origin yang tercatat,
+floor memilih centre1.9000000000000004 yang bebas, tetapi connector juga
+menyentuh tetangga centre2.1 yang terblokir setelah reserve. Grid lokal
+dengan representasi origin sedikit berbeda memilih upper cell dan menolak
+point itu juga. Tidak memperbaiki dengan mengganti label frame atau
+menghapus supercover; kedua sisi batas tetap harus diperiksa.
+
+Replay memakai critical snapshot map708/observasi84.9 (bukan exact frozen
+history map83.4). Raw grid rebuild byte-identical dengan mask snapshot.
+Rekonstruksi search region yang sama dari data snapshot menghasilkan
+endpoint_grid_connection yang sama; start connector aman, goal single-cell
+aman tetapi goal connector gagal pada upper cell2.1. Kontrol all-free pada
+origin/shape sama berhasil sebelum maupun sesudah ceiling cap: ini bukan
+semata-mata roundoff atau ceiling cap tanpa obstacle/reserve.
+
+Perbaikan di global_route.py: full destination hanya diterima jika point
+dan connector ke centre lulus aturan supercover yang sama dengan A*.
+Jika tidak, tetap simpan tujuan asli dan cari reachable free-centre terdekat
+sebagai partial route. Tambahkan goal_connection diagnostic (point/connector
+dan blockage). Shortcut ketika jarak destination<.12 kini juga harus
+lulus line_safe(current,destination); dekat tidak otomatis boleh menembus
+tetangga blocked. Occupied/unknown, FOV prior, clearance, reserve, timeout,
+batas dinamika, altitude policy dan mounting tidak diubah.
+
+Replay setelah perbaikan menghasilkan direct partial prefix ke
+[-6.5,-.3,1.9], final_goal_reached_by_route=false. Tujuan asli tetap2.0 m.
+Shared MissionController._prepare_trajectory dengan controller fixed transit
+menghasilkan kurva3.599476935 s, seluruh smoothing/whole-curve braking
+checks lulus, failure kosong. Prefix berjarak sekitar.10 m dari view target;
+tidak mengubah toleransi arrival yang sudah ada. Ini replay planner pada
+map akhir, bukan penerbangan atau pembaruan timestamp sensor. Prior ages
+tidak tersedia di snapshot geometry dan sengaja tidak dianggap fresh.
+
+Regresi tambahan menggunakan ukuran drone/reserve/koordinat run8 dengan
+occupied terukur: point-safe/connector-unsafe menghasilkan partial prefix,
+tidak mengubah original goal atau occupied. Kasus near-goal .05 m tetap
+ditolak jika supercover menyentuh roof meskipun single-cell point-safe.
+12 tes targeted lulus2.12 s. Build/regresi penuh dan run9 dicatat sesudah
+tersedia; belum mengklaim flight fix endpoint atau misi bunga sukses.
+
+Build tiga paket berhasil;450 tes lulus96.94 s,0 errors/failures/skipped.
+Bukti build_ros/polinasi_nav/pytest.xml dan /tmp/fixed_endpoint_build.log.
+Commit/push sebelum run9; validasi flight perubahan endpoint masih belum
+tersedia dan keberhasilan misi dua pohon pada map bunga belum tercapai.

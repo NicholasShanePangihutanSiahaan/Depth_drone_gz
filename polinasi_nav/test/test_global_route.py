@@ -135,3 +135,46 @@ def test_history_route_uses_same_overhead_buffer_as_local_transit_curve():
     assert route['observation_guard_m']==.2
     assert route['final_goal_reached_by_route'] and len(route['path'])>2
     assert all(guarded.line_safe(p,q) for p,q in zip(route['path'],route['path'][1:]))
+
+
+def test_history_goal_on_blocked_voxel_face_uses_reachable_partial_endpoint():
+    # Run8 geometry: goal z=2.0 lies on a face between safe 1.9 and blocked
+    # 2.1 centres. The search origin's floating representation picks the lower
+    # cell for point-safe, while supercover correctly checks both neighbours.
+    c=load_config(Path(__file__).resolve().parents[1]/'config/tree_inspection.json')
+    c.update(bounds_min=[-40.,-40.,-.6],bounds_max=[52.,42.,12.],
+        drone_dimensions=[.6,.6,.7],history_route_margin=4.,
+        history_route_max_voxels=800000,transit_observation_guard=.2,
+        transit_lateral_observation_guard=.2)
+    local=VoxelMap(dict(c,bounds_min=[-11.4,-5.8,-.6],bounds_max=[-1.4,4.2,7.4]))
+    ids=np.indices(local.shape).reshape(3,-1).T
+    h=SparseHistory(c);h.update(h.indices(local.centers(ids)),FREE,0.)
+    h.update([h.indices([-5.3,-.3,3.1])],OCCUPIED,0.)
+    h.last_observation_stamp=0.
+    start=[-6.312499999999997,-.6499999999999956,1.75]
+    goal=[-6.486624939699138,-.3269617013590112,2.]
+    route=plan_history_route(h,request(start,goal),0.)
+    assert route['goal_connection']['point_safe']
+    assert not route['goal_connection']['centre_connection_safe']
+    assert route['path'] and route['partial']
+    assert not route['final_goal_reached_by_route']
+    assert route['planner']['reason'] in ('direct','detour')
+    np.testing.assert_allclose(route['goal'],goal)
+    assert not np.array_equal(route['endpoint'],goal)
+    assert np.linalg.norm(np.asarray(route['endpoint'])-goal)<.2
+    # Occupied evidence is preserved and no unknown cell was inserted as free.
+    key=np.ravel_multi_index(h.indices([-5.3,-.3,3.1]),h.shape)
+    assert h.cells[key][0]==OCCUPIED
+
+
+def test_near_destination_does_not_bypass_blocked_supercover_connection():
+    c,g,h=fixture()
+    goal=np.array([0.,0.,np.nextafter(2.,0.)])
+    current=goal-[0.,0.,.05]
+    # A real measured roof inflates to the upper neighbour at 2.1 m;
+    # the lower 1.9 m cell remains free. Neither point may authorize contact.
+    roof=g.indices([0.,0.,2.5])[2]
+    g.state[:,:,roof]=OCCUPIED;g.rebuild(0.)
+    assert g.safe(goal) and not g.line_safe(current,goal)
+    selected,detail=local_route_goal(g,current,goal,None,0.,c)
+    assert selected is None and detail['reason']=='waiting_history_route'

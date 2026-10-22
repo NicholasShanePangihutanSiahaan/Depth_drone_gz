@@ -241,3 +241,11 @@ bounded route_changed recovery dari cadangan terakhir yang masih live-safe.
 PID; ini finite scenario checks, bukan bukti formal untuk semua galat PID.
 Run18af5b1 masih gagal242.75 s pid_final_safety pada uncertainty check;
 perbaikan urutan pemeriksaan berikutnya belum tervalidasi flight.
+
+
+Planner history sekarang memeriksa sambungan supercover tujuan ke centre
+voxel sebelum menyebut rute full. Goal pada batas voxel yang tidak dapat
+disambungkan menghasilkan reachable partial prefix, dengan goal asli tetap
+tercatat. Diagnostic `goal_connection` menjelaskan penolakannya. Shortcut
+dekat tujuan juga memerlukan line_safe. Runce3bb66 berhenti85.20 s karena
+endpoint_grid_connection; perbaikan berikutnya lulus replay, belum flight.

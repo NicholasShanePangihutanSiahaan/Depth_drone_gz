@@ -49,7 +49,16 @@ def plan_history_route(history,request,now):
         return dict(result,reason='history_start_not_safe')
     components,_=label(~grid.blocked)
     component=components[tuple(grid.indices(start))]
-    full=(grid.safe(goal) and components[tuple(grid.indices(goal))]==component)
+    goal_safe=grid.safe(goal)
+    connection={}
+    goal_connected=(goal_safe and grid.line_safe(goal,grid.centers(grid.indices(goal)),
+                                               diagnostics=connection))
+    result['goal_connection']=dict(point_safe=bool(goal_safe),
+        centre_connection_safe=bool(goal_connected),blockage=connection)
+    # A target on a voxel face can pass a single-cell point test while its
+    # supercover connector touches a blocked neighbour. Keep the final goal,
+    # but guide only to a reachable free centre until a safe arrival is possible.
+    full=(goal_connected and components[tuple(grid.indices(goal))]==component)
     endpoint=goal
     if not full:
         ids=np.argwhere(components==component)
@@ -70,7 +79,8 @@ def plan_history_route(history,request,now):
 def local_route_goal(grid,current,destination,route,now,config):
     """Select a prefix of the HISTORY PATH, not a line toward the final goal."""
     current,destination=np.asarray(current,float),np.asarray(destination,float)
-    if np.linalg.norm(current-destination)<.12 and grid.safe(destination):
+    if (np.linalg.norm(current-destination)<.12 and grid.safe(destination)
+            and grid.line_safe(current,destination)):
         return destination.copy(),dict(reason='at_final_goal')
     detail=dict(reason='waiting_history_route')
     if not route or destination_key(route.get('goal',[]))!=destination_key(destination):
