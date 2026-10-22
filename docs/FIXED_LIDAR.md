@@ -357,3 +357,10 @@ Health lokalisasi dievaluasi ulang segera setelah pose diterima, selain timer
 satu periode timer setelah pose baru masuk. Batas freshness tetap sama;
 pose yang benar-benar terlambat masih menyebabkan fault. Rincian biaya scan
 terakhir tersimpan dalam `/localisation/debug.last_scan_processing`.
+
+Decoding PointCloud2 memakai array NumPy sesuai offset, endianness dan stride
+baris/titik, sehingga tidak membuat tuple Python per return. XYZ estimator/
+perception tetap menyaring NaN/Inf; gate simulasi mempertahankan raw invalid
+dan ring sampai verifikasi no-return/body-shadow yang sama. Jumlah titik dan
+kriteria ICP tidak dikurangi. Benchmark decoder offline bukan validasi latency
+estimator atau keberhasilan misi.

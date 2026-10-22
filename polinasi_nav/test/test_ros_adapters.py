@@ -608,3 +608,46 @@ def test_accepted_pose_refreshes_health_immediately_without_waiting_for_timer(mo
         debug=json.loads(node.localisation_diagnostics.publish.call_args.args[0].data)
         assert debug['health_gate']=='imu_receive_stale'
     finally:node.destroy_node()
+
+
+@pytest.mark.parametrize('big_endian',[False,True])
+def test_vector_cloud_decode_respects_offsets_row_padding_byte_order_and_finite_policy(big_endian):
+    import struct
+    from sensor_msgs.msg import PointCloud2
+    # Organized 2x2, XYZ reordered in payload with an unrelated intensity byte.
+    fields=[PointField(name='z',offset=0,datatype=PointField.FLOAT32,count=1),
+        PointField(name='intensity',offset=4,datatype=PointField.UINT8,count=1),
+        PointField(name='x',offset=8,datatype=PointField.FLOAT32,count=1),
+        PointField(name='y',offset=12,datatype=PointField.FLOAT32,count=1)]
+    xyz=[(1.,2.,3.),(4.,5.,6.),(float('nan'),1.,2.),(2.,float('inf'),3.)]
+    data=bytearray(80);order='>' if big_endian else '<'
+    for i,(x,y,z) in enumerate(xyz):
+        at=(i//2)*40+(i%2)*16
+        struct.pack_into(order+'fB3xff',data,at,z,7,x,y)
+    cloud=PointCloud2(header=Header(frame_id='mid360'),height=2,width=2,fields=fields,
+        is_bigendian=big_endian,point_step=16,row_step=40,data=bytes(data),is_dense=True)
+    before=bytes(cloud.data)
+    np.testing.assert_allclose(cloud_points(cloud),xyz[:2])
+    np.testing.assert_allclose(cloud_points(cloud),xyz[:2])
+    assert bytes(cloud.data)==before
+
+
+def test_vector_cloud_decode_empty_and_invalid_row_stride():
+    cloud=point_cloud2.create_cloud_xyz32(Header(frame_id='mid360'),[])
+    assert cloud_points(cloud).shape==(0,3)
+    cloud=point_cloud2.create_cloud_xyz32(Header(frame_id='mid360'),[[1.,2.,3.]])
+    cloud.row_step=8
+    with pytest.raises(ValueError,match='row stride'):cloud_points(cloud)
+
+
+def test_vector_raw_fields_preserve_invalid_rays_and_ring_for_verified_sensor_gate():
+    from polinasi_nav.ros_nodes import cloud_fields
+    fields=[PointField(name=n,offset=i*4,datatype=PointField.FLOAT32,count=1)
+        for i,n in enumerate(('x','y','z'))]
+    fields.append(PointField(name='ring',offset=12,datatype=PointField.UINT16,count=1))
+    cloud=point_cloud2.create_cloud(Header(frame_id='mid360'),fields,
+        [(1.,2.,3.,7),(float('nan'),0.,0.,8),(float('inf'),0.,0.,9)])
+    rows=cloud_fields(cloud,('x','y','z','ring'))
+    assert rows.shape==(3,4) and np.isnan(rows[1,0]) and np.isinf(rows[2,0])
+    np.testing.assert_array_equal(rows[:,3],[7,8,9])
+    np.testing.assert_array_equal(cloud_points(cloud),[[1.,2.,3.]])

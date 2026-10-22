@@ -2124,3 +2124,50 @@ timer; accepted berikutnya dengan IMU stale tetap menerbitkanFalse.
 dan seluruh483 tes full suite lulus276.25s,0error/failure/skipped.
 Ini sekaligus memverifikasi ulang semua kasus antrean mapping/isolasi pada
 satu invocation penuh. Flight perbaikan health belum tervalidasi.
+
+
+### 22 Oktober 2026 — run20: deadline pose nyata dan biaya decoding point cloud
+
+Commitb19a244 dipush, run reports/fixed_lidar_validation_20261022_211046,
+session .dependencies/ros_sensor_palm_farm_flowers_20261022_211054_37807_mapping.
+Setup/arming/takeoff lolos; terminal stale_localisation23.55s, APPROACH tree1,
+belum trajectory/sektor aktif. Pose23.2 age.35s NYATA melewati.3; IMU23.55
+age0, cloud23.4 age.15, localisation_okTrue dari health23.5 (age.3000000000000007
+masih roundoff-valid). Jadi tetap abort dari gate pose langsung, tidak
+tertutupi healthTrue. Depth integrated22.8 age.75 fresh.141 audit pairs
+RMSE.0087049068m/max.0191252652m. Run dihentikan oleh auditor/session cleanup.
+
+Perbaikan event health terbukti live: False pose stale23.201 disusul True
+segera saat accepted scan23.0 selesai23.224; False23.302 disusul True23.345
+ketika scan23.1 selesai. Namun latency nyata masih perlu dikurangi; tidak
+mengubah gate/debounce untuk meloloskan misi. Stage scan23.2: start23.345,
+end23.449; IMU8.462ms, preprocessing233.552ms, registration417.457ms WALL.
+Scan22.9 preprocessing436.816ms/registration516.124ms. Ini mengukur stage,
+bukan bukti seluruh biaya berasal dari satu baris atau aplikasi host.
+
+Audit cloud_points memakai list Python per titik setelah read_points Humble
+SUDAH menghasilkan structured NumPy array. SensorGate juga mengulang tuple
+per titik untuk XYZ/ring. Referensi primer: definisi PointCloud2 Humble
+https://github.com/ros2/common_interfaces/blob/humble/sensor_msgs/msg/PointCloud2.msg
+serta sensor_msgs_py terpasang /opt/ros/humble/lib/python3.10/site-packages/
+sensor_msgs_py/point_cloud2.py (dtype_from_fields/read_points_numpy).
+Perbaikan cloud_fields membaca view NumPy ber-stride row_step/point_step,
+byte order eksplisit, field offsets memakai dtype_from_fields resmi; output
+XYZ float64 dan finite filtering cloud_points tetap sama. Raw fields pada
+SensorGate tetap mempertahankan NaN/Inf/ring hingga aturan normalize dan
+body_shadow yang sama; invalid tidak diubah jadi free. Tidak mengubah
+jumlah titik, voxel resolusi, iterasi/gate ICP atau sumber GT. Byte buffer
+input tidak dimutasi, termasuk big-endian; organized row padding ditangani.
+
+Benchmark sintetis offline, simulator berhenti, seed42,22 iterasi buang2warmup,
+median:11520points legacy45.591544ms -> vectorised.759034ms (60.07x),
+24000points95.573419 ->2.172659ms (43.99x),60000points244.965177 ->5.934681ms
+(41.28x). np.testing.assert_array_equal hasil lama/baru lulus termasuk
+NaN/Inf filtering. 11520 sesuai360x32 model sumber, bukan rekaman scan flight.
+Angka ini ONLYdecoder, bukan bukti ICP60x lebih cepat atau deadline flight
+terpenuhi. Script/hasil disimpan reports/fixed_cloud_decode_20261022.
+53 targeted ROS/IMU/localisation/simulated-ray tests lulus2.50s, termasuk
+reordered/padded/mixed fields, little/big endian tanpa mutasi, row padding,
+empty/malformed stride, finite filtering dan raw invalid/ring preservation.
+Build tiga package berhasil; full487 tests lulus276.68s,
+0error/failure/skipped. Perbaikan decoder belum flight validated.

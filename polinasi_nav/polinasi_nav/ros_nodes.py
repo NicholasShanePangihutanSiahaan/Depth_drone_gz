@@ -89,8 +89,21 @@ def raw_position_target(position, velocity, acceleration, yaw, alignment, stamp)
     return message
 
 
+def cloud_fields(message,names):
+    if message.width*message.height==0:return np.empty((0,len(names)),dtype=float)
+    # PointCloud2 specifies byte offsets, point/row strides and endianness.
+    # Decode fields as arrays, avoiding one Python tuple per laser return.
+    dtype=point_cloud2.dtype_from_fields(message.fields,point_step=message.point_step)
+    dtype=dtype.newbyteorder('>' if message.is_bigendian else '<')
+    if message.row_step<message.width*message.point_step:
+        raise ValueError('PointCloud2 row stride smaller than row payload')
+    rows=np.ndarray(shape=(message.height,message.width),dtype=dtype,
+        buffer=message.data,strides=(message.row_step,message.point_step))
+    return np.column_stack(tuple(rows[name].reshape(-1) for name in names)).astype(float,copy=False)
+
+
 def cloud_points(message):
-    points = np.array([tuple(row) for row in point_cloud2.read_points(message, field_names=('x', 'y', 'z'), skip_nans=True)], dtype=float).reshape(-1, 3)
+    points=cloud_fields(message,('x','y','z'))
     # Raw non-finite measurements are never integrated. Verified Gazebo
     # no-return rays are decoded separately by SensorGate, before mapping.
     return points[np.all(np.isfinite(points), axis=1)]
@@ -1510,8 +1523,7 @@ class SensorGate(ConfigNode):
                 from .simulated_rays import directions
                 from .self_filter import body_shadow
                 tf=self.shadow_buffer.lookup_transform('base_link','mid360',Time.from_msg(msg.header.stamp))
-                rows=np.array([tuple(r) for r in point_cloud2.read_points(msg,
-                    field_names=('x','y','z','ring'),skip_nans=False)],dtype=float)
+                rows=cloud_fields(msg,('x','y','z','ring'))
                 shadow=body_shadow(vector(tf.transform.translation),
                     directions()@rotation(tf.transform.rotation).T,self.c)
                 rows[shadow,:3]=np.nan
@@ -1537,8 +1549,7 @@ class SensorGate(ConfigNode):
                 if msg.width != 360 or msg.height != 32:
                     raise ValueError('unexpected Gazebo scan dimensions')
                 if not shadow_count and self.c.get('simulation_visual_model')!='polinasi_visual_50cm':
-                    rows = np.array([tuple(r) for r in point_cloud2.read_points(msg,
-                        field_names=('x', 'y', 'z', 'ring'), skip_nans=False)], dtype=float)
+                    rows=cloud_fields(msg,('x','y','z','ring'))
                 points, stats = normalize(rows[:, :3], rows[:, 3], self.c['lidar_range'])
                 rays = point_cloud2.create_cloud_xyz32(msg.header, points)
                 self.rays_pub.publish(rays)
