@@ -7,7 +7,7 @@ mission never starts a second publisher on ``/global_cylinders``.
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.conditions import IfCondition, UnlessCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
@@ -82,10 +82,17 @@ def generate_launch_description():
         Node(package='beehive_drone',
              executable='dynamic_orbit_controller',
              parameters=[config, {'require_depth_avoidance': depth_required,
-                                  'orbit_timeout': 480.0}], output='screen'),
+                                  'orbit_timeout': ParameterValue(PythonExpression([
+                                      '480.0 if "', depth_enabled,
+                                      '".lower() == "true" else 180.0']), value_type=float)}], output='screen'),
         Node(package='beehive_drone',
              executable='position_setpoint_controller',
-             parameters=[config, {'require_depth_avoidance': depth_required}], output='screen'),
+             parameters=[config, {
+                 'require_depth_avoidance': depth_required,
+                 'max_horizontal_step': ParameterValue(PythonExpression([
+                     '0.015 if "', depth_enabled,
+                     '".lower() == "true" else 0.03']), value_type=float),
+             }], output='screen'),
         Node(package='beehive_drone', executable='flight_manager',
              parameters=[config], output='screen'),
         Node(package='beehive_drone', executable='mission_safety_monitor',
