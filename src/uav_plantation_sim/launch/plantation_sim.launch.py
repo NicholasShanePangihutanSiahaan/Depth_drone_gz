@@ -142,6 +142,16 @@ def generate_launch_description():
         ),
 
         Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='livox_top_mount_tf',
+            parameters=[{'use_sim_time': True}],
+            arguments=['--x', '0', '--y', '0', '--z', '0.18',
+                       '--roll', '0', '--pitch', '0', '--yaw', '0',
+                       '--frame-id', 'base_link', '--child-frame-id', 'livox_top_link'],
+        ),
+
+        Node(
             package='uav_localization',
             executable='tf_broadcaster',
             name='tf_casting',

@@ -1,3 +1,18 @@
+# Top LiDAR has independent topics; existing ZED/range/body IMU stay unchanged.
+- ros_topic_name: "/livox/top/points"
+  gz_topic_name: "/livox/top/scan/points"
+  ros_type_name: "sensor_msgs/msg/PointCloud2"
+  gz_type_name: "gz.msgs.PointCloudPacked"
+  direction: "GZ_TO_ROS"
+  qos_profile: "SENSOR_DATA"
+
+- ros_topic_name: "/livox/top/imu"
+  gz_topic_name: "/livox/top/imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: "GZ_TO_ROS"
+  qos_profile: "SENSOR_DATA"
+
 - ros_topic_name: "/cmd_vel"
   gz_topic_name: "/plantation_uav/gazebo/command/twist"
   ros_type_name: "geometry_msgs/msg/Twist"

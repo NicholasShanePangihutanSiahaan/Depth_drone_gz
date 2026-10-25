@@ -14,3 +14,4 @@ mission_result*
 rosbag*
 logs/
 uav_env/
+reports/livox_top_*/

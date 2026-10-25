@@ -24,6 +24,8 @@ Pengujian program real dengan adapter ZED/rangefinder Gazebo ada di
 - World Gazebo berisi area perkebunan kelapa sawit dengan beberapa baris pohon.
 - Model drone quadcopter X3-style dengan mesh body dan propeller lokal.
 - Sensor IMU.
+- Livox MID-360-style tetap di atas drone, dengan point cloud dan IMU
+  terpisah: `/livox/top/points` dan `/livox/top/imu`.
 - Kamera stereo ZED 2i-style:
   - kamera kiri RGB,
   - kamera kanan RGB,
@@ -33,6 +35,9 @@ Pengujian program real dengan adapter ZED/rangefinder Gazebo ada di
 - Kontrol awal menggunakan topic ROS 2 `/cmd_vel`.
 
 ## Struktur Paket
+
+Konfigurasi, cara memeriksa bacaan, dan hasil uji sensor Livox atas:
+[`docs/LIVOX_TOP.md`](docs/LIVOX_TOP.md).
 
 ```text
 gazebo_sim/
