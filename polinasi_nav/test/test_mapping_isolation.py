@@ -72,3 +72,22 @@ def test_mapping_process_has_no_control_or_flight_command_publishers(monkeypatch
     finally:
         node.destroy_node()
         rclpy.shutdown()
+
+
+@pytest.mark.parametrize('now,accepted',[(30.200000000000003,True),(30.20001,False)])
+def test_recorded_map_boundary_accepts_roundoff_but_not_real_lateness(monkeypatch,now,accepted):
+    rclpy.init(args=['--ros-args','-p','use_sim_time:=true','-p','separate_mapping:=true'])
+    monkeypatch.setattr(ros_nodes,'load_config',lambda _:configuration())
+    node=ros_nodes.MappingNavigationNode()
+    try:
+        node.now=lambda:now
+        node.last_integrated_cloud=28.
+        node.grid.rebuild(now)
+        node.grid.last_observation_stamp=29.2
+        node.grid.version=8
+        msg=UInt8MultiArray(data=array('B',encode_window(node.grid,{'measurement':29.2})))
+        assert 30.200000000000003-29.2>1.  # Recorded subtraction must exercise cancellation.
+        node.navigation_snapshot(msg)
+        assert node.last_integrated_cloud==(29.2 if accepted else 28.)
+    finally:
+        node.destroy_node();rclpy.shutdown()

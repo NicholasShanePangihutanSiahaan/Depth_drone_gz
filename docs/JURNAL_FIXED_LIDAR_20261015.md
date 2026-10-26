@@ -2171,3 +2171,38 @@ reordered/padded/mixed fields, little/big endian tanpa mutasi, row padding,
 empty/malformed stride, finite filtering dan raw invalid/ring preservation.
 Build tiga package berhasil; full487 tests lulus276.68s,
 0error/failure/skipped. Perbaikan decoder belum flight validated.
+
+
+### 26 Oktober 2026 — lanjut loop; audit run21 dan batas numerik umur peta
+
+User meminta stop/keluar loop22Okt, lalu mengizinkan lanjut26Okt. Audit worktree
+fixed-lidar9adab20 bersih, original tetap rotating-lidar6779baf dengan perubahan
+lokal yang tidak disentuh. Worktree dan resource runtime diperiksa kembali;
+UDP9002/14650,TCP5762 dan proses simulator/RViz bebas. Tidak membuka GUI.
+
+Run21 sebelum stop: reports/fixed_lidar_validation_20261022_212458,
+session .dependencies/ros_sensor_palm_farm_flowers_20261022_212506_41792_mapping.
+Terminal stale_integrated_map30.200000000000003, mapstamp29.2,
+age1.0000000000000036 terhadap batas inklusif1s. Kode gate memakai > tanpa
+fresh_stamp, berbeda dari pose/depth yang sudah mengatasi cancellation.
+Ini bukti false positive batas numerik, bukan bukti seluruh pipeline map cepat.
+210 audit pairs RMSE.0084821356m/max.0196630793m; pose30 age.2, IMU30.2 age0,
+localisation_okTrue. Depth valid29.6 age.6, integrated29.2 age1+roundoff.
+Recovery depth28.3 ->28.85 selesai. Belum trajectory approach selesai/sektor.
+
+Optimasi decoder tervalidasi berjalan live: scan30.0 start30.07 end30.124,
+IMU19.806ms/preprocessing61.987ms/registration283.419ms wall. Ini sampel,
+bukan controlled whole-flight speedup atau jaminan deadline. Map masih mahal:
+worker29.2 total1656.175ms wall, lidar350.190/depth185.012/restore-inflate-
+delta1120.973ms. Pipeline total3687.704ms wall, measurement-to-setpoint.6sim s.
+Biaya map adalah kendala yang tetap harus ditelusuri jika timeout nyata muncul.
+
+Perbaikan memakai fresh_stamp sama pada penerimaan snapshot dan gate map
+MISSION: batas1s tetap, tolerance1e-9 hanya numeric, future/nonfinite ditolak.
+Tidak memperbarui umur map dengan waktu transport atau menutupi dropout.
+Tes actual ROS snapshot mereproduksi30.2-29.2>1floating tetapi diterima;
+30.20001 untuk observasi sama tetap ditolak. Targeted7 tes lulus1.09s;
+build tiga package berhasil dan full489 tests lulus286.25s,0error/failure/
+skipped. Tes awal diperbaiki pada fixture grid.rebuild sebelum serialisasi
+serta memakai timestamp30.200000000000003 persis dari log.
+Perbaikan batas umur peta belum flight validated.

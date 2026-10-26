@@ -750,7 +750,7 @@ class NavigationNode(ConfigNode):
         try:
             grid, statistics = decode_window(bytes(msg.data), self.grid)
             if (grid.last_observation_stamp <= self.last_integrated_cloud or
-                    not 0 <= self.now()-grid.last_observation_stamp < self.c['map_timeout']):
+                    not fresh_stamp(self.now(),grid.last_observation_stamp,self.c['map_timeout'])):
                 return
             # Numeric origin changes with the rolling window; never relabel frames.
             lo, hi = np.asarray(self.c['bounds_min']), np.asarray(self.c['bounds_max'])
@@ -996,7 +996,8 @@ class NavigationNode(ConfigNode):
                 health_reason = health_reason or 'stale_depth_camera'
         else:
             self.controller.depth_navigation_paused = False
-        if self.rolling_map and self.flight_stage == 'MISSION' and now-self.last_integrated_cloud > self.c.get('map_timeout', 1.):
+        if (self.rolling_map and self.flight_stage == 'MISSION'
+                and not fresh_stamp(now,self.last_integrated_cloud,self.c.get('map_timeout',1.))):
             health_reason = health_reason or 'stale_integrated_map'
         aligned_fcu=pose_at(self.fcu_pose_history,self.controller.health.pose_stamp)
         if (self.mission_kind == 'mapping' and self.fcu_alignment is None
