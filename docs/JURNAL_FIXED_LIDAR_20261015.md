@@ -2252,3 +2252,56 @@ Tes exact.5border/missing/outlier aman.47 targeted ICP/ROS/IMU tes lulus2.63s.
 Script/profiling/benchmark tersimpan reports/fixed_icp_pruning_20261026.
 Build tiga package berhasil; full491 tests lulus291.99s,
 0error/failure/skipped. Optimasi ICP belum flight validated.
+
+
+### 26 Oktober 2026 — run23: lokalisasi melewati gate, recovery depth berulang
+
+Commit7724920 dipush. Run reports/fixed_lidar_validation_20261026_144754,
+session .dependencies/ros_sensor_palm_farm_flowers_20261026_144802_11509_mapping.
+Setup/arming/takeoff lolos, first APPROACH belum selesai. Auditor berhenti
+35.05s dengan repeated_depth_recovery setelah empat brake starts28.85,
+30.85,32.8,35.05 (tiga recovery sebelumnya selesai29.55/31.5/33.6).
+Masih mempertahankan batas pengulangan/grace/timing, tidak melonggarkannya.
+257 audit pairs RMSE.0074337290m/max.0172949725m. Tidak ada terminal
+localisation_loss/stale_localisation pada run ini; bukan bukti estimator
+bebas jitter selamanya. Lastscan34.9 start34.95 end34.981, IMU7.058ms,
+preprocess89.733ms,registration112.592ms WALL. Ini sampel live, bukan
+controlled speedup yang bisa seluruhnya diatribusikan kepada exact query.
+
+Map34.4 worker1633.949ms wall, LiDAR442.757/depth185.749/restore-inflate-
+delta1005.443ms. Pipeline2994.320ms wall,measurement-to-setpoint.5sim s;
+umurdepth.65 saat brake, thresholdpreventive.6. Pipeline lambat memicu
+pengereman/replan berulang meskipun validdepth age.45/actualspeed.0176.
+Peta harus diproses lebih cepat; tidak mengizinkan peta basi demi progress.
+
+Profiling offline memakai history run23 beku dan12rebuildwindow: total5.275s,
+restore3.089s(.257/window),fov_priorlookup1.382s(.115/window),rebuild.744s.
+Ini TIDAK mencakup ray integration atau current-scan FOV classify; bukan
+profiling keseluruhan pipeline flight. Restore memakai nested list tuple
+state/stamp lalu np.asarray; FOV lookup juga membentuk list scalars.
+Perbaikan memakai structured np.fromiter dengan count eksplisit dan state
+int8/stampfloat64; lookup FOV scalar fromiter, prior membership map. Prinsip
+preallocation referensi primer https://numpy.org/doc/stable/reference/generated/numpy.fromiter.html
+Dipakai NumPy yang terpasang, tidak perlu dependency baru.
+
+RollingMapper menghitung local/global key array satu kali dalam satu update,
+lalu restore dan FOV lookup berbagi koordinat itu. Tidak cache state/seen,
+tidak menyimpan tambahan array pada snapshot/transport/history global,
+tidak enumerasi seluruh farm, tidak memperbesar map/window. Original
+occupied/free/unknown, TTL, surveyed launch pad dan persistent FOV prior
+semantics/timestamps tetap. Lidar/depth input timestamp, inflation, EDT,
+collision/braking/clearance tidak diubah.
+
+Benchmark offline terhadap fungsi legacy dari git7724920,16repeats buang2:
+restore median194.789941ms ->130.131178ms,1.4969x. Percobaan awal199.119919
+->125.118536ms,1.59x; variasi timing ini bukan flight guarantee. Frozen window
+pada now35.05 dan500 membuktikan array_equal state,seen,assumed_free,
+assumed_occupied,blocked,blocked_actual,distance,free_distance dengan legacy.
+27 targeted coverage/FOV/transport tests lulus3.71s. Tambahan regression
+memastikan coordinate reuse tetap membaca occupancy/timestamp terbaru,
+expired measured free unknown, occupied tetap, prior hanya policy existing,
+FOV lookup tidak restamp derivation. Fixture awal diubah dari exact voxel
+boundary ke voxel centres dan memakai riwayat independen tiap window.
+Script/profiling/benchmark di reports/fixed_map_restore_20261026.
+Build tiga package berhasil; full493 tests lulus281.26s,
+0error/failure/skipped. Optimasi restore belum flight validated.

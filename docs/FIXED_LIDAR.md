@@ -369,3 +369,8 @@ ICP mencari nearest correspondence secara exact dengan radius maksimum.5m,
 sesuai batas inlier yang sudah ada. Neighbor yang tidak ditemukan tetap
 invalid; KNN normal dan kriteria penerimaan tidak diubah. Ini optimasi
 pencarian, bukan algoritma SUPER/FAST-LIO atau pelonggaran estimator.
+
+Riwayat peta direstore ke window memakai array state/stamp terstruktur.
+Indeks koordinat dibagi antara restore dan lookup FOV dalam satu update;
+state dan timestamp selalu dibaca ulang. Tidak ada cache okupansi yang
+menganggap lingkungan stabil atau menyembunyikan sensor dropout.

@@ -94,28 +94,31 @@ class SparseHistory:
         self.last_observation_stamp = stamp
         return changed
 
-    def restore(self, grid, now):
-        if not self.cells:
-            return
-        # Lookup only the bounded navigation window, not every historical
-        # voxel in the farm on every scan. Global history can grow indefinitely.
-        local = np.indices(grid.shape).reshape(3, -1).T
-        ids = self.indices(grid.centers(local))
-        keys = np.ravel_multi_index(ids.T, self.shape)
-        values = np.asarray([self.cells.get(int(key), (-1, -np.inf)) for key in keys])
-        known = values[:, 0] != -1
-        keys, local, values = keys[known], local[known], values[known]
-        if not len(keys):
-            return
-        prior = np.fromiter((int(key) in self.prior for key in keys), dtype=bool)
-        live = (values[:, 0] == OCCUPIED) | prior | (now-values[:, 1] <= self.c['free_ttl'])
-        grid.state[tuple(local[live].T)] = values[live, 0].astype(np.int8)
-        grid.seen[tuple(local[live].T)] = np.where(prior[live], now, values[live, 1])
-
-    def fov_priors(self,grid,origin=None,rotation=None,profile=None,stamp=None):
+    def window_lookup(self,grid):
+        # Coordinates only: reusable within one update, never cached occupancy.
         local=np.indices(grid.shape).reshape(3,-1).T
         keys=np.ravel_multi_index(self.indices(grid.centers(local)).T,self.shape)
-        values=np.asarray([self.assumptions.get(int(k),(0.,-np.inf))[0] for k in keys])
+        return local,keys
+
+    def restore(self, grid, now, lookup=None):
+        if not self.cells:return
+        # Keep lookup bounded to the local window. Structured fromiter avoids
+        # a large nested Python list and a second conversion of state/stamp.
+        local,keys=self.window_lookup(grid) if lookup is None else lookup
+        values=np.fromiter((self.cells.get(key,(-1,-np.inf)) for key in keys),
+            dtype=[('state','i1'),('stamp','f8')],count=len(keys))
+        known=values['state']!=-1
+        keys,local,values=keys[known],local[known],values[known]
+        if not len(keys):return
+        prior=np.fromiter(map(self.prior.__contains__,keys),dtype=bool,count=len(keys))
+        live=(values['state']==OCCUPIED)|prior|(now-values['stamp']<=self.c['free_ttl'])
+        grid.state[tuple(local[live].T)]=values['state'][live]
+        grid.seen[tuple(local[live].T)]=np.where(prior[live],now,values['stamp'][live])
+
+    def fov_priors(self,grid,origin=None,rotation=None,profile=None,stamp=None,lookup=None):
+        _,keys=self.window_lookup(grid) if lookup is None else lookup
+        values=np.fromiter((self.assumptions.get(k,(0.,-np.inf))[0] for k in keys),
+                           dtype=np.int8,count=len(keys))
         grid.assumed_free[:]=(values.reshape(grid.shape)==1)
         grid.assumed_occupied[:]=(values.reshape(grid.shape)==2)
         if origin is None:return None
@@ -218,7 +221,8 @@ class RollingMapper:
             depth_stats.append(copy.deepcopy(self.history.last_integration_stats))
         depth_finished = time.perf_counter()
         updated = navigation_window(self.config, centre)
-        self.history.restore(updated, now)
+        lookup=self.history.window_lookup(updated)
+        self.history.restore(updated,now,lookup=lookup)
         if pad is not None:
             updated.seed_launch_pad(*pad, stamp)
             ids = np.argwhere((updated.state == FREE) & (updated.seen == stamp))
@@ -235,7 +239,7 @@ class RollingMapper:
         updated.version = grid.version+1
         fov_delta=None
         if self.config.get('fixed_fov_assumptions'):
-            fov_delta=self.history.fov_priors(updated,**fixed_fov) if fixed_fov is not None else self.history.fov_priors(updated)
+            fov_delta=self.history.fov_priors(updated,lookup=lookup,**fixed_fov) if fixed_fov is not None else self.history.fov_priors(updated,lookup=lookup)
         updated.rebuild(now)
         updated.mapping_roi_stats = lidar_stats
         updated.depth_roi_stats = depth_stats

@@ -194,3 +194,39 @@ def test_sitl_starts_only_supplied_imu_without_disabling_arming_checks():
         assert params['INS_ACC2OFFS_'+axis] == '0'
         assert params['INS_ACC2SCAL_'+axis] == '1'
     assert params.get('ARMING_CHECK') != '0'
+
+
+def test_shared_window_lookup_preserves_measurement_age_expiry_prior_and_occupied():
+    c=configuration()
+    positions=np.array([[.1,.1,2.1],[.9,.1,2.1],[-.7,.1,2.1],[.1,.9,2.1]])
+    for centre in ([0.,0.,2.],[.4,.4,2.]):
+        h=SparseHistory(c)
+        h.update(h.indices(positions[:1]),FREE,1.)
+        h.update(h.indices(positions[1:2]),OCCUPIED,1.)
+        h.update(h.indices(positions[2:3]),FREE,1.,prior=True)
+        h.update(h.indices(positions[3:]),FREE,15.)
+        g=navigation_window(c,centre);lookup=h.window_lookup(g)
+        h.restore(g,20.,lookup=lookup)
+        assert [int(g.state[tuple(g.indices(p))]) for p in positions]==[UNKNOWN,OCCUPIED,FREE,FREE]
+        assert g.seen[tuple(g.indices(positions[1]))]==1.
+        assert g.seen[tuple(g.indices(positions[2]))]==20.  # Existing explicit launch-pad prior.
+        assert g.seen[tuple(g.indices(positions[3]))]==15.
+        h.update(h.indices(positions[3:]),OCCUPIED,20.1)
+        # Reusing coordinate lookup cannot freeze occupancy or timestamps.
+        updated=navigation_window(c,centre);h.restore(updated,20.2,lookup=lookup)
+        assert updated.state[tuple(updated.indices(positions[3]))]==OCCUPIED
+        assert updated.seen[tuple(updated.indices(positions[3]))]==20.1
+
+
+def test_shared_window_fov_lookup_preserves_codes_without_refreshing_derivation_time():
+    h=SparseHistory(configuration());positions=np.array([[.1,.1,2.1],[.9,.1,2.1]])
+    keys=np.ravel_multi_index(h.indices(positions).T,h.shape)
+    h.assumptions={int(keys[0]):(1,1.),int(keys[1]):(2,2.)}
+    before=h.assumptions.copy()
+    for centre in ([0.,0.,2.],[.4,.4,2.]):
+        g=navigation_window(h.c,centre);lookup=h.window_lookup(g)
+        h.fov_priors(g,lookup=lookup)
+        assert g.assumed_free[tuple(g.indices(positions[0]))]
+        assert g.assumed_occupied[tuple(g.indices(positions[1]))]
+        assert not g.assumed_free[tuple(g.indices(positions[1]))]
+    assert h.assumptions==before
