@@ -9,6 +9,8 @@ from collections import deque
 from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation
 
+ICP_MAX_CORRESPONDENCE_DISTANCE = .5
+
 
 def voxel_downsample(points, resolution=0.18):
     points = np.asarray(points)
@@ -79,6 +81,13 @@ class LidarImuOdometry:
         values,vectors=np.linalg.eigh(np.einsum('nki,nkj->nij',centred,centred))
         self.normals=vectors[:,:,0]
         self.normal_valid=(values[:,1]>1e-5)&(values[:,0]<.15*np.maximum(values[:,1],1e-9))
+
+    def query_correspondences(self,points):
+        # Exact Euclidean search, pruned at the same distance rejected below.
+        # SciPy uses tree.n for a missing neighbour; give masked indexing a
+        # harmless valid index while retaining inf so it can never be an inlier.
+        distances,ids=self.tree.query(points,distance_upper_bound=ICP_MAX_CORRESPONDENCE_DISTANCE)
+        return distances,np.where(np.isfinite(distances),ids,0)
 
     def imu(self, gyro_sensor, acceleration_sensor, stamp):
         imu_r = np.eye(3) if self.body_imu else self.mount_r
@@ -172,8 +181,8 @@ class LidarImuOdometry:
         p, r = predicted_p.copy(), predicted_r.copy()
         for _ in range(15):
             transformed = body@r.T+p
-            distances, ids = self.tree.query(transformed)
-            inliers = distances < 0.5
+            distances, ids = self.query_correspondences(transformed)
+            inliers = distances < ICP_MAX_CORRESPONDENCE_DISTANCE
             if inliers.sum() < 80 or inliers.mean() < 0.35:
                 self.ok, self.reason = False, 'poor_overlap'
                 return False
@@ -217,8 +226,8 @@ class LidarImuOdometry:
             if np.linalg.norm(shift) < 1e-4 and np.linalg.norm(Rotation.from_matrix(correction).as_rotvec()) < 1e-4:
                 break
         transformed = body@r.T+p
-        distances, ids = self.tree.query(transformed)
-        inliers = distances < 0.5
+        distances, ids = self.query_correspondences(transformed)
+        inliers = distances < ICP_MAX_CORRESPONDENCE_DISTANCE
         self.point_rmse = float(np.sqrt(np.mean(distances[inliers]**2)))
         self.rmse=self.point_rmse
         plane_count=0

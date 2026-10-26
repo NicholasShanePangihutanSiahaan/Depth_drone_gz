@@ -364,3 +364,8 @@ perception tetap menyaring NaN/Inf; gate simulasi mempertahankan raw invalid
 dan ring sampai verifikasi no-return/body-shadow yang sama. Jumlah titik dan
 kriteria ICP tidak dikurangi. Benchmark decoder offline bukan validasi latency
 estimator atau keberhasilan misi.
+
+ICP mencari nearest correspondence secara exact dengan radius maksimum.5m,
+sesuai batas inlier yang sudah ada. Neighbor yang tidak ditemukan tetap
+invalid; KNN normal dan kriteria penerimaan tidak diubah. Ini optimasi
+pencarian, bukan algoritma SUPER/FAST-LIO atau pelonggaran estimator.

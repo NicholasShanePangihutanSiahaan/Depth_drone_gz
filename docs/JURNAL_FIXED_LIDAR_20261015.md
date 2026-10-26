@@ -2206,3 +2206,49 @@ build tiga package berhasil dan full489 tests lulus286.25s,0error/failure/
 skipped. Tes awal diperbaiki pada fixture grid.rebuild sebelum serialisasi
 serta memakai timestamp30.200000000000003 persis dari log.
 Perbaikan batas umur peta belum flight validated.
+
+
+### 26 Oktober 2026 — run22: pose stale nyata; exact ICP correspondence pruning
+
+55a60b1 sudah push. Run reports/fixed_lidar_validation_20261026_143211,
+session .dependencies/ros_sensor_palm_farm_flowers_20261026_143219_7574_mapping.
+Setup/arming/takeoff lolos; terminal stale_localisation27.65, APPROACH tree1,
+planning pending, belum trajectory/inspeksi. Pose27.3 age.35>.3, IMU27.65
+age0, LiDAR27.5 age.15, localisation_okTrue dari health27.6. Depth integrated
+26.6 age1.05>1; map26.7 age.95. Jadi bukan false map-boundary yang sama;
+pose/depth processing sungguh terlambat.184 audit pairs RMSE.0088757310m,
+max.0210614416m. Auditor/session cleanup sudah menghentikan run.
+
+Local ICP27.3 mulai27.375 selesai27.509, IMU21.608ms/preprocess102.029ms/
+registration766.423ms wall. Raw IMU27.595 age.005, antrean36/overflow0;
+frontend tracking,residual.050954m,reference17572, tidak ada bukti drift
+permanen. Map26.7 pipeline4126.255ms wall dengan receive-submit1453.525,
+worker1795.129,resultdelivery486.974,snapshot221.640. Tidak melonggarkan gate.
+
+Profiling offline memakai resampling1800permukaan historical map + noise.004,
+15scan diterima. Referensi48751points (lebih besar daripada live17572 dan
+limit normal40000 karena harness langsung menyuntik offline reference).
+Bukan replay raw scans/flight. Dari total0.617s,query cKDTree123calls menyita
+.357s; scan total.585s. Ini mengarahkan optimasi query, bukan membuktikan
+semua jitter live disebabkan query. Audit host read-only tidak memberi
+bukti quota throttling; tidak menghentikan aplikasi pengguna.
+
+Referensi primer SciPy cKDTree.query:
+https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.cKDTree.query.html
+Opsi distance_upper_bound memang memangkas pencarian; eps default0 exact,
+missing distanceinf/index tree.n. Perbaikan memakai batas.5m SAMA dengan
+inlier gate lama distances<.5, bukan approximate/peningkatan threshold.
+Missing index dipetakan0 hanya untuk indexing array normal yang masked;
+distanceinf tetap bukan inlier. KNN12 untuk pembangunan normal tetap sama,
+jumlahscan/point/resolusi/iterasi/rank/residual/posegate tidak diubah.
+
+Benchmark offline48751reference,2000queries (1800resampled/noisy surface +
+200faroutliers),45iterasi buang5warmup: median unbounded5.153073ms,
+bounded2.626659ms,1.9618x. Inlier mask, distance dan index untuk inlier
+array_equal. Angka ONLYquery offline dengan10%faroutlier, bukan flight gain.
+Tes sequential8scan robust ICP dengan noise/outliers: acceptance/reason,
+p/r/v/covariance sampai1e-12 dan residual/timestamp sama dengan unbounded.
+Tes exact.5border/missing/outlier aman.47 targeted ICP/ROS/IMU tes lulus2.63s.
+Script/profiling/benchmark tersimpan reports/fixed_icp_pruning_20261026.
+Build tiga package berhasil; full491 tests lulus291.99s,
+0error/failure/skipped. Optimasi ICP belum flight validated.
