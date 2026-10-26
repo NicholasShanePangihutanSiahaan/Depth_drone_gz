@@ -2469,3 +2469,58 @@ fixed_approach_target_repair (dulu absent, kiniTrue). Speed/timeout/RTF dan
 thresholddepth.6 sama; kode b0ba099 juga sudah memakai threshold*.6 dan
 hold2s. Jadi penurunan progress belum dapat dianggap akibat gate keselamatan
 baru. Akar seluruh perbedaan timing terhadap run11 belum terisolasi.
+
+
+### 26 Oktober 2026 — run27: handoff lebih singkat pada sampel, recovery masih berulang
+
+790fccd sudah push. Run reports/fixed_lidar_validation_20261026_220028,
+session .dependencies/ros_sensor_palm_farm_flowers_20261026_220036_47569_mapping.
+Terminal repeated_depth_recovery34.9s, APPROACH tree1 belum selesai,
+256audit pairs RMSE.0080335322m/max.0194504650m. Brake28.45/30.6/32.85/34.9,
+resume29.1/31.35/33.45. Tidak ada terminal localisation failure. Lastdepth
+valid=integrated34.0 age.9. Perubahan handoff belum menyelesaikan recovery.
+Lastmap34.1 pipeline3716.785ms wall: receive-submit1781.745,queue42.211,
+worker1257.859,resultdelivery289.081,snapshot/decode80.594,navigation265.295;
+measurement-to-setpoint.6sim s. Stage snapshot lebih rendah daripada sampel
+run26 222ms, tapi bukan controlled causal comparison dan wholepipeline masih
+lebih lambat pada sampel itu. Worker last1253.100ms,lidar602.161/depth215.081/
+restore-inflate-delta435.858. Last blockcount121/5451776array bytes.
+Tidak menaikkan threshold atau menyembunyikan sensor/map dropout.
+
+Audit persiapan scan menemukan self_mask menguji11520points terhadap34body
+shapes, termasuk mayoritas returns jauh dari badan. Profiling offline12calls
+pada resampled estimated map surfaces: total.303s,.025s/call. Body-shadow
+ray/body geometry total1.172s,.098s/call. Ini ONLYoffline fungsi, bukan
+profiling seluruh callback live atau bukti tunggal penyebab semua latency.
+Tidak memakai simulator truth untuk estimator/planner/kontrol.
+
+Referensi primer konsep broad/narrow phase: Flexible Collision Library
+https://github.com/flexible-collision-library/fcl (broadphase collision docs).
+Tidak mengimpor FCL atau menyalin algoritma environment avoidance. Self-mask
+baru memakai union conservative AABB seluruh self shapes termasuk padding,
+lalu pengujian box/sphere/cylinder EXACT yang sama hanya untuk candidate.
+Outward tolerance1e-9 hanya pada AABB candidate, tidak menambah body mask.
+Pose/rotation/size/padding termasuk key compiled-shape cache32entries; perubahan
+geometri mengompilasi ulang. Ini self-return filtering, bukan clearance map.
+
+Body shadow khusus lidar_fixed memakai cache4entries dari origin, SEMUA byte
+arah sinar, dan seluruh kind/pose/size/name body geometry. SensorGate TETAP
+lookup TF pada timestamp scan sebelum memanggilnya; cache tidak melewati TF
+missing/dropout. Transform berubah=>key berubah, hasil dihitung ulang. Result
+copy mencegah caller memutasi cache. Nonfixed memakai algoritma lama langsung.
+Tidak cache scan, time, peta lingkungan, atau free evidence. Mask shadow
+sama=>NaN/drop ray semantics tetap; verified no-return policy tidak diubah.
+Stats body_shadow_geometry_cache pada simulation_ray_stats merekam hit/miss.
+
+54targeted self-geometry/ROS/simulated-rays tes lulus2.02s:9shape/rotation cases
+near boundary dan points jauh dibandingbruteforce; perubahanpose/padding,
+origin/rays/shape mengubahkey; cachecopy aman; fallback/empty tetap sama.
+Perintah tes awal menyebut test_self_filter.py yang tidak ada sehingga tidak
+ada tes dijalankan; suite benar memakai test_self_geometry.py kemudian lulus.
+Benchmark offline22repeat buang2,11520points/34shapes:
+self legacy24.669172ms ->broadphase.589492ms; bodyshadow legacy97.370674ms
+->cached.418162ms (22hits/1miss). Masks array_equal dengan legacy git790fccd.
+Ini per-function fixed-geometry benchmark, bukan jaminan flight speedup.
+Profiling/script/hasil di reports/fixed_self_geometry_20261026.
+Build tiga package berhasil; full519 tests lulus292.64s,
+0error/failure/skipped. Optimasi self geometry belum flight validated.

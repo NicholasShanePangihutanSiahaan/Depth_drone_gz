@@ -394,3 +394,10 @@ atau mengerjakan history-route. `mapping_handoff_policy` mencatat urutan ini;
 `depth_mapping.last_submitted_job` dan `last_completed_job` membedakan waktu
 job, sedangkan `current_job` kosong ketika snapshot dikirim tanpa future aktif.
 Urutan ini mengurangi penundaan hasil; umur observasi tetap timestamp sensor.
+
+Self-return filter memakai AABB konservatif sebelum tes bentuk badan exact.
+Pada lidar_fixed, body-shadow dapat memakai ulang geometri identik setelah
+TF scan-time tetap diperiksa. Ini cache bayangan badan sendiri, bukan cache
+peta/free-space atau timestamp sensor. Hit/miss ada di
+`simulation_ray_stats.body_shadow_geometry_cache`; perubahan transform/arah/
+bentuk mengharuskan perhitungan ulang dan hasil mask tetap sama.

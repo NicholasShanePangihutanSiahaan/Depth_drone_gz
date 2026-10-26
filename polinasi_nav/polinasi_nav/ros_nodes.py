@@ -1557,6 +1557,8 @@ class SensorGate(ConfigNode):
                 self.rays_pub.publish(rays)
                 stats['measurement_stamp'] = seconds(msg.header.stamp)
                 stats['body_shadow_rays_dropped']=shadow_count
+                from .self_filter import body_shadow_cache_status
+                stats['body_shadow_geometry_cache']=body_shadow_cache_status()
                 self.ray_status_pub.publish(String(data=json.dumps(stats)))
             except (ValueError, AssertionError, KeyError) as exc:
                 # Failed schema/geometry verification supplies no invented rays.
