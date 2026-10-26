@@ -388,3 +388,9 @@ jumlah blok dan byte array ada di `mapping_worker_stages.block_window_index`.
 `mapping_block_index=false` memilih backend dictionary untuk pembanding.
 Reuse geometri exact bersifat opsional (`mapping_geometry_reuse=true`),
 default off setelah hit rate rendah dan recovery tetap berulang pada run25.
+
+MappingIO mengirim snapshot job selesai sebelum menyiapkan scan berikutnya
+atau mengerjakan history-route. `mapping_handoff_policy` mencatat urutan ini;
+`depth_mapping.last_submitted_job` dan `last_completed_job` membedakan waktu
+job, sedangkan `current_job` kosong ketika snapshot dikirim tanpa future aktif.
+Urutan ini mengurangi penundaan hasil; umur observasi tetap timestamp sensor.

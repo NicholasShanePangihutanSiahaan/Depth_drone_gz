@@ -82,8 +82,8 @@ def test_mapping_fast_poll_does_not_publish_unchanged_map():
     fake = SimpleNamespace(pose=np.zeros(3),map_pending=Mock(),
         grid=SimpleNamespace(version=7),last_snapshot_version=7,
         last_integrated_cloud=1.,snapshot_pub=Mock())
+    fake.publish_snapshot=lambda:MappingIONode.publish_snapshot(fake)
     MappingIONode.update(fake)
-    fake.map_pending.assert_called_once()
     fake.snapshot_pub.publish.assert_not_called()
 
 
@@ -651,3 +651,31 @@ def test_vector_raw_fields_preserve_invalid_rays_and_ring_for_verified_sensor_ga
     assert rows.shape==(3,4) and np.isnan(rows[1,0]) and np.isinf(rows[2,0])
     np.testing.assert_array_equal(rows[:,3],[7,8,9])
     np.testing.assert_array_equal(cloud_points(cloud),[[1.,2.,3.]])
+
+
+def test_completed_mapping_snapshot_precedes_next_job_and_history_route_work():
+    from polinasi_nav.mapping_io import MappingIONode
+    events=[]
+    fake=SimpleNamespace(pose=np.zeros(3),route_worker=object(),
+        map_pending=lambda collect_only=False:events.append('collect_completed' if collect_only else 'prepare_next'),
+        publish_snapshot=lambda:events.append('publish_completed_snapshot'),
+        update_history_route=lambda:events.append('history_route'))
+    MappingIONode.update(fake)
+    assert events==['collect_completed','publish_completed_snapshot','prepare_next','history_route']
+
+
+def test_collect_only_mapping_handoff_never_starts_projection_or_submits_next_job():
+    from polinasi_nav.depth_queue import DepthTransformQueue
+    from polinasi_nav.coverage_mapping import navigation_window
+    from polinasi_nav.config import load_config
+    from concurrent.futures import Future
+    c=load_config();c.update(navigation_window_size=[4.,4.,4.])
+    old=navigation_window(c,[0,0,2]);updated=navigation_window(c,[0,0,2]);updated.version=9
+    completed=Future();completed.set_result((updated,5.,(np.empty((0,3),int),np.empty(0),np.empty(0),np.empty(0,bool))))
+    fake=SimpleNamespace(map_future=completed,history=None,grid=old,
+        controller=SimpleNamespace(grid=old),now=lambda:5.1,separate_mapping=False,
+        pending=DepthTransformQueue(6),map_worker=Mock(),depth_observation=Mock())
+    NavigationNode.map_pending(fake,collect_only=True)
+    assert fake.grid is updated and fake.last_integrated_cloud==5.
+    assert fake.map_future is None
+    fake.map_worker.submit.assert_not_called();fake.depth_observation.assert_not_called()

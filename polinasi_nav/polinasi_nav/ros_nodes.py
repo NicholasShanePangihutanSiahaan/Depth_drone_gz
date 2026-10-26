@@ -765,7 +765,7 @@ class NavigationNode(ConfigNode):
             self.get_logger().warning(f'Rejected navigation snapshot: {exc}')
 
     @measured('map_update_handoff')
-    def map_pending(self):
+    def map_pending(self,collect_only=False):
         if self.map_future is not None:
             if not self.map_future.done():
                 return
@@ -790,6 +790,7 @@ class NavigationNode(ConfigNode):
             except Exception as exc:
                 self.get_logger().error(f'map update failed: {exc}')
             self.map_future = None
+        if collect_only:return
         def exact_transform(msg):
             try:
                 transform=self.buffer.lookup_transform('map',msg.header.frame_id,Time.from_msg(msg.header.stamp))

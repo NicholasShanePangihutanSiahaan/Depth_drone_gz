@@ -2413,3 +2413,59 @@ backend dictionary pada now35.05/500 dan dua window. Artifact script/hasil
 di reports/fixed_block_index_20261026. Build tiga package berhasil;
 full506 tests lulus281.46s,0error/failure/skipped. Indeks blok belum
 flight validated.
+
+
+### 26 Oktober 2026 — run26: worker lebih cepat, snapshot masih menunggu job berikutnya
+
+480e3a6 sudah push. Run reports/fixed_lidar_validation_20261026_154952,
+session .dependencies/ros_sensor_palm_farm_flowers_20261026_155000_25024_mapping.
+Terminal repeated_depth_recovery37.652s, APPROACH tree1 belum selesai,
+285audit pairs RMSE.0086228936m/max.0195754389m. Brake28.65/30.85/33.653/
+37.652, resume29.2/31.55/35.2. Dibanding run25, recovery sedikit lebih jarang
+namun masih memenuhi fatal audit; bukan keberhasilan pengurangan jeda yang
+memadai. Tidak melonggarkan threshold/recovery count atau freshness.
+
+Indeks blok bekerja live:122blocks/5496832array bytes. Lastmap37.1 worker
+746.653ms wall (lidar449.215/depth.002 karena tidak ada new auxiliary pada
+job itu/restore-inflate-delta297.436). Worker lebih ringan daripada sampel
+run25 1713ms, tetapi tidak controlledbenchmark sehingga tidak seluruh selisih
+boleh diatribusikan ke index. Pipeline2571.332ms wall,.45sim measurement-to-
+setpoint: receive-submit1307.505ms/worker748.338/resultdelivery173.561/
+snapshot+decode222.029/navigation-setpoint111.311. Lastdepth integrated37.0
+age.652; valid37.2 age.452. Job37.1 selesai37.5 tidak membawa depth baru;
+job berikutnya37.3/aux37.2 baru submitted37.5. LastICP37.5 diterima37.64,
+frontend tracking/healthyTrue, registration486.151ms wall; tidak ada terminal
+localisation fault.
+
+Audit source: MappingIONode.update memanggil map_pending yang sekaligus
+collect hasil DAN menyiapkan/submitscan berikut, lalu global route history
+copy, BARU encode/publish map selesai. Jadi consumer menunggu preprocessing
+job selanjutnya padahal hasil safety map sudah tersedia. Max callback
+map_pending695.057ms/depth projection420.791ms wall tercatat. Max terpisah
+ini bukan trace bahwa semua max terjadi pada frame terakhir yang sama,
+namun urutan source membuktikan potensi penundaan publish.
+
+Perbaikan: map_pending(collect_only=True) hanya menerima hasil; MappingIO
+langsung publish_snapshot, lalu map_pending() menyiapkan job berikut, baru
+history-route work. Direct NavigationNode lama tetap default collect+submit.
+Tidak menambah worker/control producer, tidak mengubah map/pose frame,
+timestamp, inputfilters, ROI atau gate umur. Snapshot statistics sekarang
+mewakili completed job sebelum next projection mengubah metadata.
+current_job=None bila tidak ada future; last_submitted_job dan
+last_completed_job terpisah. mapping_handoff_policy dicatat eksplisit.
+
+47 targeted ROS/mapping/isolation/block tests lulus4.24s. Tes event ordering
+memastikan completed snapshot mendahului next-job/history work. Actual
+completed Future pada collect-only memperbarui grid/stamp tanpa memanggil
+worker.submit atau depth projection. Tidak ada klaim timing flight sebelum
+run berikutnya. Full build pertama dihentikan sesuai permintaan exit loop
+pada3min33s, tidak dihitung lulus. User kemudian meminta lanjut. Rebuild
+tiga package berhasil; full508 tests lulus293.58s,0error/failure/skipped.
+Perubahan handoff belum flight validated.
+
+Audit perbandingan config baseline run11 dengan run26: hanya tiga flags
+berbeda, defer_blocked_tree_entry,explicit_backup_duration_optimisation,
+fixed_approach_target_repair (dulu absent, kiniTrue). Speed/timeout/RTF dan
+thresholddepth.6 sama; kode b0ba099 juga sudah memakai threshold*.6 dan
+hold2s. Jadi penurunan progress belum dapat dianggap akibat gate keselamatan
+baru. Akar seluruh perbedaan timing terhadap run11 belum terisolasi.

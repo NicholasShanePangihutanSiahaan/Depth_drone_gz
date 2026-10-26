@@ -236,16 +236,24 @@ class MappingIONode(ConfigNode):
         NavigationNode.range_pending(self)
         if self.pose is None:
             return
+        self.map_pending(collect_only=True)
+        # Deliver the completed safety map BEFORE projection/preparation of
+        # another job or copying global history for route planning.
+        self.publish_snapshot()
         self.map_pending()
         if getattr(self,'route_worker',None) is not None:self.update_history_route()
+
+    def publish_snapshot(self):
         if self.grid.version == self.last_snapshot_version or not math.isfinite(self.last_integrated_cloud):
             return
         statistics = dict(global_known_voxels=len(self.history.cells),
             mapping_poll_period_sim_seconds=.02,
+            mapping_handoff_policy='completed_snapshot_before_next_job_preparation',
             mapping_lidar_transform_queue=self.pending.status(),
             depth_mapping=dict(self.depth_stats,
                 last_integrated_stamp=getattr(self.grid,'depth_integrated_stamp',None),
-                current_job=getattr(self,'depth_job_trace',{}),
+                current_job=(getattr(self,'depth_job_trace',{}) if self.map_future is not None else None),
+                last_submitted_job=getattr(self,'depth_job_trace',{}),
                 last_completed_job=getattr(self,'last_completed_depth_job',{}),
                 roi=getattr(self.grid,'depth_roi_stats',[])),
             mapping_worker_stages=getattr(self.grid,'mapping_worker_stages',{}),
