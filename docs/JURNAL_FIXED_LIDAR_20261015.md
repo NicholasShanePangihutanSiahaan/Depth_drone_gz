@@ -2305,3 +2305,51 @@ boundary ke voxel centres dan memakai riwayat independen tiap window.
 Script/profiling/benchmark di reports/fixed_map_restore_20261026.
 Build tiga package berhasil; full493 tests lulus281.26s,
 0error/failure/skipped. Optimasi restore belum flight validated.
+
+
+### 26 Oktober 2026 — run24: restore lebih ringan, recovery tetap berulang
+
+ab19179 sudah push. Run reports/fixed_lidar_validation_20261026_150747,
+session .dependencies/ros_sensor_palm_farm_flowers_20261026_150755_15996_mapping.
+Terminal repeated_depth_recovery35.05, APPROACH tree1 belum selesai.
+Brake starts28.75/30.75/32.85/35.05, resume29.25/31.304/33.5.259audit pairs,
+RMSE.0110657610m,max.0190005601m. Tidak ada terminal localisation fault.
+Map34.4 worker1585.649ms wall: LiDAR584.582/depth238.023/restore-inflate-
+delta763.044ms. Substage restore lebih rendah daripada sampel run23 1005ms,
+namun wholeworker masih1586vs1634ms dan pengulangan recovery sama. Tidak
+mengklaim causalcontrolled gain atau keberhasilan mengurangi jeda flight.
+Pipeline3264.236ms,measurement-to-setpoint.55sim s. Depth age.65 saat brake.
+LastICP34.9 start34.94 end34.978,registration175.960ms wall.
+
+Perbaikan berikut adalah exact memoisation geometri, BUKAN toleransi umur
+peta adaptif dan BUKAN asumsi lingkungan stabil. VoxelMap.rebuild tetap
+memeriksa expiry measured free pada now terlebih dahulu, memperbarui
+state/version seperti semula. Mask sumber mencakup measured occupied,
+unknown dan persistent FOV priors dengan kebijakan semula. Inflasi hanya
+reuse jika origin,resolusi,kernel plan/actual dan SEMUA elemen mask sumber
+identik. EDT occupied hanya reuse jika mask occupied identik; EDT free hanya
+reuse jika inflated blocked identik. Perubahan lain menghitung ulang.
+
+Cache privat dimiliki RollingMapper worker, bukan history global/grid
+transport. Input mask dan output geometri disalin independen; mutasi map
+hasil tidak merusak cache dan map hasil tetap writable untuk expiry di
+navigation. Measurement seen/last_observation/depth/IMU/pose/timeouts tidak
+cache/restamp. Integrasi LiDAR/depth aktual tetap dilakukan pada tiap job;
+ketiadaan scan baru tetap stale. Tidak menggunakan unchanged map sebagai
+bukti lingkungan diam. geometry_reuse flags dicatat di mapping_worker_stages
+untuk membuktikan hit/miss live, belum tahu hitrate saat bergerak/noise.
+Ini memoisation perhitungan deterministik milik rekayasa sendiri, bukan
+klaim metode dari paper SUPER atau mekanisme umur map rotating-lidar.
+
+37 targeted geometry/coverage/FOV/transport tes lulus3.91s: perubahan
+occupied,unknown,FOV free/virtual occupied,TTL,origin,resolution,kernel plan
+&actual harus menghasilkan arrays setara rebuild penuh. Observasi baru
+mempertahankan timestamp baru walau geometri sama. Mutasi output tidak
+poison cache. Benchmark offline IDENTICAL geometry saja,26repeat buang2,
+legacy function gitab19179 median61.720718ms ->cached1.736060ms,35.55x,
+array_equal state/seen/blocked/blocked_actual/distance/free_distance.
+Ini hanya rebuild, tidak termasuk integrasi/restore dan bukan flight gain.
+Script/hasil di reports/fixed_geometry_cache_20261026. Harness pertama
+memerlukan import UNKNOWN agar fungsi legacy dapat dieksekusi; sudah dibetulkan.
+Build tiga package berhasil; full503 tests lulus279.74s,
+0error/failure/skipped. Reuse geometri belum flight validated.

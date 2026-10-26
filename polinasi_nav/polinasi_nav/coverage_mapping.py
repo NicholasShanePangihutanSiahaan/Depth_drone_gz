@@ -207,6 +207,7 @@ class RollingMapper:
     def __init__(self, config):
         self.config = copy.deepcopy(config)
         self.history = SparseHistory(config)
+        self.geometry_cache={}
 
     def integrate(self, grid, origin, points, hits, stamp, pad, now, centre, roi=None, auxiliary=(), fixed_fov=None):
         started = time.perf_counter()
@@ -240,7 +241,7 @@ class RollingMapper:
         fov_delta=None
         if self.config.get('fixed_fov_assumptions'):
             fov_delta=self.history.fov_priors(updated,lookup=lookup,**fixed_fov) if fixed_fov is not None else self.history.fov_priors(updated,lookup=lookup)
-        updated.rebuild(now)
+        updated.rebuild(now,geometry_cache=self.geometry_cache)
         updated.mapping_roi_stats = lidar_stats
         updated.depth_roi_stats = depth_stats
         updated.depth_integrated_stamp = max((o[2] for o in auxiliary),
@@ -253,7 +254,7 @@ class RollingMapper:
             restore_inflate_delta_wall_ms=(finished-depth_finished)*1000,
             total_wall_ms=(finished-started)*1000,
             depth_observation_stamps=[float(o[2]) for o in auxiliary],
-            input_policy='rolling_metadata_only')
+            input_policy='rolling_metadata_only',geometry_reuse=updated.geometry_reuse)
         return updated, stamp, delta
 
 

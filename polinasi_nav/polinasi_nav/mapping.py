@@ -115,19 +115,41 @@ class VoxelMap:
         self.version += 1
         self.last_observation_stamp = stamp
 
-    def rebuild(self, now):
+    def rebuild(self, now, geometry_cache=None):
         stale = (self.state == FREE) & (now - self.seen > self.c['free_ttl'])
         if np.any(stale):
             self.state[stale] = UNKNOWN
             self.version += 1
         source = (self.state != FREE) & ~((self.state == UNKNOWN) & self.assumed_free)
         source |= (self.state == UNKNOWN) & self.assumed_occupied
-        self.blocked = self.inflate(source, self.kernel)
-        self.blocked_actual = self.inflate(source, self.actual_kernel)
-        # Conservative distance to occupied voxel surfaces (unknown checked separately).
-        self.distance = distance_transform_edt(self.state != OCCUPIED) * self.res - np.sqrt(3)*self.res
-        # Distance to the inflated occupied/unknown boundary for adaptive speed.
-        self.free_distance = distance_transform_edt(~self.blocked)*self.res-np.sqrt(3)*self.res
+        occupied=self.state==OCCUPIED
+        cache=geometry_cache
+        compatible=(cache is not None and cache.get('resolution')==self.res
+            and np.array_equal(cache.get('origin'),self.lo)
+            and np.array_equal(cache.get('kernel'),self.kernel)
+            and np.array_equal(cache.get('actual_kernel'),self.actual_kernel))
+        same_source=bool(compatible and np.array_equal(cache.get('source'),source))
+        same_occupied=bool(compatible and np.array_equal(cache.get('occupied'),occupied))
+        if same_source:
+            self.blocked=cache['blocked'].copy()
+            self.blocked_actual=cache['blocked_actual'].copy()
+        else:
+            self.blocked=self.inflate(source,self.kernel)
+            self.blocked_actual=self.inflate(source,self.actual_kernel)
+        self.distance=(cache['distance'].copy() if same_occupied else
+            distance_transform_edt(~occupied)*self.res-np.sqrt(3)*self.res)
+        same_blocked=bool(compatible and np.array_equal(cache.get('blocked'),self.blocked))
+        self.free_distance=(cache['free_distance'].copy() if same_blocked else
+            distance_transform_edt(~self.blocked)*self.res-np.sqrt(3)*self.res)
+        self.geometry_reuse=dict(inflation=same_source,occupied_distance=same_occupied,
+                                 free_distance=same_blocked)
+        if cache is not None:
+            # Cache geometry only. Independent copies protect it from callers
+            # modifying a returned map; no measurement/stability/age is cached.
+            cache.update(resolution=self.res,origin=self.lo.copy(),kernel=self.kernel.copy(),
+                actual_kernel=self.actual_kernel.copy(),source=source.copy(),occupied=occupied.copy(),
+                blocked=self.blocked.copy(),blocked_actual=self.blocked_actual.copy(),
+                distance=self.distance.copy(),free_distance=self.free_distance.copy())
 
     def expire(self, now):
         """Invalidate aged free cells without recomputing occupied distances.

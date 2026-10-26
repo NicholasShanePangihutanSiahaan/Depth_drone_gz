@@ -374,3 +374,9 @@ Riwayat peta direstore ke window memakai array state/stamp terstruktur.
 Indeks koordinat dibagi antara restore dan lookup FOV dalam satu update;
 state dan timestamp selalu dibaca ulang. Tidak ada cache okupansi yang
 menganggap lingkungan stabil atau menyembunyikan sensor dropout.
+
+RollingMapper dapat memakai ulang inflasi/EDT hanya ketika input geometri
+identik, setelah expiry diperiksa. Cache privat hanya menyimpan mask dan
+hasil perhitungan, bukan umur observasi atau kestabilan lingkungan. Data
+sensor tetap diintegrasikan dan semua freshness gate tetap berlaku.
+`mapping_worker_stages.geometry_reuse` mencatat apakah reuse benar terjadi.
