@@ -28,6 +28,7 @@ class SparseHistory:
         self.lo = np.asarray(config['bounds_min'], dtype=float)
         self.res = config['resolution']
         self.shape = tuple(np.ceil((np.asarray(config['bounds_max'])-self.lo)/self.res).astype(int))
+        self.window_index=None
         self.cells = {}  # flat global index -> (state, last measured timestamp)
         self.assumptions = {}  # global index -> (FOV prior code, derivation stamp); not measured
         self.prior = set()  # Explicit fixed surveyed launch pad only.
@@ -52,6 +53,9 @@ class SparseHistory:
         if prior:
             self.prior.update(changed)
         changed = list(changed)
+        if self.window_index is not None and changed:
+            ids=np.column_stack(np.unravel_index(changed,self.shape))
+            self.window_index.update(ids,state,stamp,prior)
         return changed
 
     def integrate(self, origin, points, hits, stamp, roi=None):
@@ -101,6 +105,9 @@ class SparseHistory:
         return local,keys
 
     def restore(self, grid, now, lookup=None):
+        if self.window_index is not None:
+            self.window_index.restore(self,grid,now)
+            return
         if not self.cells:return
         # Keep lookup bounded to the local window. Structured fromiter avoids
         # a large nested Python list and a second conversion of state/stamp.
@@ -116,17 +123,20 @@ class SparseHistory:
         grid.seen[tuple(local[live].T)]=np.where(prior[live],now,values['stamp'][live])
 
     def fov_priors(self,grid,origin=None,rotation=None,profile=None,stamp=None,lookup=None):
-        _,keys=self.window_lookup(grid) if lookup is None else lookup
-        values=np.fromiter((self.assumptions.get(k,(0.,-np.inf))[0] for k in keys),
-                           dtype=np.int8,count=len(keys))
-        grid.assumed_free[:]=(values.reshape(grid.shape)==1)
-        grid.assumed_occupied[:]=(values.reshape(grid.shape)==2)
+        if self.window_index is not None:self.window_index.restore_fov(self,grid)
+        else:
+            _,keys=self.window_lookup(grid) if lookup is None else lookup
+            values=np.fromiter((self.assumptions.get(k,(0.,-np.inf))[0] for k in keys),
+                               dtype=np.int8,count=len(keys))
+            grid.assumed_free[:]=(values.reshape(grid.shape)==1)
+            grid.assumed_occupied[:]=(values.reshape(grid.shape)==2)
         if origin is None:return None
         from .fixed_fov import classify
         ids,codes=classify(grid,origin,rotation,profile)
         global_ids=self.indices(grid.centers(ids))
         keys=np.ravel_multi_index(global_ids.T,self.shape) if len(ids) else []
         self.assumptions.update((int(k),(int(code),float(stamp))) for k,code in zip(keys,codes))
+        if self.window_index is not None:self.window_index.update_fov(global_ids,codes)
         grid.assumed_free[tuple(ids.T)]=codes==1
         grid.assumed_occupied[tuple(ids.T)]=codes==2
         return global_ids,codes,float(stamp)
@@ -145,11 +155,13 @@ class SparseHistory:
             fov_ids,codes,derived_stamp=delta[4]
             fov_keys=np.ravel_multi_index(fov_ids.T,self.shape) if len(fov_ids) else []
             self.assumptions.update((int(k),(int(code),float(derived_stamp))) for k,code in zip(fov_keys,codes))
+            if self.window_index is not None:self.window_index.update_fov(fov_ids,codes)
         keys = np.ravel_multi_index(ids.T, self.shape) if len(ids) else []
         self.cells.update(zip(np.asarray(keys).tolist(), zip(states.tolist(), stamps.tolist())))
         self.occupied_keys.update(np.asarray(keys)[states == OCCUPIED].tolist())
         self.observed_columns.update(np.unique(np.asarray(keys)//self.shape[2]).tolist())
         self.prior.update(np.asarray(keys)[priors].tolist())
+        if self.window_index is not None:self.window_index.update(ids,states,stamps,priors)
         if len(stamps):
             self.last_observation_stamp = max(self.last_observation_stamp, float(np.max(stamps)))
 
@@ -207,7 +219,10 @@ class RollingMapper:
     def __init__(self, config):
         self.config = copy.deepcopy(config)
         self.history = SparseHistory(config)
-        self.geometry_cache={}
+        self.geometry_cache={} if config.get('mapping_geometry_reuse',False) else None
+        if config.get('mapping_block_index',True):
+            from .block_window_index import BlockWindowIndex
+            self.history.window_index=BlockWindowIndex(self.history.shape)
 
     def integrate(self, grid, origin, points, hits, stamp, pad, now, centre, roi=None, auxiliary=(), fixed_fov=None):
         started = time.perf_counter()
@@ -222,7 +237,7 @@ class RollingMapper:
             depth_stats.append(copy.deepcopy(self.history.last_integration_stats))
         depth_finished = time.perf_counter()
         updated = navigation_window(self.config, centre)
-        lookup=self.history.window_lookup(updated)
+        lookup=None if self.history.window_index is not None else self.history.window_lookup(updated)
         self.history.restore(updated,now,lookup=lookup)
         if pad is not None:
             updated.seed_launch_pad(*pad, stamp)
@@ -254,7 +269,9 @@ class RollingMapper:
             restore_inflate_delta_wall_ms=(finished-depth_finished)*1000,
             total_wall_ms=(finished-started)*1000,
             depth_observation_stamps=[float(o[2]) for o in auxiliary],
-            input_policy='rolling_metadata_only',geometry_reuse=updated.geometry_reuse)
+            input_policy='rolling_metadata_only',geometry_reuse=updated.geometry_reuse,
+            geometry_reuse_enabled=self.geometry_cache is not None,
+            block_window_index=self.history.window_index.status() if self.history.window_index is not None else None)
         return updated, stamp, delta
 
 

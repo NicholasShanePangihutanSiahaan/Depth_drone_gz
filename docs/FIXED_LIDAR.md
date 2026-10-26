@@ -380,3 +380,11 @@ identik, setelah expiry diperiksa. Cache privat hanya menyimpan mask dan
 hasil perhitungan, bukan umur observasi atau kestabilan lingkungan. Data
 sensor tetap diintegrasikan dan semua freshness gate tetap berlaku.
 `mapping_worker_stages.geometry_reuse` mencatat apakah reuse benar terjadi.
+
+Worker mapping memakai indeks blok16^3 untuk akses cepat ke state/timestamp
+riwayat. Blok/slot yang belum diamati tetap unknown; dictionary canonical,
+aturan TTL/occupied precedence dan FOV prior tetap dipertahankan. Statistik
+jumlah blok dan byte array ada di `mapping_worker_stages.block_window_index`.
+`mapping_block_index=false` memilih backend dictionary untuk pembanding.
+Reuse geometri exact bersifat opsional (`mapping_geometry_reuse=true`),
+default off setelah hit rate rendah dan recovery tetap berulang pada run25.

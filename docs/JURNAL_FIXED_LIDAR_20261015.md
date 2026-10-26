@@ -2353,3 +2353,63 @@ Script/hasil di reports/fixed_geometry_cache_20261026. Harness pertama
 memerlukan import UNKNOWN agar fungsi legacy dapat dieksekusi; sudah dibetulkan.
 Build tiga package berhasil; full503 tests lulus279.74s,
 0error/failure/skipped. Reuse geometri belum flight validated.
+
+
+### 26 Oktober 2026 — run25: reuse geometri jarang; indeks blok exact untuk riwayat
+
+9c8ea37 sudah push. Run reports/fixed_lidar_validation_20261026_152619,
+session .dependencies/ros_sensor_palm_farm_flowers_20261026_152627_20225_mapping.
+Terminal repeated_depth_recovery34.25s, masih APPROACH tree1, belum sektor.
+251audit pairs RMSE.0100117422m/max.0220667613m. Brake28.25/30.3/32.35/34.25,
+resume28.95/31.05/32.901. Tidak ada terminal localisation failure.
+Dari104completed mapping jobs yang teramati (dedup worker_finished_ns),
+inflation reuse0,occupiedEDT1,freeEDT7; window origin berubah42kali.
+Jadi benchmark identical-mask35x tidak mewakili manfaat flight ini. Cache
+geometri dinonaktifkan DEFAULT; tetap opsional mapping_geometry_reuse=true
+untuk eksperimen terpisah, dengan test safety/expiry yang sudah ada.
+
+Lastmap33.6 worker1713.459ms wall: lidar574.777/depth202.568/restore-inflate-
+delta936.115ms; pipeline3260.575ms wall,.55sim measurement-to-setpoint.
+LastICP34.1 start34.157 end34.206,registration228.990ms. Peta tetap bottleneck.
+Tidak menaikkan threshold.6,hold2s,jumlah recovery,clearance atau speed cap.
+
+Referensi primer layout block-hash Voxblox Layer/Block:
+https://github.com/ethz-asl/voxblox/blob/master/voxblox/include/voxblox/core/layer.h
+Kode upstream diperiksa via raw.githubusercontent.com. Yang diadaptasi hanya
+ide akses voxel per blok kecil, BUKAN memakai TSDF/ESDF Voxblox, integratornya,
+atau mengklaim SUPER/FAST-LIO. Implementasi baru BlockWindowIndex Python/NumPy
+memakai blok16^3, state int8/seenfloat64/priorbool/FOVcodeint8. Blok hilang
+UNKNOWN. Slice blok yang overlap window menggantikan lookup dictionary
+per voxel. Tidak mengurangi resolusi/ray, memperluas free, atau mengubah
+mounting/frame. Ekspor dictionary canonical tetap ada untuk audit/history
+routing dan delta, index hanya di worker RollingMapper, tidak dikirim ke
+navigation/history-route process. Perubahan state/timestamp/prior/FOV index
+mengikuti update/apply_delta/fov_priors yang sama; occupied precedence dan
+TTL tetap. Assumption derivation timestamps tetap dictionary canonical;
+lookup tidak pernah refresh timestamp.
+
+mapping_block_index=true adalah default worker; false menyediakan backend
+pembanding. SparseHistory pada proses lain default tanpa index. Statistik
+block count/side/array bytes dicatat di mapping_worker_stages.block_window_index.
+Biaya memori bertambah bounded oleh blok yang benar-benar dialokasikan,
+bukan full dense whole-farm grid. Dimensi lastblock tetap dicek terhadap
+bounds; unseen slots UNKNOWN,seen-inf,priorFalse,FOV0.
+
+30targeted index/coverage/FOV/transport tests lulus5.03s (sebelumnya34existing
+coverage/FOV/geometry tests lulus3.67s). Tambahan random8batch,expiry,recentering,
+occupied wins,prior dan FOV/delta menyamai dictionary; sequential complete
+RollingMapper dengan backend on/off menyamai state,seen,assumptions,blocked,
+blocked_actual,distance,free_distance dan delta. Tes lookup melarang get()
+dictionary per voxel pada index path. Geometry-cache default off diverifikasi.
+
+Benchmark frozen history run25,18repeat buang2, restore+FOV lookup:
+dictionary167.052947ms ->blocks9.550283ms (17.49x). Percobaan awal181.533370
+->9.679242ms (18.75x).119blocks,array bytes5361664 (belum termasuk Python
+overhead). Update canonical12000voxels median15.233817ms ->33.726891ms
+TERMASUK pemeliharaan index; tambahan18.49ms ini lebih kecil daripada
+penghematan lookup pada benchmark tersebut. Tetap ONLYoffline, bukan
+keberhasilan timing/flight. Frozen masks+seen+distances array_equal dengan
+backend dictionary pada now35.05/500 dan dua window. Artifact script/hasil
+di reports/fixed_block_index_20261026. Build tiga package berhasil;
+full506 tests lulus281.46s,0error/failure/skipped. Indeks blok belum
+flight validated.
