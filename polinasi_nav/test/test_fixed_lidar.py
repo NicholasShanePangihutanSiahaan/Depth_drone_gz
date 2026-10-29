@@ -21,6 +21,9 @@ def test_fixed_config_and_world(tmp_path):
     assert c['fixed_fov_assumptions'] and c['scan_adaptive_height'] and c['scan_target_repair']
     assert c['camera_mount_yaw'] == 0 and not c['camera_yaw_enabled']
     assert c['depth_camera_enabled'] and c['tree_exploration_same_altitude']
+    assert c['map_timeout'] == 5. and c['depth_camera_timeout'] == 5.
+    hover = load_config(ROOT / 'reports/fixed_lidar/hover.json')
+    assert hover['map_timeout'] == 5.
     prepare(ROOT/'polinasi_nav/worlds/palm_farm.sdf',tmp_path/'world.sdf',.15,path)
     model = ET.parse(tmp_path/'models/iris_lidar_mapping/model.sdf').getroot().find('model')
     assert model.find("joint[@name='lidar_pitch']").get('type') == 'fixed'

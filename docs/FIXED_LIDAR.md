@@ -401,3 +401,19 @@ TF scan-time tetap diperiksa. Ini cache bayangan badan sendiri, bukan cache
 peta/free-space atau timestamp sensor. Hit/miss ada di
 `simulation_ray_stats.body_shadow_geometry_cache`; perubahan transform/arah/
 bentuk mengharuskan perhitungan ulang dan hasil mask tetap sama.
+
+## Toleransi pembaruan peta — 29 Oktober 2026
+
+Sesuai permintaan pengguna, generator fixed-lidar menetapkan `map_timeout=5.0`
+detik simulasi untuk hover/inspection, dan `depth_camera_timeout=5.0` untuk
+inspection. Parameter depth bersama juga digunakan untuk penerimaan frame,
+antrean transform, serta validasi bukti kamera pada planner. Pengereman
+pencegahan mengikuti rumus lama `0.6 * depth_camera_timeout`, sehingga mulai
+setelah umur depth terintegrasi melewati 3.0 detik. Batas pemulihan setelah
+mulai pengereman tetap 2.0 detik; kecepatan aktual harus <0.04 m/s dan
+reference <0.01 m/s, backup selesai, ada integrasi baru setelah pengereman
+dengan umur <=3.0 detik, serta posisi aktual/reference aman sebelum replan.
+Ini pelonggaran umur data yang diminta, bukan perbaikan throughput atau
+validasi keselamatan lingkungan dinamis. Timeout pose/LiDAR/IMU dan
+klasifikasi occupied/unknown tetap berlaku terpisah. Perubahan konfigurasi
+ini belum diuji flight; hasil tes dicatat di jurnal.

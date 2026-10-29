@@ -2524,3 +2524,27 @@ Ini per-function fixed-geometry benchmark, bukan jaminan flight speedup.
 Profiling/script/hasil di reports/fixed_self_geometry_20261026.
 Build tiga package berhasil; full519 tests lulus292.64s,
 0error/failure/skipped. Optimasi self geometry belum flight validated.
+
+
+### 29 Oktober 2026 — toleransi umur peta 5 detik atas permintaan pengguna
+
+User meminta melonggarkan toleransi pembaruan peta ke 5 detik dan penjelasan
+syarat melanjutkan misi. Bukti run terakhir
+reports/fixed_lidar_validation_20261026_222402/accuracy.summary.json:
+start brake30.65, age depth.65 melampaui threshold.6; terminal32.7
+berlabel stale_depth_camera, failure_gate=recovery_settling_deadline.
+Kecepatan estimasi.063925269 m/s masih >.04 setelah2.05s; depth sudah segar.
+Generator fixed menetapkan map_timeout5 (hover+inspection), depth_camera_timeout5
+(inspection), sebelumnya1. Ambang brake mengikuti rumus tetap60%=3s,
+bukan5s; batas settling2s dan syarat kecepatan tidak diubah. Depth timeout
+bersama juga mempengaruhi penerimaan/antrean frame dan bukti planner kamera.
+Tidak mengubah sensor freshness pose/LiDAR/IMU, clearance, FOV atau obstacle.
+Perubahan ini menerima data lingkungan lebih tua, tidak memperbaiki penyebab
+latensi. Tidak menjalankan simulasi pada permintaan perubahan ini.
+Perubahan propagasi IMU dari pekerjaan sebelumnya masih terpisah/unstaged,
+belum dikomit atau diklaim flight validated.
+
+Validasi: ROS_DOMAIN_ID87 pytest test_fixed_lidar.py, test_fixed_flowers.py,
+test_depth_health.py:13passed1.07s; git diff --check bersih. Tes mencakup
+config generator kedua world, mounting, obstacle world, dan syarat/deadline
+pemulihan depth. Tidak ada uji flight untuk toleransi5detik.
