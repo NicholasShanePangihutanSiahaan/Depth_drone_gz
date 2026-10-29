@@ -5,6 +5,7 @@ This is a small simulation reference, not a flight-qualified FAST-LIO replacemen
 No function accepts simulator position. The launch origin is a coordinate gauge.
 """
 import numpy as np
+import time
 from collections import deque
 from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation
@@ -133,7 +134,9 @@ class LidarImuOdometry:
                 self.v += world_accel*dt
         self.last_imu = stamp
 
-    def scan(self, points_sensor, stamp):
+    def scan(self, points_sensor, stamp, on_accepted=None):
+        scan_started=time.monotonic_ns()
+        self.last_scan_timing=dict(scan_stamp=float(stamp),stage='validation')
         if not self.initialized or self.last_imu is None or not 0 <= stamp-self.last_imu < 0.1:
             self.ok, self.reason = False, 'imu_not_ready'
             return False
@@ -177,9 +180,12 @@ class LidarImuOdometry:
             self.accepted_positions.append((stamp,self.p.copy()))
             self.covariance = np.eye(6)*0.02
             return True
+        self.last_scan_timing.update(stage='registration',iterations=0)
+        registration_started=time.monotonic_ns()
         predicted_p, predicted_r = self.p.copy(), self.r.copy()
         p, r = predicted_p.copy(), predicted_r.copy()
         for _ in range(15):
+            self.last_scan_timing['iterations']=_+1
             transformed = body@r.T+p
             distances, ids = self.query_correspondences(transformed)
             inliers = distances < ICP_MAX_CORRESPONDENCE_DISTANCE
@@ -303,14 +309,28 @@ class LidarImuOdometry:
         self.accepted_positions.append((stamp,p.copy()))
         self.p, self.r = p, r
         self.covariance = np.eye(6)*max(0.005, self.rmse**2)
+        # The accepted correction is independent of subsequent reference
+        # maintenance. Publish it now, never refresh its acquisition stamp.
+        self.ok, self.reason, self.last_good = True, 'tracking', stamp
+        accepted_wall=time.monotonic_ns()
+        self.last_scan_timing.update(stage='accepted_pose_before_reference',
+            registration_to_accept_wall_ms=(accepted_wall-registration_started)/1e6,
+            scan_to_accept_wall_ms=(accepted_wall-scan_started)/1e6,
+            keyframe_rebuilt=False)
+        if on_accepted is not None:on_accepted()
+        reference_started=time.monotonic_ns()
+        self.last_scan_timing['stage']='reference_maintenance'
         # Keep a bounded recent local map, with spatial culling.
         if self.body_imu:
             if np.linalg.norm(p-self.last_keyframe_position)>=.5:
+                self.last_scan_timing['keyframe_rebuilt']=True
                 self.freeze_keyframe(transformed)
         else:
             combined = np.vstack((self.reference, transformed))
             combined = combined[np.linalg.norm(combined-p, axis=1) < 15.]
             self.reference = voxel_downsample(combined)[-40000:]
             self.rebuild_reference()
-        self.ok, self.reason, self.last_good = True, 'tracking', stamp
+        self.last_scan_timing.update(stage='complete',
+            reference_maintenance_wall_ms=(time.monotonic_ns()-reference_started)/1e6,
+            total_wall_ms=(time.monotonic_ns()-scan_started)/1e6)
         return True

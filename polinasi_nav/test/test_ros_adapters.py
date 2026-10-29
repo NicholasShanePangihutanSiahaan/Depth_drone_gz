@@ -461,7 +461,7 @@ def test_localisation_receives_IMU_and_clock_during_scan_without_integrating_fut
     executor=MultiThreadedExecutor(num_threads=2)
     executor.add_node(node);executor.add_node(peer)
     entered=threading.Event();release=threading.Event()
-    def slow_registration(*args):entered.set();release.wait(4.);return False
+    def slow_registration(*args,**kwargs):entered.set();release.wait(4.);return False
     node.estimator.scan=slow_registration
     node.last_stamp=.98;node.last_imu=.99;node.estimator.last_imu=.98
     node.estimator.last_good=.98;node.estimator.reason='tracking_fixture'
@@ -590,7 +590,7 @@ def test_accepted_pose_refreshes_health_immediately_without_waiting_for_timer(mo
         node.status=Mock();node.localisation_diagnostics=Mock()
         node.health()
         assert not node.status.publish.call_args.args[0].data
-        def accept(points,stamp):
+        def accept(points,stamp,on_accepted=None):
             node.estimator.last_good=stamp;node.estimator.last_scan=stamp
             node.estimator.reason='tracking';return True
         node.estimator.scan=accept
@@ -696,7 +696,7 @@ def forward_sensor_fixture(monkeypatch):
     node.now=lambda:clock[0]
     node.pub=Mock();node.tf=Mock();node.status=Mock();node.localisation_diagnostics=Mock()
     node.estimator.gravity_magnitude=9.8
-    def accept(points,stamp):
+    def accept(points,stamp,on_accepted=None):
         node.estimator.last_good=stamp;node.estimator.last_scan=stamp
         node.estimator.reason='tracking';return True
     node.estimator.scan=accept
@@ -752,4 +752,34 @@ def test_prediction_gap_fails_health_even_with_fresh_lidar_and_received_imu(monk
         d=json.loads(node.localisation_diagnostics.publish.call_args.args[0].data)
         assert not d['healthy'] and d['health_gate']=='imu_prediction_gap'
         assert node.last_stamp==1.
+    finally:node.destroy_node()
+
+
+def test_corrected_pose_published_before_reference_work_and_not_published_twice(monkeypatch):
+    node,clock,cloud,imu=forward_sensor_fixture(monkeypatch)
+    try:
+        imu(1.1)
+        before_tf=node.tf.sendTransform.call_count
+        correct=Mock(wraps=node.forwarder.correct);node.forwarder.correct=correct
+        def accept_then_maintain(points,stamp,on_accepted):
+            node.estimator.last_good=stamp;node.estimator.last_scan=stamp
+            node.estimator.reason='tracking'
+            on_accepted()
+            assert node.accepted_scan_stamp==stamp
+            assert node.status.publish.call_args.args[0].data
+            assert node.scan_processing['busy'] and node.scan_processing['accepted_pose_published']
+            # Independent IMU output continues during the simulated maintenance.
+            imu(1.12);imu(1.14)
+            assert node.last_stamp==pytest.approx(1.14)
+            return True
+        node.estimator.scan=accept_then_maintain
+        node.scan(cloud(1.1))
+        assert correct.call_count==1
+        assert node.tf.sendTransform.call_count==before_tf+1
+        assert not node.last_scan_processing['busy']
+        assert node.last_stamp==pytest.approx(1.14)
+        # A correction dropout still publishes an immediate diagnostic transition.
+        imu(1.22);imu(1.3);imu(1.38);imu(1.42)
+        debug=json.loads(node.localisation_diagnostics.publish.call_args.args[0].data)
+        assert not debug['healthy'] and debug['health_gate']=='lidar_correction_stale'
     finally:node.destroy_node()

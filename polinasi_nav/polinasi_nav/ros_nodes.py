@@ -359,31 +359,42 @@ class LocalisationNode(ConfigNode):
         from .self_filter import self_mask
         keep = ~self_mask(body,self.c)
         registration_started=time.monotonic_ns()
-        accepted=e.scan(points[keep], seconds(msg.header.stamp))
-        registration_finished=time.monotonic_ns()
-        snapshot=self.estimator_snapshot()
-        # Serialize pose commit with timed health publication. A new accepted
-        # measurement must not wait another 0.1 s timer to clear old health.
-        with getattr(self,'health_lock',nullcontext()):
-            prediction=None
-            if accepted:
+        pose_committed=False
+        def commit_pose():
+            nonlocal pose_committed
+            snapshot=self.estimator_snapshot()
+            # The single scan callback owns the core; timed health only reads
+            # this detached accepted-state snapshot during reference rebuild.
+            with self.health_lock:
                 self.accepted_scan_stamp=stamp
+                prediction=None
                 if self.forward_imu:
                     self.send_scan_transform(msg.header.stamp,e.p,e.r)
                     with self.input_lock:
                         self.forwarder.correct(stamp,e.p,e.r,e.v,e.covariance,e.gyro_bias,e.gravity_magnitude,e.omega)
                         prediction=self.forwarder.snapshot()
                 else:self.publish(msg.header.stamp,e.p,e.r,e.v,e.omega,e.covariance)
-            self.sensor_debug_snapshot=snapshot
+                self.sensor_debug_snapshot=snapshot
+                self.scan_processing=dict(self.scan_processing,accepted_pose_published=True,
+                    accepted_pose_published_sim=self.now(),accepted_pose_published_wall_ns=time.monotonic_ns())
+                if self.forward_imu:self.publish_forward(prediction)
+                LocalisationNode.publish_health(self)
+                pose_committed=True
+        accepted=e.scan(points[keep],seconds(msg.header.stamp),on_accepted=commit_pose)
+        registration_finished=time.monotonic_ns()
+        # Bootstrap and compatibility adapters return an accepted result without
+        # an early callback. Publish ONCE, not twice after reference work.
+        if accepted and not pose_committed:commit_pose()
+        with self.health_lock:
+            self.sensor_debug_snapshot=self.estimator_snapshot()
             self.scan_processing=dict(self.scan_processing,busy=False,completed_sim=self.now(),
                 completed_wall_ns=time.monotonic_ns(),accepted=bool(accepted),
                 imu_wall_ms=(preprocessing_started-imu_started)/1e6,
                 preprocessing_wall_ms=(registration_started-preprocessing_started)/1e6,
-                registration_wall_ms=(registration_finished-registration_started)/1e6)
+                registration_wall_ms=(registration_finished-registration_started)/1e6,
+                estimator_stages=dict(getattr(e,'last_scan_timing',{})))
             self.last_scan_processing=dict(self.scan_processing)
-            if accepted:
-                if self.forward_imu:self.publish_forward(prediction)
-                LocalisationNode.publish_health(self)
+            if accepted:LocalisationNode.publish_health(self)
 
     def estimator_snapshot(self):
         e=self.estimator
@@ -392,7 +403,7 @@ class LocalisationNode(ConfigNode):
             orientation_rpy=Rotation.from_matrix(e.r).as_euler('xyz').tolist(),velocity=e.v.tolist(),
             calibrated_gravity_mps2=e.gravity_magnitude,gyro_bias=e.gyro_bias.tolist(),
             keyframes=len(e.keyframes),translation_information=e.translation_information,
-            registration=e.last_registration,scan_inputs=getattr(self,'scan_input_diagnostics',{}),
+            registration=e.last_registration,estimator_stages=dict(getattr(e,'last_scan_timing',{})),scan_inputs=getattr(self,'scan_input_diagnostics',{}),
             imu_shock_until=e.imu_shock_until if np.isfinite(e.imu_shock_until) else None,
             registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
             reference_points=0 if e.reference is None else len(e.reference)))
@@ -419,10 +430,11 @@ class LocalisationNode(ConfigNode):
                     fresh=False;gate='lidar_correction_stale'
                 elif forward_info['correction_stamp'] is not None and not forward_info['valid']:
                     fresh=False;gate=forward_info['reason']
-        if not only_changed or bool(fresh)!=getattr(self,'last_health_value',None):
+        changed=bool(fresh)!=getattr(self,'last_health_value',None)
+        if not only_changed or changed:
             self.status.publish(Bool(data=bool(fresh)))
             self.last_health_value=bool(fresh)
-        if not emit_debug:return
+        if not emit_debug and not changed:return
         if self.mode=='sensor':
             debug=dict(snapshot)
             debug.pop('has_good_pose')

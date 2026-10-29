@@ -2590,3 +2590,54 @@ Build lengkap tools/build_ros.sh:3packages berhasil; full546tests lulus
 sertifikasi braking; seluruh perubahan belumflight pada titikcommit ini.
 Runtimehost audit: UDP9002/14650,TCP5762 kosong; tidakada arducopter/gz-sim/
 rviz2 pada pemeriksaan sebelumflight. Tidak ada suiteberat saatflight.
+
+
+### 29 Oktober 2026 — run29: approach bergerak, abort koreksi LiDAR terlambat
+
+Commit9f4fa82 sudahpush. Run reports/fixed_lidar_validation_20261029_115232;
+session .dependencies/ros_sensor_palm_farm_flowers_20261029_115240_12575_mapping,
+stoppedtrue. Approach mulai20.55s, terminal47.05s localisation_loss.
+1016auditpairs RMSE.0116718831m,max.0223593644m. Sampling auditor sekarang
+berasal dari forward odometry50Hz dan nearesttruth<=.011s, sehingga distribusi
+sampel berbeda dari baselineICP10Hz; angka bukancontrolledcomparison.
+Depthage.65,threshold3s,0depthrecoveries: movingrecovery BELUMterpakai flight.
+Poseage maksimum setelah12s .022s pada debug, rawIMU tetapfresh.
+Lastcorrected46.7, scan46.8busy sejak46.858, lastdebug47.0correctionage.3.
+Pada navigation47.05 localisation_okfalse, poseage.06/cloudage.05/IMUage.005.
+Dengan kode9f4fa82, callbackIMU sesudah47.0 melampaui gate koreksiICP.3s
+meski propagatedposefresh. Last acceptedscan46.6registration787.139mswall,
+46.7registration472.681mswall. Tidakada bukti drifbesar/permanentICPfailure.
+Abort dipicuhealthfalse antara timerdebug; belum ada recordfalse debug
+karena callbackIMU sebelumnya hanya menerbitkanBoolketikastatusberubah.
+
+Auditkode: e.scan baru mengembalikan accepted setelah freeze_keyframe/
+rebuildnormalpeta, sehingga node menahan publikasi posevalid selama
+pemeliharaanreferensi. Kontribusi tepat keyframerebuild terhadapstall46.8
+belumterprofil perstage: jangan mengklaim satu-satunya penyebab.
+Sumberprimer: https://raw.githubusercontent.com/hku-mars/FAST_LIO/main/src/laserMapping.cpp
+baris896-900 publish_odometry sebelum map_incremental. Adaptasi prinsip
+urutan saja; estimator kita TETAP experimentalICPbodyIMU, bukanFAST-LIO.
+
+Perbaikan: callback on_accepted setelah semuagateICP/PVA/cov lolos dan
+last_good=timestampasli, sebelumreference maintenance. Node memublikasikan
+pose/TFkoreksi+health sekali, kemudian mereplayIMUfuture di stateindependen.
+Pembaruanreference tetapserialized sebelum scanberikutnya; tidak ada
+threadmap baru atau refreshstamp palsu. Bootstrap tetap menunggu referensi.
+Tambah last_scan_timing: iterations, registration_to_accept,
+reference_maintenance, total; node mencatat accepted_pose_publishedsim/wall.
+Healthtransition IMU juga menerbitkan debugJSON pada perubahanBool saja,
+bukan200Hz, agar gatefalse dantimestamp tercatat. GateICP.3/rawIMU.1 tetap.
+
+Tes awal50passed2.89s; tambahan regresi42passed2.41s:callbacksebelumfreeze,
+tidakcallbackpadascanrejected, posedanvelocityaccepted sama setelahfreeze,
+nodepublishonce danIMUoutputselamamaintenance, genuinecorrectiondropout
+memublikasikan diagnosticfalse langsung. Fullbuild menyusul.
+Mapnumerik+HTML tersimpan di reports/ros_sensor_palm_farm_flowers_20261029_115240_12575_mapping/map_3d/.
+
+Tambahan audit keyframe: keyframe7 dibuat scan43.7 di
+[-1.3291696581,-.6385877874,1.5514510022]. Scan46.7accepted di
+[-1.7695557807,-.8109375324,1.3901817295], jarak.4996520289m ke keyframe
+terakhir (ambang.5m). Scan46.8 kemungkinan memicu rebuild; tetap dugaan
+karena last_good tidak pernah dipublikasikan untukscanitu.
+Buildulang3packages berhasil;548tests lulus297.33s,0error/failure/skipped.
+Perbaikan publikasi earlyaccepted belumflight pada titikcommit ini.

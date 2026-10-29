@@ -453,3 +453,11 @@ receive gate0.1detik tidak berubah. Noise/covariance propagasi diagonal
 bersifat eksperimental, bukan ESKF/LIO-SAM/FAST-LIO. Initial alignment
 memakai waktu sensor/FCU yang overlap tanpa extrapolation atau ubah frame.
 Belum ada flight validation untuk perubahan ini.
+
+Koreksi ICP yang sudah lolos validasi dipublikasikan sebelum pemeliharaan
+peta referensi/keyframe; maintenance tetap selesai sebelum scan berikutnya.
+Tidak ada perubahan timestamp scan atau gate koreksi0.3s.
+`estimator_stages` dan `accepted_pose_published_sim/wall_ns` membedakan
+selesainya estimasi dari selesainya pemeliharaan referensi. Perubahan health
+langsung dari callback IMU juga dicatat sebagai debug, termasuk transisi
+false yang mungkin terjadi di antara dua timer debug.

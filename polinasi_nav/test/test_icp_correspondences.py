@@ -40,3 +40,34 @@ def test_pruned_and_unbounded_icp_have_same_acceptance_pose_and_residual():
         assert bounded.reason==legacy.reason=='tracking'
         for name in ('p','r','v','covariance'):np.testing.assert_allclose(getattr(bounded,name),getattr(legacy,name),rtol=0,atol=1e-12)
         assert bounded.rmse==legacy.rmse and bounded.last_good==legacy.last_good
+
+
+def test_accepted_correction_callback_precedes_keyframe_reference_maintenance():
+    e=LidarImuOdometry([0,0,0,0,0,0],body_imu=True,robust_planes=True)
+    for i in range(50):e.imu([0,0,0],[0,0,9.81],i*.005)
+    x,y=np.meshgrid(np.linspace(-4,4,25),np.linspace(-4,4,25));x,y=x.ravel(),y.ravel()
+    world=np.vstack((np.column_stack((x,y,np.zeros_like(x))),
+        np.column_stack((np.full_like(x,5.),x,y+5)),
+        np.column_stack((x,np.full_like(x,5.),y+5))))
+    assert e.scan(world,.245)
+    for j in range(20):e.imu([0,0,0],[0,0,9.81],.25+j*.005)
+    e.last_keyframe_position=e.p+np.array([.6,0,0])
+    events=[];freeze=e.freeze_keyframe
+    def accepted():
+        assert e.ok and e.last_good==.345 and e.reason=='tracking'
+        assert e.last_scan_timing['stage']=='accepted_pose_before_reference'
+        events.append(('accepted',e.p.copy(),e.v.copy()))
+    def reference(points):
+        assert len(events)==1
+        events.append(('reference',e.p.copy(),e.v.copy()));freeze(points)
+    e.freeze_keyframe=reference
+    assert e.scan(world,.345,on_accepted=accepted)
+    assert [x[0] for x in events]==['accepted','reference']
+    np.testing.assert_array_equal(events[0][1],e.p)
+    np.testing.assert_array_equal(events[0][2],e.v)
+    assert e.last_scan_timing['keyframe_rebuilt']
+    assert e.last_scan_timing['reference_maintenance_wall_ms']>=0
+    events.clear()
+    for j in range(20):e.imu([0,0,0],[0,0,9.81],.35+j*.005)
+    assert not e.scan(world+100.,.445,on_accepted=lambda:events.append('invalid'))
+    assert not events and e.last_good==.345
