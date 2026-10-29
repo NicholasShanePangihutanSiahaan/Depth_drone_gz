@@ -22,6 +22,7 @@ def test_fixed_config_and_world(tmp_path):
     assert c['camera_mount_yaw'] == 0 and not c['camera_yaw_enabled']
     assert c['depth_camera_enabled'] and c['tree_exploration_same_altitude']
     assert c['map_timeout'] == 5. and c['depth_camera_timeout'] == 5.
+    assert c['tree_ascent_max_map_age'] == 5.
     hover = load_config(ROOT / 'reports/fixed_lidar/hover.json')
     assert hover['map_timeout'] == 5.
     prepare(ROOT/'polinasi_nav/worlds/palm_farm.sdf',tmp_path/'world.sdf',.15,path)

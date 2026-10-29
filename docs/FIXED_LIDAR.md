@@ -488,3 +488,11 @@ sehingga akumulasi perpindahan tidak hilang. Cache tidak melintasi scan atau
 pergantianreference. Radius/quality/healthgate tidak dilonggarkan. Timing
 query/linear-solve dan jumlah reuse dicatat di estimator_stages. Benchmark
 offline queries bukan klaim percepatan ICP/flight penuh.
+
+Koreksi kelengkapan preset29Oktober: `tree_ascent_max_map_age=5.0` juga
+ditetapkan eksplisit untuk inspection. Nilai warisan0.4s sebelumnya belum
+ikut perubahan map/depth5s dan menyebabkan ascent berulang pause/resume.
+Map utama, depth, dan ascent sekarang sama-sama5s; toleransi umur hasil
+planner1s, guidancehistory8s, pose/koreksiICP0.3s, rawLiDAR0.5s dan
+IMUreceive0.1s adalah pemeriksaan berbeda. Geometry observation guard
+0.2m plus planningreserve0.2m tidak diubah.

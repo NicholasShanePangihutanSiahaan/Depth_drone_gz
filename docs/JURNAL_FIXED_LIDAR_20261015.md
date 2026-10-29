@@ -2743,3 +2743,39 @@ Fullbuild/regression menyusul sebelumpush/flight.
 
 Fullbuild3packages berhasil;554tests lulus309.62s,0error/failure/skipped.
 Optimasi exactcorrespondence belumflightvalidated pada titikcommit ini.
+
+
+### 29 Oktober 2026 — run32 dihentikan untuk koreksi gate umur peta ascent yang terlewat
+
+Commita5e5300 sudahpush. Run reports/fixed_lidar_validation_20261029_132442,
+session .dependencies/ros_sensor_palm_farm_flowers_20261029_132451_31468_mapping.
+Saya menghentikan run terdaftar setelahmenemukan32ascent_map_too_oldpauses
+pada87.65s; mainmap/depthfresh .3-.6s, localizationhealthy. Configaktual
+masihtree_ascent_max_map_age.4s walau map_timeout/depth_camera_timeout5s.
+Ini gate yang saya lewatkan saatmelengkapi permintaan toleransi5s, bukan
+masalahdriftatauoccupiedroute. Padaakhircleanup91.7 drone sudahSCAN,
+34pauses/34resumes danascentstop=observation_guard_limit: perlambatan
+berulang, bukanhangpermanenatau terminalascenttimeout. Stopreason audit
+registered_simulation_stopped.3094pairs RMSE.0092947635m,max.0246232450m.
+Belumselesaisektor/pohon pada runyangdihentikan ini.
+
+Exactcache aktif di flight: scan24.3 12queries,9720exactKD/39864reuse,
+registration_to_accept317.32mswall,query151.15ms. Scan91.6 15iterations,
+16queries10981KD/63003reuse,registration456.80mswall,query246.41ms/
+solve25.03ms; correctionage.107s sehat. Sampelberbeda bukancontrolled
+wholeflight benchmark, tidak membuktikan seluruhmisiatau semua kondisi.
+
+Audit seluruhcodegate last_observation_stamp menemukan khususascent
+tree_mission.py113 memakai nilaiwarisan.4s; generatorfixedinspection
+sekarangmenetapkan5s. Historyrouteage8 danmovingresultage1 membatasi
+guidance/hasilplanner, bukan toleransiupdatepeta, dipertahankan.
+Pose/correction.3,rawLiDAR.5,IMU.1 dangeometryguards tidakberubah.
+Tidakmengubah mekanik,kecepatan,buffer,unknownatauoccupied.
+
+Regresi25tests lulus10.82s (fixedworld/generator,flowers,continuousascent,
+depthhealth). Tesbaru membuktikanascent tidakpause pada umur4.9/5.0s,
+namunpause+brake pada5.05s dengan sensorpose/cloudtetapfresh.
+Ini perubahanpresetgenerator dantes saja; sourcekontroltidakdiubah.
+Build/full554tests sebelumnya tetapbaseline; tidakmengklaim full555tests
+dijalankan. Launcher membaca generator langsung, tidakperlu rebuild ROS
+untuk satuoverrideconfigini. Perubahanascent5s belumflightvalidated.

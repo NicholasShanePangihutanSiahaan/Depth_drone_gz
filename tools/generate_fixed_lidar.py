@@ -34,6 +34,7 @@ def main(scenario='palm_farm'):
         if stage == 'inspection':
             c.update(feedback_speed_envelope=True,velocity_uncertainty_mps=.03,
                      depth_moving_recovery=True,depth_recovery_planning_lead=.5,
+                     tree_ascent_max_map_age=5.,
                      fixed_approach_target_repair=True,defer_blocked_tree_entry=True,
                      transit_observation_guard=.2,transit_lateral_observation_guard=.2,
                      transit_clearance_preference=.4,transit_clearance_cost_weight=2.,

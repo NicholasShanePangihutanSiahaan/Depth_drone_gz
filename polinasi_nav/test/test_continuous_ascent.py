@@ -217,3 +217,24 @@ def test_fixed_planning_reserve_survives_one_voxel_new_ceiling():
     guarded=canopy_guard_grid(g,c['tree_ascent_observation_guard'])
     assert not guarded.safe(old[-1][0]) and guarded.safe(new[-1][0])
     assert c['tree_ascent_observation_guard']==.2
+
+
+def test_configured_five_second_ascent_map_age_is_respected_and_still_bounded():
+    c,grid=fixture()
+    c.update(tree_continuous_ascent=True,tree_ascent_max_map_age=5.,map_timeout=5.)
+    ctl=TreeInspectionController(c,grid,asynchronous=False)
+    ctl.state,ctl.tree_phase='SURVEY','ASCEND'
+    ctl.active_tree=dict(id=1,xy=[3.,0.],observed_stem_top=4.)
+    ctl.command=np.array([0.,0.,2.]);ctl.health.localisation_ok=True
+    grid.last_observation_stamp=1.
+    for now in (5.9,6.):
+        ctl.health.cloud_stamp=ctl.health.pose_stamp=now
+        ctl.tick(now,.05,ctl.command.copy(),ctl.command_v.copy())
+        assert not ctl.failure and ctl.ascent_map_pauses==0
+        assert ctl.ascent_reference.stop is None
+    now=6.05
+    ctl.health.cloud_stamp=ctl.health.pose_stamp=now
+    ctl.tick(now,.05,ctl.command.copy(),ctl.command_v.copy())
+    assert ctl.ascent_map_pauses==1 and not ctl.failure
+    assert ctl.ascent_reference.reason=='ascent_map_too_old'
+    assert ctl.ascent_reference.stop is not None
