@@ -20,6 +20,19 @@ def pose_at(samples,stamp):
             return np.asarray(q)+(np.asarray(p)-q)*fraction,before+angle*fraction
     return None
 
+
+def common_pose_pair(first,second,maximum_gap=.3):
+    """Newest common measured time; never extrapolate either pose stream."""
+    if not first or not second:return None
+    stamp=min(first[-1][0],second[-1][0])
+    for samples in (first,second):
+        if stamp<samples[0][0]:return None
+        if not any(t==stamp for t,_,_ in samples):
+            pair=next(((a,b) for a,b in zip(samples,list(samples)[1:]) if a[0]<stamp<b[0]),None)
+            if pair is None or pair[1][0]-pair[0][0]>maximum_gap+1e-9:return None
+    a,b=pose_at(first,stamp),pose_at(second,stamp)
+    return None if a is None or b is None else (stamp,a,b)
+
 ENU_TO_NED = np.array([[0., 1., 0.], [1., 0., 0.], [0., 0., -1.]])
 FLU_TO_FRD = np.diag([1., -1., -1.])
 

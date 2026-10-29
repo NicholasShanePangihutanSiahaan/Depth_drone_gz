@@ -64,15 +64,19 @@ class SurveyController(MovingHandoff, MissionController):
         self.global_route_diagnostics={}
         self.global_route_wait_since=None
         self._moving_init()
+        self.depth_recovery_future=self.depth_recovery_key=None
+        self.depth_recovery_status={}
+
 
     def _planning_clone(self):
         clone = object.__new__(type(self))
-        excluded = ('executor', 'pending_plan', 'prefetched_plan', 'prefetch_key', 'moving_future', 'moving_key')
+        excluded = ('executor', 'pending_plan', 'prefetched_plan', 'prefetch_key', 'moving_future', 'moving_key', 'depth_recovery_future', 'depth_recovery_key')
         for key, value in self.__dict__.items():
             if key not in excluded:
                 setattr(clone, key, copy.deepcopy(value))
         clone.executor = clone.pending_plan = clone.prefetched_plan = clone.prefetch_key = None
         clone.moving_future=clone.moving_key=None
+        clone.depth_recovery_future=clone.depth_recovery_key=None
         clone.planner_submitted_ns = time.monotonic_ns()
         return clone
 
@@ -190,6 +194,7 @@ class SurveyController(MovingHandoff, MissionController):
 
     def tick(self, now, dt, position, velocity, range_value=None, range_stamp=None):
         self.survey_now = now
+        self.recovery_measured_state=(np.asarray(position).copy(),np.asarray(velocity).copy())
         if self.state in ('SURVEY', 'RETURN'):
             self.survey_started = now if self.survey_started is None else self.survey_started
             if now-self.survey_started > self.c.get('survey_max_duration', float('inf')):
@@ -198,6 +203,28 @@ class SurveyController(MovingHandoff, MissionController):
         result = super().tick(now, dt, position, velocity, range_value, range_stamp)
         self._prefetch_next(now)
         return result
+
+    def _braking(self,dt):
+        from .depth_recovery import adopt,cancel
+        key=self.depth_recovery_key
+        if key is None or self.failure!='depth_recovering':
+            return super()._braking(dt)
+        if self.brake is not None and self.brake is key['brake']:
+            boundary=key['elapsed']
+            if self.brake.elapsed<=boundary+1e-9 and self.brake.elapsed+dt>=boundary-1e-9:
+                partial=max(0.,boundary-self.brake.elapsed)
+                if partial>1e-9:super()._braking(partial)
+                if self.failure=='depth_recovering' and adopt(self,self.survey_now,*self.recovery_measured_state):
+                    remaining=dt-partial
+                    if remaining>1e-9:return self.tick(self.survey_now,remaining,*self.recovery_measured_state)
+                    return self.command.copy(),self.command_v.copy()
+                return super()._braking(max(0.,dt-partial))
+        elif self.brake is None:
+            # At rest in reference space, measured speed may still be nonzero.
+            if adopt(self,self.survey_now,*self.recovery_measured_state):
+                return self.tick(self.survey_now,dt,*self.recovery_measured_state)
+        else:cancel(self,'brake_reference_changed')
+        return super()._braking(dt)
 
     def _prepare_trajectory(self, now, position, range_value=None, range_stamp=None):
         # A pending worker must not postpone the existing blocked timeout.

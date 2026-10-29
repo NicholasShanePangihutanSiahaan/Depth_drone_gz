@@ -15,6 +15,7 @@ def main(scenario='palm_farm'):
     for stage in ('hover', 'inspection'):
         c = json.loads((ROOT / f'reports/sensor_localisation/{stage}.json').read_text())
         c.update(simulation_scenario=scenario, sensor_rolling_localisation=False, sensor_fixed_localisation=True,
+                 fixed_lidar_forward_imu=True,
                  simulation_continuous_roll=False, simulation_roll_rate=0.,
                  lidar_fixed=True, fixed_fov_assumptions=True, automatic_tilt_ascent=False,
                  map_timeout=5.,
@@ -31,6 +32,7 @@ def main(scenario='palm_farm'):
         c['self_filter_shapes'] = shapes
         if stage == 'inspection':
             c.update(feedback_speed_envelope=True,velocity_uncertainty_mps=.03,
+                     depth_moving_recovery=True,depth_recovery_planning_lead=.5,
                      fixed_approach_target_repair=True,defer_blocked_tree_entry=True,
                      transit_observation_guard=.2,transit_lateral_observation_guard=.2,
                      transit_clearance_preference=.4,transit_clearance_cost_weight=2.,

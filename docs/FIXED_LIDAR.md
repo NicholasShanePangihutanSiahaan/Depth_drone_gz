@@ -417,3 +417,39 @@ Ini pelonggaran umur data yang diminta, bukan perbaikan throughput atau
 validasi keselamatan lingkungan dinamis. Timeout pose/LiDAR/IMU dan
 klasifikasi occupied/unknown tetap berlaku terpisah. Perubahan konfigurasi
 ini belum diuji flight; hasil tes dicatat di jurnal.
+
+## Pemulihan depth saat drone masih bergerak — 29 Oktober 2026
+
+Preset inspection mengaktifkan `depth_moving_recovery`. Setelah data depth
+pulih, worker merencanakan lintasan dari PVA reference pengereman 0.5 detik
+ke depan. Pergantian terjadi tepat pada batas reference tersebut (tick yang
+melintasinya dibagi), tanpa loncatan PVA/C2. Posisi/kecepatan terukur bukan
+dipaksa nol atau disalin menjadi setpoint mendadak: tracking limit, speed
+limit, badan aktual, dan koridor berhenti aktual diperiksa terpisah.
+Di endpoint pengereman, reference bisa nol tetapi kecepatan aktual masih
+nonzero; kandidat tetap boleh diterima bila seluruh pemeriksaan lolos.
+
+Peta/depth harus segar dan integrasi depth harus terjadi setelah pengereman
+dimulai. Worker melakukan pemeriksaan seluruh kurva dan sampel braking.
+Saat adopsi, window/resolusi harus sama dan tidak boleh ada voxel nominal
+yang sebelumnya aman menjadi blocked di seluruh snapshot; ini konservatif
+dan dapat menolak perubahan jauh dari koridor. Dengan syarat tersebut
+sertifikat braking worker tetap berlaku. Kurva serta stopping awal actual/
+reference diperiksa lagi pada peta live; pemeriksaan command akhir/PID lama
+tetap berjalan. Fase/anchor berubah, hasil terlambat, mismatch PVA, atau
+obstacle/unknown baru menolak pergantian dan mempertahankan pengereman.
+Batas pemulihan tetap2detik, umur peta/depth5detik, ambang brake3detik.
+Alur berhenti lama tetap fallback bila moving recovery tidak tersedia.
+Log `depth_motion_recovery.moving_handoff` merekam alasan, PVA_jump dan
+kecepatan actual/reference; saat deadline mode baru memakai
+`recovery_replan_deadline`, bukan mengklaim semata-mata depth masih basi.
+
+Odometri fixed sensor juga memakai propagasi IMU independen maksimal50Hz
+setelah koreksi ICP diterima. ICP tetap mengintegrasikan hanya IMU hingga
+timestamp scan; IMU lebih baru direplay pada state output terpisah.
+TF pointcloud mapping tetap hanya pose koreksi ICP pada timestamp scan.
+Koreksi ICP wajib berumur<=0.3detik sekalipun IMU/output masih segar; IMU
+receive gate0.1detik tidak berubah. Noise/covariance propagasi diagonal
+bersifat eksperimental, bukan ESKF/LIO-SAM/FAST-LIO. Initial alignment
+memakai waktu sensor/FCU yang overlap tanpa extrapolation atau ubah frame.
+Belum ada flight validation untuk perubahan ini.

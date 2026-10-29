@@ -33,7 +33,7 @@ from .time_checks import fresh_stamp
 from .mapping import VoxelMap, FREE, OCCUPIED, integrate_snapshot
 from .map_log import MapLog, write_snapshot
 from .survey import SurveyController
-from .frames import FCULocalAlignment,pose_at
+from .frames import FCULocalAlignment,common_pose_pair
 from .takeoff import TakeoffSequence
 from .runtime import CallbackTiming, measured, timed_job, PipelineTiming
 from .visual_worker import build_visual_snapshot
@@ -153,6 +153,14 @@ class LocalisationNode(ConfigNode):
         self.estimator = LidarImuOdometry(self.c['lidar_mount'], self.c['initial_pose'],body_imu=self.rolling_sensor,
             bootstrap_duration=2.2 if self.rolling_sensor else 0.,
             robust_planes=bool(self.c.get('sensor_fixed_localisation')))
+        self.forward_imu=bool(self.mode=='sensor' and self.c.get('sensor_fixed_localisation')
+            and self.c.get('fixed_lidar_forward_imu',True))
+        self.forwarder=None
+        self.accepted_scan_stamp=-math.inf
+        if self.forward_imu:
+            from .imu_forward import ForwardImuOdometry
+            self.forwarder=ForwardImuOdometry(velocity_uncertainty=self.c.get('velocity_uncertainty_mps',.03))
+        self.forward_publish_period=.02  # Integrate every IMU, publish at up to 50 Hz.
         self.parallel_sensor_inputs=self.rolling_sensor
         self.scan_callback_group=MutuallyExclusiveCallbackGroup() if self.parallel_sensor_inputs else None
         self.pending_scan=deque(maxlen=1)
@@ -205,9 +213,10 @@ class LocalisationNode(ConfigNode):
 
     def valid_time(self, stamp):
         value = seconds(stamp)
-        return value > self.last_stamp and fresh_stamp(self.now(),value,self.c['pose_timeout'])
+        previous=self.accepted_scan_stamp if getattr(self,'forward_imu',False) else self.last_stamp
+        return value > previous and fresh_stamp(self.now(),value,self.c['pose_timeout'])
 
-    def publish(self, stamp, p, matrix, v_world, omega_body, covariance):
+    def publish(self, stamp, p, matrix, v_world, omega_body, covariance,broadcast_transform=True):
         if not np.all(np.isfinite(np.concatenate((p, v_world, omega_body)))):
             return
         out = Odometry()
@@ -220,13 +229,13 @@ class LocalisationNode(ConfigNode):
         out.pose.covariance = list(np.asarray(covariance).reshape(-1))
         out.twist.covariance = list((np.eye(6)*0.05).reshape(-1))
         self.pub.publish(out)
-        t = TransformStamped()
-        t.header = out.header
-        t.child_frame_id = 'base_link'
-        set_vector(t.transform.translation, p)
-        t.transform.rotation = out.pose.pose.orientation
-        self.tf.sendTransform(t)
+        if broadcast_transform:LocalisationNode.send_scan_transform(self,stamp,p,matrix)
         self.last_stamp = seconds(stamp)
+
+    def send_scan_transform(self,stamp,p,matrix):
+        t=TransformStamped();t.header.stamp=stamp;t.header.frame_id='odom';t.child_frame_id='base_link'
+        set_vector(t.transform.translation,p);set_quaternion(t.transform.rotation,matrix)
+        self.tf.sendTransform(t)
 
     def truth(self, msg):
         if msg.header.frame_id != 'world' or not self.valid_time(msg.header.stamp):
@@ -247,13 +256,35 @@ class LocalisationNode(ConfigNode):
             return
         gyro,acceleration=vector(msg.angular_velocity),vector(msg.linear_acceleration)
         if not np.all(np.isfinite(np.r_[gyro,acceleration])):return
-        # This callback ONLY enqueues measurements, never mutates the estimator.
+        # Core ICP remains scan-serialized. The independent forward state may
+        # integrate received IMU without modifying that core estimator.
         with getattr(self,'input_lock',nullcontext()):
             if stamp<=self.last_imu:return
             if len(self.pending_imu)==self.pending_imu.maxlen:
                 self.pending_imu_overflows=getattr(self,'pending_imu_overflows',0)+1
             self.pending_imu.append((stamp,gyro,acceleration))
             self.last_imu=stamp
+            prediction=None
+            if getattr(self,'forward_imu',False):
+                self.forwarder.push(stamp,gyro,acceleration)
+                prediction=self.forwarder.snapshot()
+        if getattr(self,'forward_imu',False):self.publish_forward(prediction)
+
+    def publish_forward(self,prediction):
+        with self.health_lock:
+            with self.input_lock:
+                if prediction is not None and prediction['revision']!=self.forwarder.revision:
+                    prediction=None
+            now=self.now()
+            if (prediction is not None and fresh_stamp(now,prediction['correction_stamp'],self.c['pose_timeout'])
+                    and fresh_stamp(now,self.last_imu,.1)
+                    and prediction['stamp']-self.last_stamp>=self.forward_publish_period-1e-9):
+                stamp=Time(nanoseconds=int(round(prediction['stamp']*1e9))).to_msg()
+                self.publish(stamp,prediction['position'],prediction['rotation'],prediction['velocity'],
+                    prediction['omega'],prediction['covariance'],broadcast_transform=False)
+            # Detect loss at the live IMU callback too, without serializing a
+            # large debug JSON at 200 Hz. Timed/scan callbacks retain diagnostics.
+            LocalisationNode.publish_health(self,emit_debug=False,only_changed=True)
 
     def queue_scan(self,msg):
         with self.input_lock:self.pending_scan.append(msg)
@@ -334,7 +365,15 @@ class LocalisationNode(ConfigNode):
         # Serialize pose commit with timed health publication. A new accepted
         # measurement must not wait another 0.1 s timer to clear old health.
         with getattr(self,'health_lock',nullcontext()):
-            if accepted:self.publish(msg.header.stamp,e.p,e.r,e.v,e.omega,e.covariance)
+            prediction=None
+            if accepted:
+                self.accepted_scan_stamp=stamp
+                if self.forward_imu:
+                    self.send_scan_transform(msg.header.stamp,e.p,e.r)
+                    with self.input_lock:
+                        self.forwarder.correct(stamp,e.p,e.r,e.v,e.covariance,e.gyro_bias,e.gravity_magnitude,e.omega)
+                        prediction=self.forwarder.snapshot()
+                else:self.publish(msg.header.stamp,e.p,e.r,e.v,e.omega,e.covariance)
             self.sensor_debug_snapshot=snapshot
             self.scan_processing=dict(self.scan_processing,busy=False,completed_sim=self.now(),
                 completed_wall_ns=time.monotonic_ns(),accepted=bool(accepted),
@@ -342,11 +381,13 @@ class LocalisationNode(ConfigNode):
                 preprocessing_wall_ms=(registration_started-preprocessing_started)/1e6,
                 registration_wall_ms=(registration_finished-registration_started)/1e6)
             self.last_scan_processing=dict(self.scan_processing)
-            if accepted:LocalisationNode.publish_health(self)
+            if accepted:
+                if self.forward_imu:self.publish_forward(prediction)
+                LocalisationNode.publish_health(self)
 
     def estimator_snapshot(self):
         e=self.estimator
-        return copy.deepcopy(dict(has_good_pose=e.last_good is not None,reason=e.reason,
+        return copy.deepcopy(dict(has_good_pose=e.last_good is not None,correction_stamp=e.last_good,reason=e.reason,
             position=e.p.tolist(),imu_stamp=e.last_imu,scan_stamp=e.last_scan,
             orientation_rpy=Rotation.from_matrix(e.r).as_euler('xyz').tolist(),velocity=e.v.tolist(),
             calibrated_gravity_mps2=e.gravity_magnitude,gyro_bias=e.gyro_bias.tolist(),
@@ -359,7 +400,7 @@ class LocalisationNode(ConfigNode):
     def health(self):
         with getattr(self,'health_lock',nullcontext()):LocalisationNode.publish_health(self)
 
-    def publish_health(self):
+    def publish_health(self,emit_debug=True,only_changed=False):
         now=self.now()
         fresh=fresh_stamp(now,self.last_stamp,self.c['pose_timeout'])
         gate=None if fresh else 'pose_measurement_stale'
@@ -367,17 +408,31 @@ class LocalisationNode(ConfigNode):
         with getattr(self,'input_lock',nullcontext()):
             received_imu=self.last_imu
             pending_imu=len(getattr(self,'pending_imu',()))
+            forward_info=(self.forwarder.status() if getattr(self,'forward_imu',False) else None)
         if self.mode=='sensor':
             snapshot=getattr(self,'sensor_debug_snapshot',None)
             if snapshot is None:snapshot=LocalisationNode.estimator_snapshot(self)
             if not snapshot['has_good_pose']:fresh=False;gate='no_good_pose'
             elif not fresh_stamp(now,received_imu,.1):fresh=False;gate='imu_receive_stale'
-        self.status.publish(Bool(data=bool(fresh)))
+            elif forward_info is not None:
+                if not fresh_stamp(now,snapshot.get('correction_stamp'),self.c['pose_timeout']):
+                    fresh=False;gate='lidar_correction_stale'
+                elif forward_info['correction_stamp'] is not None and not forward_info['valid']:
+                    fresh=False;gate=forward_info['reason']
+        if not only_changed or bool(fresh)!=getattr(self,'last_health_value',None):
+            self.status.publish(Bool(data=bool(fresh)))
+            self.last_health_value=bool(fresh)
+        if not emit_debug:return
         if self.mode=='sensor':
             debug=dict(snapshot)
             debug.pop('has_good_pose')
             debug.update(stamp=now,mode='sensor',
                 algorithm='experimental_scan_to_map_ICP_body_IMU' if self.rolling_sensor else 'experimental_scan_to_map_ICP',
+                forward_imu=forward_info,forward_output_period_seconds=self.forward_publish_period if forward_info is not None else None,
+                tf_pose_source='accepted_ICP_scan_only',
+                pose_source=('accepted_ICP_correction_forward_body_IMU' if forward_info is not None else 'accepted_scan_pose'),
+                lidar_correction_age_seconds=(None if snapshot.get('correction_stamp') is None else now-snapshot['correction_stamp']),
+                lidar_correction_timeout_seconds=self.c['pose_timeout'],
                 healthy=bool(fresh),health_gate=gate,frontend_reason=snapshot['reason'],
                 reason=gate or self.mount_rejection or snapshot['reason'],
                 pose_measurement_stamp=self.last_stamp if math.isfinite(self.last_stamp) else None,
@@ -447,6 +502,7 @@ class NavigationNode(ConfigNode):
         self.pid = None
         self.alignment_samples = deque(maxlen=100)
         self.fcu_pose_history=deque(maxlen=400)
+        self.sensor_pose_history=deque(maxlen=400)
         if identification_empty_arena and not (mission_kind == 'mapping'
                 and self.c.get('identification_simulation_only')
                 and self.c.get('identification_empty_arena')
@@ -607,6 +663,8 @@ class NavigationNode(ConfigNode):
             self.pose = None
             return
         self.estimated_yaw = math.atan2(matrix[1, 0], matrix[0, 0])
+        if hasattr(self,'sensor_pose_history'):
+            self.sensor_pose_history.append((stamp,self.pose.copy(),self.estimated_yaw))
         self.body_rotation = matrix
         self.controller.health.pose_stamp = stamp
         if getattr(self, 'predictive', None) is not None:
@@ -1000,16 +1058,19 @@ class NavigationNode(ConfigNode):
         if (self.rolling_map and self.flight_stage == 'MISSION'
                 and not fresh_stamp(now,self.last_integrated_cloud,self.c.get('map_timeout',1.))):
             health_reason = health_reason or 'stale_integrated_map'
-        aligned_fcu=pose_at(self.fcu_pose_history,self.controller.health.pose_stamp)
+        common=common_pose_pair(self.sensor_pose_history,self.fcu_pose_history,self.c['pose_timeout'])
+        aligned_sensor=common[1] if common is not None else None
+        aligned_fcu=common[2] if common is not None else None
         if (self.mission_kind == 'mapping' and self.fcu_alignment is None
                 and self.flight_stage == 'WAIT_EXTERNALNAV' and not self.state.armed
                 and self.fc_pose is not None and not health_reason
-                and aligned_fcu is not None
+                and aligned_fcu is not None and aligned_sensor is not None
+                and fresh_stamp(now,common[0],self.c['pose_timeout'])
                 and np.linalg.norm(self.velocity) < .05
-                and np.linalg.norm(aligned_fcu[0]-self.pose) <= .35
-                and abs(math.atan2(math.sin(aligned_fcu[1]-self.estimated_yaw), math.cos(aligned_fcu[1]-self.estimated_yaw))) < .2
+                and np.linalg.norm(aligned_fcu[0]-aligned_sensor[0]) <= .35
+                and abs(math.atan2(math.sin(aligned_fcu[1]-aligned_sensor[1]), math.cos(aligned_fcu[1]-aligned_sensor[1]))) < .2
                 and self.alignment_settled(now)):
-            self.fcu_alignment = FCULocalAlignment(self.pose, self.estimated_yaw, *aligned_fcu)
+            self.fcu_alignment = FCULocalAlignment(*aligned_sensor,*aligned_fcu)
             transform = TransformStamped()
             transform.header.stamp, transform.header.frame_id, transform.child_frame_id = self.get_clock().now().to_msg(), 'map', 'fcu_local'
             set_vector(transform.transform.translation, self.fcu_alignment.fcu_origin_in_map)

@@ -2548,3 +2548,45 @@ Validasi: ROS_DOMAIN_ID87 pytest test_fixed_lidar.py, test_fixed_flowers.py,
 test_depth_health.py:13passed1.07s; git diff --check bersih. Tes mencakup
 config generator kedua world, mounting, obstacle world, dan syarat/deadline
 pemulihan depth. Tidak ada uji flight untuk toleransi5detik.
+
+
+### 29 Oktober 2026 — pemulihan bergerak dan odometri IMU forward
+
+User meminta implementasi pemulihan tanpa wajib berhenti lalu masuk loop.
+Run28 sebelumnya berhenti32.7s recovery_settling_deadline; actual truth
+pada32.5 sekitar.050m/s, estimated.063925m/s, keduanya>.04. Pose kontrol
+berumur.1-.2s: kontribusinya terhadap settling masih dugaan, bukan penyebab
+tunggal terbukti. Belum selesai approach; bestflowers tetap run11.
+
+Referensi primer: https://github.com/hku-mars/SUPER (future-state replanning
+dan backup), https://doi.org/10.1126/scirobotics.ado6187 ;
+https://raw.githubusercontent.com/TixiaoShan/LIO-SAM/master/src/imuPreintegration.cpp
+(prinsip output frekuensi tinggi setelah koreksi, bukan portbackend).
+Usulan rekayasa sendiri: gunakan BoundaryTrajectory C2 existing untuk
+keluar dari brake ke route baru. Worker snapshot merencanakan boundary
+reference future.5s; kontrol membagi tick di boundary, mengecekactualP/V
+serta stopnya, tanpa menuntutactual<.04 bila kandidat aman. Reference tidak
+diganti langsung dengan actual agar tidak melompat. Seluruh workerbraking
+certificate dipertahankan secara konservatif: samewindow/res dan tidakada
+newblocked di seluruh snapshot; jika berubah ditolak, keepbraking.
+Fallback berhenti/deadline2s, speed/clearance/FOV gates dipertahankan;
+timeout peta/depth5s berasal dari commit305f0ad permintaan sebelumnya.
+
+Pekerjaan IMU tertunda diselesaikan: state forward terpisah, output50Hz,
+500samplehistory, replayfutureonly, pendingqueueICP tetap scanserialized,
+TFmapping correctedscanonly. KoreksiICP harus<=.3s danIMU<=.1s; outputsegar
+tidak menutupi dropout. Covariance hanya konservatif diagonal, bukanESKF.
+Alignment sensor-FCU newestcommonstamp, tidak extrapolate.
+
+Tes awal76passed24.34s (ROS adapter, IMUforward, movinghandoff, depthhealth).
+Tes baru depthrecovery awal9failed karena fixture rebuild tidak menetapkan
+last_observation_stamp; gate map_stale bekerja. Perbaiki fixturetimestamp,
+22passed13.68s. Menambah tes realworker/braking, obstacle/unknown,
+mapwindowchange, actualbody, sensorloss, stale result, boundarymismatch,
+variabletick, boundeddeadline; fullbuild/tests menyusul sebelumflight.
+
+Build lengkap tools/build_ros.sh:3packages berhasil; full546tests lulus
+299.66s,0error/failure/skipped. Termasuk realworker movingrecovery dengan
+sertifikasi braking; seluruh perubahan belumflight pada titikcommit ini.
+Runtimehost audit: UDP9002/14650,TCP5762 kosong; tidakada arducopter/gz-sim/
+rviz2 pada pemeriksaan sebelumflight. Tidak ada suiteberat saatflight.

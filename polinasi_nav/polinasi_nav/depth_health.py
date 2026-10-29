@@ -31,7 +31,7 @@ class DepthHoldGuard:
 
 
 class DepthMotionRecovery:
-    """Brake before the depth deadline, then resume only from a fresh settled map."""
+    """Brake before the depth deadline, then resume through a certified moving handoff or a settled hold."""
     def __init__(self):
         self.started = None
         self.count = 0
@@ -46,11 +46,15 @@ class DepthMotionRecovery:
         action = 'inactive'
         failure_gate=None
         if self.started is not None:
-            if controller.failure != 'depth_recovering':
+            if getattr(controller,'depth_recovery_accepted_episode',None)==self.started:
+                self.started=None
+                action='resumed_moving_replan'
+            elif controller.failure != 'depth_recovering':
                 action = 'superseded_by_failure'
             elif not fresh_depth(now, valid, timeout) or now-self.started > hold_timeout:
                 failure_gate=('valid_frame_stale' if not fresh_depth(now,valid,timeout)
-                    else 'recovery_settling_deadline')
+                    else ('recovery_replan_deadline' if controller.c.get('depth_moving_recovery')
+                          else 'recovery_settling_deadline'))
                 controller.failure = 'stale_depth_camera'
                 action = 'fail'
             elif (controller.state == 'HOLD_ABORT' and controller.brake is None
@@ -65,9 +69,15 @@ class DepthMotionRecovery:
                 controller.pending_plan = None
                 controller.elapsed = controller.dwell = 0.
                 self.started = None
+                if hasattr(controller,'depth_recovery_future'):
+                    from .depth_recovery import cancel
+                    cancel(controller,'settled_replan')
                 action = 'resumed_replan'
             else:
                 action = 'braking_or_waiting'
+                if self.started is not None and hasattr(controller,'depth_recovery_future'):
+                    from .depth_recovery import request
+                    request(controller,now,depth,timeout,self.started)
         elif (not controller.failure and controller.state=='SURVEY' and age>threshold+1e-9
                 and (controller.trajectory is not None or np.linalg.norm(controller.command_v)>.01)
                 and fresh_depth(now,valid,timeout)):
@@ -95,5 +105,6 @@ class DepthMotionRecovery:
             brake_present=controller.brake is not None,
             brake_duration_seconds=(float(controller.brake.duration) if controller.brake is not None
                 else controller.backup_diagnostics.get('duration_seconds')),
+            moving_handoff=getattr(controller,'depth_recovery_status',{}),
             post_start_map=(integrated is not None and self.started is not None and integrated>self.started))
         return action
