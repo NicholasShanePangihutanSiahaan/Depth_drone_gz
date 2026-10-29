@@ -21,8 +21,35 @@ def voxel_downsample(points, resolution=0.18):
     return points[ids]
 
 
+def reference_index(reference,body_imu):
+    tree=cKDTree(reference)
+    if not body_imu:return tree,None,None
+    _,ids=tree.query(reference,k=12)
+    neighbours=reference[ids]
+    centred=neighbours-neighbours.mean(axis=1,keepdims=True)
+    values,vectors=np.linalg.eigh(np.einsum('nki,nkj->nij',centred,centred))
+    return tree,vectors[:,:,0],(values[:,1]>1e-5)&(values[:,0]<.15*np.maximum(values[:,1],1e-9))
+
+
+def build_keyframe_reference(keyframes,body_imu):
+    """Worker owns its new arrays; input keyframe clouds are read-only snapshots."""
+    started=time.monotonic_ns()
+    reference=voxel_downsample(np.vstack([cloud for _,cloud in keyframes]))
+    if len(reference)>40000:
+        reference=reference[np.linspace(0,len(reference)-1,40000,dtype=int)]
+    index_started=time.monotonic_ns()
+    tree,normals,valid=reference_index(reference,body_imu)
+    return dict(reference=reference,tree=tree,normals=normals,normal_valid=valid,
+        wall_ms=(time.monotonic_ns()-started)/1e6,
+        downsample_wall_ms=(index_started-started)/1e6,
+        index_normals_wall_ms=(time.monotonic_ns()-index_started)/1e6)
+
+
 class LidarImuOdometry:
-    def __init__(self, mount, origin=(0., 0., 0.), body_imu=False, bootstrap_duration=0., robust_planes=False):
+    def __init__(self, mount, origin=(0., 0., 0.), body_imu=False, bootstrap_duration=0., robust_planes=False, asynchronous_reference=False):
+        self.asynchronous_reference=asynchronous_reference
+        self.reference_executor=None;self.reference_job=None;self.reference_error=None
+        self.reference_stats=dict(enabled=asynchronous_reference,pending=False,submitted=0,completed=0,busy_skips=0)
         self.robust_planes = robust_planes
         self.mount_p = np.asarray(mount[:3])
         self.mount_r = Rotation.from_euler('xyz', mount[3:]).as_matrix()
@@ -64,24 +91,56 @@ class LidarImuOdometry:
         self.covariance = np.eye(6)*1.
 
     def freeze_keyframe(self,points):
+        if self.asynchronous_reference and self.last_keyframe_position is not None:
+            if self.reference_job is not None:
+                self.reference_stats['busy_skips']+=1
+                return  # Never queue unbounded jobs or mutate an active reference.
+            keyframes=[*self.keyframes,(self.p.copy(),points.copy())]
+            keyframes=[keyframes[0],*keyframes[1:][-11:]]
+            if self.reference_executor is None:
+                from concurrent.futures import ThreadPoolExecutor
+                self.reference_executor=ThreadPoolExecutor(max_workers=1,thread_name_prefix='fixed_icp_reference')
+            future=self.reference_executor.submit(build_keyframe_reference,keyframes,self.body_imu)
+            self.reference_job=(future,keyframes,self.p.copy(),self.last_scan,time.monotonic_ns())
+            self.reference_stats.update(pending=True,submitted=self.reference_stats['submitted']+1,
+                submitted_scan_stamp=self.last_scan)
+            return
         self.keyframes.append((self.p.copy(),points.copy()))
         self.keyframes=[self.keyframes[0],*self.keyframes[1:][-11:]]
         self.last_keyframe_position=self.p.copy()
-        combined=voxel_downsample(np.vstack([cloud for _,cloud in self.keyframes]))
-        if len(combined)>40000:
-            combined=combined[np.linspace(0,len(combined)-1,40000,dtype=int)]
-        self.reference=combined
-        self.rebuild_reference()
+        result=build_keyframe_reference(self.keyframes,self.body_imu)
+        self.reference=result['reference'];self.tree=result['tree']
+        self.normals=result['normals'];self.normal_valid=result['normal_valid']
+
+    def collect_reference(self):
+        if self.reference_error is not None:return False
+        job=self.reference_job
+        if job is None or not job[0].done():return True
+        future,keyframes,position,stamp,submitted=job
+        self.reference_job=None
+        try:result=future.result()
+        except Exception as exc:
+            self.reference_error=type(exc).__name__+': '+str(exc)
+            self.reference_stats.update(pending=False,error=self.reference_error)
+            return False
+        # This swap runs ONLY at the beginning of the serialized scan callback.
+        # Registration never observes a partially replaced tree/normal array.
+        self.reference=result['reference'];self.tree=result['tree']
+        self.normals=result['normals'];self.normal_valid=result['normal_valid']
+        self.keyframes=keyframes;self.last_keyframe_position=position
+        self.reference_stats.update(pending=False,completed=self.reference_stats['completed']+1,
+            completed_scan_stamp=stamp,worker_wall_ms=result['wall_ms'],
+            downsample_wall_ms=result['downsample_wall_ms'],index_normals_wall_ms=result['index_normals_wall_ms'],
+            submit_to_adopt_wall_ms=(time.monotonic_ns()-submitted)/1e6)
+        return True
+
+    def close(self):
+        if self.reference_executor is not None:
+            self.reference_executor.shutdown(wait=False,cancel_futures=True)
+            self.reference_executor=None
 
     def rebuild_reference(self):
-        self.tree=cKDTree(self.reference)
-        if not self.body_imu:return
-        _,ids=self.tree.query(self.reference,k=12)
-        neighbours=self.reference[ids]
-        centred=neighbours-neighbours.mean(axis=1,keepdims=True)
-        values,vectors=np.linalg.eigh(np.einsum('nki,nkj->nij',centred,centred))
-        self.normals=vectors[:,:,0]
-        self.normal_valid=(values[:,1]>1e-5)&(values[:,0]<.15*np.maximum(values[:,1],1e-9))
+        self.tree,self.normals,self.normal_valid=reference_index(self.reference,self.body_imu)
 
     def query_correspondences(self,points):
         # Exact Euclidean search, pruned at the same distance rejected below.
@@ -137,6 +196,9 @@ class LidarImuOdometry:
     def scan(self, points_sensor, stamp, on_accepted=None):
         scan_started=time.monotonic_ns()
         self.last_scan_timing=dict(scan_stamp=float(stamp),stage='validation')
+        if not self.collect_reference():
+            self.ok,self.reason=False,'reference_backend_error'
+            return False
         if not self.initialized or self.last_imu is None or not 0 <= stamp-self.last_imu < 0.1:
             self.ok, self.reason = False, 'imu_not_ready'
             return False

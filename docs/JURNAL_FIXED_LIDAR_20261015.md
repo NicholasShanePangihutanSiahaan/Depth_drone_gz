@@ -2641,3 +2641,49 @@ terakhir (ambang.5m). Scan46.8 kemungkinan memicu rebuild; tetap dugaan
 karena last_good tidak pernah dipublikasikan untukscanitu.
 Buildulang3packages berhasil;548tests lulus297.33s,0error/failure/skipped.
 Perbaikan publikasi earlyaccepted belumflight pada titikcommit ini.
+
+
+### 29 Oktober 2026 — run30: reference maintenance terbukti menunda scan berikutnya
+
+Commitf82fe31 sudahpush; run reports/fixed_lidar_validation_20261029_121020,
+session .dependencies/ros_sensor_palm_farm_flowers_20261029_121028_16951_mapping,
+berhentilocalisation_loss49.65s saatAPPROACH.1492auditpairsRMSE.0114478588m,
+max.0290316579m. Route_changed brake sekitar33s pulih lalu approachlanjut.
+Movinghandoff lama3submitted/3rejected planner_not_ready_at_boundary.
+Depthage.65<threshold3,0depthrecovery: movingdepthrecovery belumflightused.
+
+Timingbaru membuktikan scan49.3 diterima/dipublish49.398, lalu reference
+maintenance1059.140698mswall; selesai49.558. Registration_to_accept
+472.730087mswall. Scan49.4 tersupersede; scan49.5 baru mulai49.558.
+Pada49.601healthfalse gate=lidar_correction_stale age.301, rawIMUage.001.
+Scan49.5diterima49.65,healthkembalitrue age.15 tetapi abortsudahlatch.
+Ini stallmaintenance danjeda koreksi, bukan ICPpermanent/driftterbukti.
+Earlypublish bermanfaat (misalscan43reference511.8mswall poseage.007),
+tapi masih membiarkan maintenance menunda scanberikutnya.
+
+Risetprimer: LOAM Zhang/Singh RSS2014
+https://www.roboticsproceedings.org/rss10/p07.html : pemisahan odometry cepat
+dan mapping lebihlambat. Usulan kita hanya memindah rebuild reference
+ICP yang sudahada ke worker, bukan mengimplementasikan LOAMbackend atau
+memakai feature/ring mechanicalLiDAR. Tidak adaGTinput atauframelabelhack.
+
+Implementasi fixedsensor: bootstrap tetap sync; setelah itu satu
+ThreadPoolExecutor(max_workers1), satu future, input keyframe ownedcopy.
+Worker membangunreference downsample/KDtree/normalsbaru tanpa menyentuh
+activeICPstate. Hasil dipasang atomik oleh scanthread di awal scan, tidak
+di tengahiterasi. Pendingjob mencegahpenumpukan; oldreference tetap dipakai
+untukICP scanbaru dengan gatequalitylama. Swapreference tidakmengubah
+P/R/V,last_good atautimestamp; acceptedscanbaru wajibtetap<=.3s.
+Workererror dicatat danmenolakscan,tidakcommitpartial; nodeshutdown
+cancelexecutor. Stats merekam queuecounts danworkerduration.
+
+54targetedtests lulus2.85s; tambahan45tests lulus2.46s termasuk3tesbackend:
+activearrays tidakberubahsebelumcollect,jobbounded,inputcopy tidakalias;
+workererror menolakscan tanpaacceptedcallback; realworker menghasilkan
+referensi/normal danposeberikut sama backendserial atol1e-12.
+Fullbuild/tests menyusul,belumflightvalidated.
+
+Fullbuild3packages berhasil;551tests lulus300.15s,0error/failure/skipped.
+Kesetaraan numerik tes berlaku setelah memasang referensi dari input sama;
+asynchronousflight dapat memakai referensi sebelumnya selama workerpending,
+sehingga bukan klaim seluruhflight identik. Belumflightvalidated saatcommit.

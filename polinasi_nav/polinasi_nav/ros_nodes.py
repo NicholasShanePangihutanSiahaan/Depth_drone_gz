@@ -152,7 +152,9 @@ class LocalisationNode(ConfigNode):
         self.rolling_sensor=bool(self.mode=='sensor' and (self.c.get('sensor_rolling_localisation') or self.c.get('sensor_fixed_localisation')))
         self.estimator = LidarImuOdometry(self.c['lidar_mount'], self.c['initial_pose'],body_imu=self.rolling_sensor,
             bootstrap_duration=2.2 if self.rolling_sensor else 0.,
-            robust_planes=bool(self.c.get('sensor_fixed_localisation')))
+            robust_planes=bool(self.c.get('sensor_fixed_localisation')),
+            asynchronous_reference=bool(self.c.get('sensor_fixed_localisation') and
+                self.c.get('fixed_lidar_async_reference',True)))
         self.forward_imu=bool(self.mode=='sensor' and self.c.get('sensor_fixed_localisation')
             and self.c.get('fixed_lidar_forward_imu',True))
         self.forwarder=None
@@ -210,6 +212,10 @@ class LocalisationNode(ConfigNode):
             transforms.append(t)
         # Humble Python broadcaster retains one TFMessage, not earlier calls.
         self.static.sendTransform(transforms)
+
+    def destroy_node(self):
+        if hasattr(self,'estimator'):self.estimator.close()
+        return super().destroy_node()
 
     def valid_time(self, stamp):
         value = seconds(stamp)
@@ -403,7 +409,7 @@ class LocalisationNode(ConfigNode):
             orientation_rpy=Rotation.from_matrix(e.r).as_euler('xyz').tolist(),velocity=e.v.tolist(),
             calibrated_gravity_mps2=e.gravity_magnitude,gyro_bias=e.gyro_bias.tolist(),
             keyframes=len(e.keyframes),translation_information=e.translation_information,
-            registration=e.last_registration,estimator_stages=dict(getattr(e,'last_scan_timing',{})),scan_inputs=getattr(self,'scan_input_diagnostics',{}),
+            reference_backend=dict(e.reference_stats),registration=e.last_registration,estimator_stages=dict(getattr(e,'last_scan_timing',{})),scan_inputs=getattr(self,'scan_input_diagnostics',{}),
             imu_shock_until=e.imu_shock_until if np.isfinite(e.imu_shock_until) else None,
             registration_rmse_m=float(e.rmse) if np.isfinite(e.rmse) else None,
             reference_points=0 if e.reference is None else len(e.reference)))

@@ -455,9 +455,23 @@ memakai waktu sensor/FCU yang overlap tanpa extrapolation atau ubah frame.
 Belum ada flight validation untuk perubahan ini.
 
 Koreksi ICP yang sudah lolos validasi dipublikasikan sebelum pemeliharaan
-peta referensi/keyframe; maintenance tetap selesai sebelum scan berikutnya.
+peta referensi/keyframe. Pada preset fixed sensor, pembangunan referensi
+berjalan pada satu worker terpisah; ICP memakai referensi aktif yang utuh
+dan hasil baru hanya dipasang di awal callback scan berikutnya.
 Tidak ada perubahan timestamp scan atau gate koreksi0.3s.
 `estimator_stages` dan `accepted_pose_published_sim/wall_ns` membedakan
 selesainya estimasi dari selesainya pemeliharaan referensi. Perubahan health
 langsung dari callback IMU juga dicatat sebagai debug, termasuk transisi
 false yang mungkin terjadi di antara dua timer debug.
+
+`fixed_lidar_async_reference=True` mempertahankan bootstrap sinkron, lalu
+membatasi backend referensi menjadi satu job pending. Input keyframe adalah
+snapshot milik estimator, worker membangun array/KD-tree/normal baru tanpa
+mengubah yang aktif. Scan berikutnya tetap melakukan ICP dan gate kualitas
+penuh terhadap referensi aktif. Pemasangan referensi tidak menyegarkan
+last_good/pose: hanya scan LiDAR baru yang lolos boleh melakukannya.
+Kegagalan worker tercatat `reference_backend_error`; tidak ada hasil parsial
+yang dipasang. `reference_backend` mencatat pending/submitted/completed,
+busy_skips dan waktu downsample/index_normals/submit_to_adopt. Ini pemisahan
+pekerjaan maintenance, bukan implementasi LOAM/FAST-LIO atau bukti flight
+lolos. Gate koreksi/pose0.3s dan IMU receive0.1s tetap; belumhardwarevalidated.
