@@ -1,5 +1,6 @@
 """Bounded future-reference handoff. No ROS, publishers, or health bypasses."""
 import math
+import traceback
 import numpy as np
 from .continuous import ContinuousTrajectory, AdaptivePhase
 
@@ -67,7 +68,10 @@ class MovingHandoff:
                 self._moving_reject('planner_not_ready_at_boundary');return
             try:
                 clone,ready=self.moving_future.result()
-            except Exception:
+            except Exception as exc:
+                self.moving_status['last_exception']=dict(simulation_time=float(now),
+                    exception_type=type(exc).__name__,message=str(exc),
+                    traceback=traceback.format_exc(limit=6))
                 self._moving_reject('planner_exception');return
             self.moving_future=None
             reason=None

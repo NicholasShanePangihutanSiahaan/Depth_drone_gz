@@ -29,7 +29,7 @@ from tf2_ros import Buffer, TransformBroadcaster, StaticTransformBroadcaster, Tr
 from .config import load_config
 from .control import MissionController
 from .localisation import LidarImuOdometry
-from .time_checks import fresh_stamp
+from .time_checks import fresh_stamp, CausalStampQueue
 from .mapping import VoxelMap, FREE, OCCUPIED, integrate_snapshot
 from .map_log import MapLog, write_snapshot
 from .survey import SurveyController
@@ -552,6 +552,7 @@ class NavigationNode(ConfigNode):
                 from .continuous_tree import ContinuousTreeInspectionController
                 controller_type=ContinuousTreeInspectionController
         self.controller = controller_type(self.c, self.grid, self.get_parameter('mode').value == 'sensor')
+        self.imu_health_queue=CausalStampQueue(capacity=500)
         if self.get_parameter('map_log_dir').value:
             self.controller.c['planner_audit_dir']=str(Path(self.get_parameter('map_log_dir').value)/'planner_failures')
         if self.c.get('history_route_enabled'):
@@ -754,8 +755,13 @@ class NavigationNode(ConfigNode):
         self.controller.flower_event(msg.data)
 
     def imu(self, msg):
-        if msg.header.frame_id == 'mid360_imu':
-            self.controller.health.imu_stamp = seconds(msg.header.stamp)
+        if (msg.header.frame_id == 'mid360_imu' and
+                np.all(np.isfinite(np.r_[vector(msg.angular_velocity),vector(msg.linear_acceleration)]))):
+            self.imu_health_queue.push(seconds(msg.header.stamp))
+
+    def select_imu_for_tick(self,now):
+        if hasattr(self,'imu_health_queue'):
+            self.controller.health.imu_stamp=self.imu_health_queue.select(now)
 
     def range_cb(self, msg):
         if math.isfinite(msg.range) and msg.min_range <= msg.range <= msg.max_range:
@@ -1019,6 +1025,7 @@ class NavigationNode(ConfigNode):
                 self.controller.fail('clock_or_scheduler_gap')
                 self.publish_status(now, 'clock_or_scheduler_gap')
             return
+        self.select_imu_for_tick(now)
         if not self.separate_mapping:
             self.map_pending()
         NavigationNode.range_pending(self)
@@ -1272,6 +1279,7 @@ class NavigationNode(ConfigNode):
         status = {'fixed_fov_assumptions':fov_status(self.grid),'simulation_time': float(now), 'mode': self.get_parameter('mode').value, 'flight': self.flight_stage,
                    'route_blockage': self.controller.route_blockage,
                    'sensor_freshness': self.controller.health.status(now,self.c),
+                   'navigation_imu_timestamp_queue': self.imu_health_queue.status() if hasattr(self,'imu_health_queue') else {},
                    'speed_diagnostics': getattr(self.controller, 'speed_diagnostics', {}),
                    'predictive_alignment': getattr(self, 'predictive_alignment', {}),
                    'callback_wall_max_ms': dict(self.callback_timing.max_ms),

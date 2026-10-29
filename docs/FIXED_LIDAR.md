@@ -496,3 +496,19 @@ Map utama, depth, dan ascent sekarang sama-sama5s; toleransi umur hasil
 planner1s, guidancehistory8s, pose/koreksiICP0.3s, rawLiDAR0.5s dan
 IMUreceive0.1s adalah pemeriksaan berbeda. Geometry observation guard
 0.2m plus planningreserve0.2m tidak diubah.
+
+Navigasi menampung timestamp IMU sampai clock tick kontrol mencapai waktu
+pengambilan data. `navigation_imu_timestamp_queue` mencatat selected_stamp,
+latest_received_stamp, future_pending/wait_ticks, overflow/invalid/obsolete
+drops. Sampel masa depan tidak menimpa sampel valid sebelumnya; timestamp
+tidak di-clamp dan umur data lama tidak disegarkan. Health memakai waktu
+tick yang sama untuk seleksi dan pemeriksaan. Queue500 terbatas, dropouts
+tetap menyebabkan umur sampel terpilih melewati gate. Ini penanganan urutan
+pesan `/clock` dan IMU, bukan sinkronisasi clock hardware atau pelonggaran
+timeout. Estimator body-IMU receive gate0.1s dan nav Health IMU gate
+pose_timeout0.3s tetap seperti sebelumnya. Backwards clock tetap abort.
+
+`moving_handoff.last_exception` kini menyimpan waktu kejadian, tipe/pesan
+dan traceback terbatas6frame dari worker; kandidat tetap ditolak dengan
+aturan semula. Field ini adalah kejadian exception terakhir, bukan status
+fault misi atau bukti exception terus terjadi pada setiap tick.

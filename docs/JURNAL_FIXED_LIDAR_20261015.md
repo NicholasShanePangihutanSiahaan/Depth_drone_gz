@@ -2779,3 +2779,57 @@ Ini perubahanpresetgenerator dantes saja; sourcekontroltidakdiubah.
 Build/full554tests sebelumnya tetapbaseline; tidakmengklaim full555tests
 dijalankan. Launcher membaca generator langsung, tidakperlu rebuild ROS
 untuk satuoverrideconfigini. Perubahanascent5s belumflightvalidated.
+
+
+### 29 Oktober 2026 — run33: ascent tanpa age-pause, IMU lebih maju2ms dari clock nav
+
+Commit080b799 sudahpush. Run reports/fixed_lidar_validation_20261029_134045,
+session .dependencies/ros_sensor_palm_farm_flowers_20261029_134053_34615_mapping,
+berhenti231.003s denganfailure stale_imu saatAPPROACH pohonberikut ID5.
+PohonpertamaID2 selesai6sektorvalid. Nomorkandidatberubahantar-run,
+centre/evidence geometris tetapuntuk identitas pohon yangdiinspeksi.
+Ascent_map_pauses/resumes0: gateascent5s berhasil menghilangkan pause
+umurpeta. Ascent berhentiobservation_guard_limit altitude2.1298089303m.
+Regularhandoff accepted2: APPROACH65.15 refv.1132836 PVAjump<=4.7e-13;
+SCAN213.25 refv.08951345 PVAjump<=1.1e-13. Depthrecoveries0: mekanisme
+movingdepthrecovery tetapbelumflight-exercised, hanyaunit/regression.
+8248auditpairs RMSE.0158792943m,max.0332218446m.
+
+Buktikegagalan: navsimulation_time231.003, imu_stamp231.005, imu_age−.002.
+Pose230.935 age.068, cloud230.9 age.103, localisation_oktrue.
+Estimator debug231.001: receivedbodyIMU230.995 age.006, correctionage.201,
+healthytrue. Jadi labelstale_imu bukan dataIMUterlalutua padakejadianini,
+melainkan rejectedfuturetimestamp. Tidakada bukti permanenthardwareclock
+drift; penyebaburutanarrival clock/IMU konsisten dengan data.
+Pipeline maplastscan229.8 ->finalsetpoint231.003 =1.203sim,8056.56mswall;
+stageresultdelivery3757.81ms menunjukkan pressure/latency tapi tidak
+membuktikan satu akar scheduler tertentu.
+
+RujukanprimerROS2 https://design.ros2.org/articles/clock_and_time.html :
+ROSTime membaca clock terakhirditerima dantransport memiliki latency.
+Nav.imu sebelumnya langsungoverwrite healthstamp dengan latestheader
+tanpamengikatnya keclocktick. Health.fresh_stamp memangmenolakfuturedata
+sehingga clock231.003 denganstamp231.005 menjadi stale_imu.
+
+Perbaikan: CausalStampQueue500 pada navhealth, simpanstamptanpamutasi;
+pilih maxreceivedstamp<=capturedcontrolnow, tahanfutureuntiltick berikut,
+pertahankan oldselectedstamp tanpa refresh. Outoforder tidakmengundur
+stampterpilih; NaN/invalid/frameIMUsalah tidakmemperbarui. Future-only
+flood tidakmenghasilkanfreshness danqueuebounded. LostIMU nyata tetap
+melewatitimeout. Ini tidakmengubahintegrasiIMUestimator atauclockhardware,
+tidakmelonggarkan .1estimatorIMU/.3navIMU/pose ataupun .3ICPcorrection.
+Backwardsclock controlgatetidakdiubah. Tambahqueuediagnostics.
+
+Run33 sempat moving_handoff planner_exception ditolak, tanpa detailtipe/
+pesan dalamloglama. Belumdiketahui infeasibleC2(ValueError) atau buglain;
+jangan mengklaim sumbernya. Sekarang last_exception merekamtipe/pesan/
+traceback6frame denganwaktukejadian. Perilakureject/backup tetapidentik.
+
+70targetedtests passed25.52s: kasusrecordedfuture2ms memilih230.995
+sampai231.005sah; missing/futureflood/NaN/outoforder tidakfreshen; raw
+dropout tetapstale .3s. ROSadapter memakai epochtickeksplisit, tidakclamp.
+Existingfuturetimestamp freshness tetapfalse; loggerexception regression.
+Fullbuild/tests menyusulsebelumpush/flight.
+
+Fullbuild3packages berhasil;559tests lulus311.25s,0error/failure/skipped.
+Perbaikan causalnavIMU belumflightvalidated pada titikcommit ini.

@@ -783,3 +783,28 @@ def test_corrected_pose_published_before_reference_work_and_not_published_twice(
         debug=json.loads(node.localisation_diagnostics.publish.call_args.args[0].data)
         assert not debug['healthy'] and debug['health_gate']=='lidar_correction_stale'
     finally:node.destroy_node()
+
+
+def test_navigation_imu_uses_control_epoch_without_clamping_future_stamp():
+    from polinasi_nav.time_checks import CausalStampQueue
+    from polinasi_nav.planning import Health
+    owner=SimpleNamespace(imu_health_queue=CausalStampQueue(),controller=SimpleNamespace(
+        health=Health(cloud_stamp=231.,pose_stamp=231.,localisation_ok=True)))
+    def message(value):
+        msg=Imu(header=Header(frame_id='mid360_imu',stamp=Time(sec=int(value),
+            nanosec=round((value-int(value))*1e9))))
+        return msg
+    NavigationNode.imu(owner,message(230.995))
+    NavigationNode.select_imu_for_tick(owner,231.)
+    NavigationNode.imu(owner,message(231.005))
+    assert owner.controller.health.imu_stamp==pytest.approx(230.995)
+    NavigationNode.select_imu_for_tick(owner,231.003)
+    c=dict(pose_timeout=.3,cloud_timeout=.5)
+    assert owner.controller.health.reason(231.003,c,True)==''
+    assert owner.imu_health_queue.status()['future_pending_at_last_tick']==1
+    NavigationNode.select_imu_for_tick(owner,231.01)
+    assert owner.controller.health.imu_stamp==pytest.approx(231.005)
+    bad=message(231.02);bad.linear_acceleration.x=float('nan')
+    NavigationNode.imu(owner,bad)
+    NavigationNode.select_imu_for_tick(owner,231.02)
+    assert owner.controller.health.imu_stamp==pytest.approx(231.005)

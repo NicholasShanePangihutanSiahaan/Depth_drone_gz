@@ -32,3 +32,38 @@ def test_future_missing_nonfinite_timestamps_never_authorize_freshness():
         assert not fresh_stamp(2.,stamp,.3)
     assert not fresh_stamp(math.nan,2.,.3)
     json.dumps(Health().status(2.,dict(pose_timeout=.3,cloud_timeout=.5)),allow_nan=False)
+
+
+def test_causal_imu_selection_reproduces_run33_without_accepting_future_data():
+    from polinasi_nav.time_checks import CausalStampQueue
+    q=CausalStampQueue();q.push(230.995)
+    assert q.select(231.)==230.995
+    q.push(231.005)
+    assert q.select(231.003)==230.995
+    assert not fresh_stamp(231.003,231.005,.3)
+    assert fresh_stamp(231.003,q.selected,.3)
+    assert q.status()['future_pending_at_last_tick']==1
+    assert q.select(231.01)==231.005
+    assert q.select(231.306)==231.005
+    assert not fresh_stamp(231.306,q.selected,.3)  # Real dropout stays stale.
+
+
+def test_future_only_flood_and_invalid_packets_never_freshen_imu_health():
+    from polinasi_nav.time_checks import CausalStampQueue
+    q=CausalStampQueue(capacity=3)
+    for t in (5.,6.,7.,8.):q.push(t)
+    assert q.select(1.)==-math.inf and q.status()['overflow_drops']==1
+    for t in (None,math.nan,math.inf):assert not q.push(t)
+    assert q.select(6.)==6.
+    assert not q.push(5.) and q.selected==6.
+    assert q.select(5.)==-math.inf  # Never expose a future stamp on clock rewind.
+    json.dumps(q.status(),allow_nan=False)
+
+
+def test_out_of_order_pending_packets_choose_latest_eligible_original_time():
+    from polinasi_nav.time_checks import CausalStampQueue
+    q=CausalStampQueue()
+    for t in (3.,2.,2.5):q.push(t)
+    assert q.select(2.6)==2.5
+    assert q.select(2.7)==2.5
+    assert q.select(3.)==3.

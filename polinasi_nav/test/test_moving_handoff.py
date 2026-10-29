@@ -83,6 +83,10 @@ def test_rejected_async_results_never_replace_reference(cause,reason):
     ctl._moving_update(now)
     assert ctl.trajectory is old and not ctl.failure
     assert ctl.moving_status['reason']==reason
+    if cause=='exception':
+        assert ctl.moving_status['last_exception']['exception_type']=='ValueError'
+        assert ctl.moving_status['last_exception']['message']=='worker error'
+        assert 'ValueError' in ctl.moving_status['last_exception']['traceback']
 
 
 def test_variable_tick_crosses_exact_boundary_and_advances_remaining_time():
