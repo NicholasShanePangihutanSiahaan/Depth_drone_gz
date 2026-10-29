@@ -16,6 +16,7 @@ def main(scenario='palm_farm'):
         c = json.loads((ROOT / f'reports/sensor_localisation/{stage}.json').read_text())
         c.update(simulation_scenario=scenario, sensor_rolling_localisation=False, sensor_fixed_localisation=True,
                  fixed_lidar_forward_imu=True,fixed_lidar_async_reference=True,
+                 fixed_lidar_correspondence_cache=True,
                  simulation_continuous_roll=False, simulation_roll_rate=0.,
                  lidar_fixed=True, fixed_fov_assumptions=True, automatic_tilt_ascent=False,
                  map_timeout=5.,

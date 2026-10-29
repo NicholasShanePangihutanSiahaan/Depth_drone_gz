@@ -475,3 +475,16 @@ yang dipasang. `reference_backend` mencatat pending/submitted/completed,
 busy_skips dan waktu downsample/index_normals/submit_to_adopt. Ini pemisahan
 pekerjaan maintenance, bukan implementasi LOAM/FAST-LIO atau bukti flight
 lolos. Gate koreksi/pose0.3s dan IMU receive0.1s tetap; belumhardwarevalidated.
+
+`fixed_lidar_correspondence_cache=True` memakai cache eksak hanya di dalam
+satu scan dan satu KD-tree. Query dua tetangga (eps0, radius.5m tetap)
+memberikan d1/d2. Tetangga pertama hanya boleh dipakai ulang bila
+`d2-d1 > 2*perpindahan_dari_anchor + margin_numerik`; ini mengikuti
+ketaksamaan segitiga. Jarak ke pasangan tetap dihitung ulang. Secondmissing
+pada boundedquery memberi lowerbound.5; missingfirst tidak dipakaiulang.
+Kasus ambiguous/ties dihitungulang exactKD, dengan k1fallback untuk urutan
+ID ties yang sama dengan backend lama. Anchor tidak digeser saatreuse,
+sehingga akumulasi perpindahan tidak hilang. Cache tidak melintasi scan atau
+pergantianreference. Radius/quality/healthgate tidak dilonggarkan. Timing
+query/linear-solve dan jumlah reuse dicatat di estimator_stages. Benchmark
+offline queries bukan klaim percepatan ICP/flight penuh.

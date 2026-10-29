@@ -154,7 +154,9 @@ class LocalisationNode(ConfigNode):
             bootstrap_duration=2.2 if self.rolling_sensor else 0.,
             robust_planes=bool(self.c.get('sensor_fixed_localisation')),
             asynchronous_reference=bool(self.c.get('sensor_fixed_localisation') and
-                self.c.get('fixed_lidar_async_reference',True)))
+                self.c.get('fixed_lidar_async_reference',True)),
+            cache_correspondences=bool(self.c.get('sensor_fixed_localisation') and
+                self.c.get('fixed_lidar_correspondence_cache',True)))
         self.forward_imu=bool(self.mode=='sensor' and self.c.get('sensor_fixed_localisation')
             and self.c.get('fixed_lidar_forward_imu',True))
         self.forwarder=None

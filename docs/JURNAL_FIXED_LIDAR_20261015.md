@@ -2687,3 +2687,59 @@ Fullbuild3packages berhasil;551tests lulus300.15s,0error/failure/skipped.
 Kesetaraan numerik tes berlaku setelah memasang referensi dari input sama;
 asynchronousflight dapat memakai referensi sebelumnya selama workerpending,
 sehingga bukan klaim seluruhflight identik. Belumflightvalidated saatcommit.
+
+
+### 29 Oktober 2026 — run31: enam sektor pertama, deferred entry, lalu frontend ICP terlambat
+
+Commitc84335c sudahpush. Run reports/fixed_lidar_validation_20261029_122823,
+session .dependencies/ros_sensor_palm_farm_flowers_20261029_122831_21176_mapping.
+Timeline: APPROACH1 20.45->68.0 (47.55s sim); ASCEND68->84.4;
+SCAN1 84.4->225.0. Enamsektorvalid, centre[-8.5207230674,-.4408419951].
+APPROACH5 mulai225.05; entryoccupied plus0safeconnectedalternatives,
+defer279.9 retry309.9, inspectedfalse. Pencarian144kandidat entry:123blocked/
+connector dan21disconnected. APPROACH3 mulai280, centre[5.0089,-8.4561]
+berbeda dari pohon1; tidak selesaiapproach sebelumfault.
+Satu regularmovinghandoff diterima214.8, refv.2386519m/s, PVAjump
+[1.33e-15,9.65e-15,7.01e-13]. Movingdepthrecovery belumterpakai(0events).
+Kemajuan hitungan inspeksi masih1pohon, belum2 ataureturn/landing/disarm.
+Pendekatan pertama lebihcepat dari run11 53.35s tetapi bukancontrolled
+algorithm benchmark, initialpose/map/perception danplanning berbeda.
+
+Terminal351.851 localisation_loss.13222auditpairs RMSE.0150894907m,
+max.0381987465m. Di351.811gate lidar_correction_stale age.311s, IMUage.006,
+poseage.016. Healthy kembali351.849 dengan koreksi351.6 age.249 tetapi
+abort sudahlatch. Backend sudahterpisah: foregroundreference cost3.62ms;
+background pendingjob74,job73completed. Scan351.5:15ICPiterations,
+registration_to_accept792.47mswall. Scan351.6:11iterations796.34mswall.
+Kini frontendregistration masihlambat; tidak boleh menyatakanbackendasync
+sudah menyelesaikan semua timing, atau false ini permanentICP/drift.
+Tidakloosen .3s dan tidak menyembunyikanhealthfalse.
+
+Optimasi eksak usulanrekayasa: simpan dua nearest distances pada anchor
+query dalamonescan. Triangleinequality menjamin nearestunchanged bila
+d2-d1>2*displacement. Jika secondoutofbound, bound.5m menjadi lowerbound.
+Kasusmeragukan/ties/outside dibacaulang SciPy eps0, tiesk1fallback agar
+ID urutan sesuaioldbackend. Jarak selalu dihitungulang, anchorreuse
+TIDAKdiupdate, jadi cumulative displacement tetapdiperhitungkan.
+Numericalmargin hanya memperbanyakfallback, tidakmengubah inliergate.
+SumberprimerAPI:
+https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.cKDTree.query.html
+Ini bukan aproksimasi ICP atau salinan SUPER/LOAM. Cachebaru per scan,
+tidak pernah dipakai untuk reference/scan berikutnya. Tambah query dan
+linear-solve stage timing untuk audit biaya residual frontend.
+
+Benchmark reports/fixed_exact_correspondence_20261029: peta sensor export
+run31 (timestamp340),40000referencepoints,2000queries*15iterasi dengan
+perpindahan sintetis menyusut. Median22repeat buang2:legacy43.928845ms
+->cache22.890330ms (1.9191x query-only);8482exactKDpoints,21518reuse.
+Inlier/ID sama, jarak atol1e-14. Ini bukan replay rawscanatau wholeICP/
+flighttiming. Script+json disimpan agar reproducible dari export.
+
+Tes48passed2.86s awal dengan2warnings inf-inf di deteksi ties; diperbaiki
+mengevaluasi selisih hanya pada finited1. Ulang -Werror48passed2.87s,
+tanpawarning. Termasuk boundary.5/ties/switchnearest/cumulativemotion,
+randomshapechange dan8scan ICP yang sama acceptance/P/R/V/cov atol1e-12.
+Fullbuild/regression menyusul sebelumpush/flight.
+
+Fullbuild3packages berhasil;554tests lulus309.62s,0error/failure/skipped.
+Optimasi exactcorrespondence belumflightvalidated pada titikcommit ini.

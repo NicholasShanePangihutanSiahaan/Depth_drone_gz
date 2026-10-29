@@ -46,7 +46,8 @@ def build_keyframe_reference(keyframes,body_imu):
 
 
 class LidarImuOdometry:
-    def __init__(self, mount, origin=(0., 0., 0.), body_imu=False, bootstrap_duration=0., robust_planes=False, asynchronous_reference=False):
+    def __init__(self, mount, origin=(0., 0., 0.), body_imu=False, bootstrap_duration=0., robust_planes=False, asynchronous_reference=False,cache_correspondences=False):
+        self.cache_correspondences=cache_correspondences
         self.asynchronous_reference=asynchronous_reference
         self.reference_executor=None;self.reference_job=None;self.reference_error=None
         self.reference_stats=dict(enabled=asynchronous_reference,pending=False,submitted=0,completed=0,busy_skips=0)
@@ -244,12 +245,23 @@ class LidarImuOdometry:
             return True
         self.last_scan_timing.update(stage='registration',iterations=0)
         registration_started=time.monotonic_ns()
+        cache=None
+        if self.cache_correspondences:
+            from .correspondence_cache import ExactCorrespondenceCache
+            cache=ExactCorrespondenceCache(self.tree,ICP_MAX_CORRESPONDENCE_DISTANCE)
+        query_wall_ns=solve_wall_ns=0
+        def query(points):
+            nonlocal query_wall_ns
+            started=time.monotonic_ns()
+            result=cache.query(points) if cache is not None else self.query_correspondences(points)
+            query_wall_ns+=time.monotonic_ns()-started
+            return result
         predicted_p, predicted_r = self.p.copy(), self.r.copy()
         p, r = predicted_p.copy(), predicted_r.copy()
         for _ in range(15):
             self.last_scan_timing['iterations']=_+1
             transformed = body@r.T+p
-            distances, ids = self.query_correspondences(transformed)
+            distances, ids = query(transformed)
             inliers = distances < ICP_MAX_CORRESPONDENCE_DISTANCE
             if inliers.sum() < 80 or inliers.mean() < 0.35:
                 self.ok, self.reason = False, 'poor_overlap'
@@ -277,8 +289,10 @@ class LidarImuOdometry:
                 # from tilting gravity and manufacturing translational drift.
                 prior=np.eye(6)*np.array([20.,20.,5.,.2,.2,.2])
                 orientation=Rotation.from_matrix(r@predicted_r.T).as_rotvec()
+                solve_started=time.monotonic_ns()
                 delta=np.linalg.lstsq(np.vstack((jac*weights[:,None],prior)),
                     np.r_[-residual*weights,-prior@np.r_[orientation,p-predicted_p]],rcond=None)[0]
+                solve_wall_ns+=time.monotonic_ns()-solve_started
                 r=Rotation.from_rotvec(delta[:3]).as_matrix()@r
                 p+=delta[3:]
                 if np.linalg.norm(delta)<1e-4:break
@@ -294,7 +308,7 @@ class LidarImuOdometry:
             if np.linalg.norm(shift) < 1e-4 and np.linalg.norm(Rotation.from_matrix(correction).as_rotvec()) < 1e-4:
                 break
         transformed = body@r.T+p
-        distances, ids = self.query_correspondences(transformed)
+        distances, ids = query(transformed)
         inliers = distances < ICP_MAX_CORRESPONDENCE_DISTANCE
         self.point_rmse = float(np.sqrt(np.mean(distances[inliers]**2)))
         self.rmse=self.point_rmse
@@ -378,7 +392,9 @@ class LidarImuOdometry:
         self.last_scan_timing.update(stage='accepted_pose_before_reference',
             registration_to_accept_wall_ms=(accepted_wall-registration_started)/1e6,
             scan_to_accept_wall_ms=(accepted_wall-scan_started)/1e6,
-            keyframe_rebuilt=False)
+            keyframe_rebuilt=False,correspondence_query_wall_ms=query_wall_ns/1e6,
+            linear_solve_wall_ms=solve_wall_ns/1e6,
+            correspondence_cache=dict(cache.stats) if cache is not None else dict(enabled=False))
         if on_accepted is not None:on_accepted()
         reference_started=time.monotonic_ns()
         self.last_scan_timing['stage']='reference_maintenance'
