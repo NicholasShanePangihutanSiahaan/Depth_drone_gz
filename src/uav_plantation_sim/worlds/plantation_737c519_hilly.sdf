@@ -1,0 +1,1091 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.9">
+  <world name="plantation">
+    <physics name="uav_physics" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
+    <scene>
+      <ambient>0.36 0.38 0.40 1</ambient>
+      <background>0.70 0.82 0.94 1</background>
+      <shadows>true</shadows>
+    </scene>
+    <light type="directional" name="sun_key">
+      <pose>-10 -10 18 0.35 0.55 -0.75</pose>
+      <cast_shadows>true</cast_shadows>
+      <diffuse>0.95 0.90 0.78 1</diffuse>
+      <specular>0.25 0.24 0.20 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.55 0.25 -0.80</direction>
+    </light>
+    <model name="textured_ground">
+      <static>true</static>
+      <link name="ground">
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/ground_collision.dae</uri>
+            </mesh>
+          </geometry>
+        </collision>
+        <visual name="grass_soil">
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/ground.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.26 0.34 0.18 1</ambient>
+            <diffuse>0.32 0.44 0.22 1</diffuse>
+            <specular>0.05 0.05 0.04 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="soil_lanes">
+      <static>true</static>
+      <link name="lanes">
+        <visual name="lane_00">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/lane_00.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.28 0.28 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="lane_01">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/lane_01.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.28 0.28 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="lane_02">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/lane_02.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.28 0.28 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="lane_03">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/lane_03.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.28 0.28 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="lane_04">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/lane_04.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.28 0.28 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="lane_05">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/lane_05.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.28 0.28 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="lane_06">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/lane_06.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.28 0.28 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="lane_07">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/lane_07.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.28 0.28 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="lane_08">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/lane_08.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.28 0.28 0.28 1</diffuse>
+          </material>
+        </visual>
+        <visual name="lane_09">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://plantation_hilly_terrain/meshes/lane_09.dae</uri>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.28 0.28 0.28 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <include>
+      <name>tree_00_00</name>
+      <uri>model://oil_palm</uri>
+      <pose>-52.50000 -30.31090 1.93043 0.00000 0.00000 -0.08000</pose>
+    </include>
+    <include>
+      <name>tree_00_01</name>
+      <uri>model://oil_palm</uri>
+      <pose>-45.50000 -30.31090 2.46356 0.00000 0.00000 0.15000</pose>
+    </include>
+    <include>
+      <name>tree_00_02</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-38.50000 -30.31090 2.85980 0.00000 0.00000 0.23000</pose>
+    </include>
+    <include>
+      <name>tree_00_03</name>
+      <uri>model://oil_palm</uri>
+      <pose>-31.50000 -30.31090 3.13241 0.00000 0.00000 0.20000</pose>
+    </include>
+    <include>
+      <name>tree_00_04</name>
+      <uri>model://oil_palm</uri>
+      <pose>-24.50000 -30.31090 3.80932 0.00000 0.00000 -0.03000</pose>
+    </include>
+    <include>
+      <name>tree_00_05</name>
+      <uri>model://oil_palm</uri>
+      <pose>-17.50000 -30.31090 3.87689 0.00000 0.00000 0.54000</pose>
+    </include>
+    <include>
+      <name>tree_00_06</name>
+      <uri>model://oil_palm</uri>
+      <pose>-10.50000 -30.31090 2.79900 0.00000 0.00000 -0.11000</pose>
+    </include>
+    <include>
+      <name>tree_00_07</name>
+      <uri>model://oil_palm</uri>
+      <pose>-3.50000 -30.31090 1.89970 0.00000 0.00000 0.47000</pose>
+    </include>
+    <include>
+      <name>tree_00_08</name>
+      <uri>model://oil_palm</uri>
+      <pose>3.50000 -30.31090 1.50803 0.00000 0.00000 -0.38000</pose>
+    </include>
+    <include>
+      <name>tree_00_09</name>
+      <uri>model://oil_palm</uri>
+      <pose>10.50000 -30.31090 1.05451 0.00000 0.00000 -0.37000</pose>
+    </include>
+    <include>
+      <name>tree_00_10</name>
+      <uri>model://oil_palm</uri>
+      <pose>17.50000 -30.31090 1.75975 0.00000 0.00000 0.39000</pose>
+    </include>
+    <include>
+      <name>tree_00_11</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>24.50000 -30.31090 4.57595 0.00000 0.00000 -0.44000</pose>
+    </include>
+    <include>
+      <name>tree_00_12</name>
+      <uri>model://oil_palm</uri>
+      <pose>31.50000 -30.31090 7.09812 0.00000 0.00000 0.51000</pose>
+    </include>
+    <include>
+      <name>tree_00_13</name>
+      <uri>model://oil_palm</uri>
+      <pose>38.50000 -30.31090 6.58606 0.00000 0.00000 -0.37000</pose>
+    </include>
+    <include>
+      <name>tree_00_14</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>45.50000 -30.31090 4.14279 0.00000 0.00000 0.19000</pose>
+    </include>
+    <include>
+      <name>tree_00_15</name>
+      <uri>model://oil_palm</uri>
+      <pose>52.50000 -30.31090 2.03406 0.00000 0.00000 -0.08000</pose>
+    </include>
+    <include>
+      <name>tree_01_00</name>
+      <uri>model://oil_palm</uri>
+      <pose>-49.00000 -24.24870 2.97187 0.00000 0.00000 0.26000</pose>
+    </include>
+    <include>
+      <name>tree_01_01</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-42.00000 -24.24870 3.67003 0.00000 0.00000 0.07000</pose>
+    </include>
+    <include>
+      <name>tree_01_02</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-35.00000 -24.24870 4.64173 0.00000 0.00000 0.42000</pose>
+    </include>
+    <include>
+      <name>tree_01_03</name>
+      <uri>model://oil_palm</uri>
+      <pose>-28.00000 -24.24870 6.08152 0.00000 0.00000 -0.51000</pose>
+    </include>
+    <include>
+      <name>tree_01_04</name>
+      <uri>model://oil_palm</uri>
+      <pose>-21.00000 -24.24870 6.22808 0.00000 0.00000 -0.20000</pose>
+    </include>
+    <include>
+      <name>tree_01_05</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-14.00000 -24.24870 4.65066 0.00000 0.00000 -0.48000</pose>
+    </include>
+    <include>
+      <name>tree_01_06</name>
+      <uri>model://oil_palm</uri>
+      <pose>-7.00000 -24.24870 3.13936 0.00000 0.00000 -0.42000</pose>
+    </include>
+    <include>
+      <name>tree_01_07</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>0.00000 -24.24870 2.06464 0.00000 0.00000 -0.54000</pose>
+    </include>
+    <include>
+      <name>tree_01_08</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>7.00000 -24.24870 0.93211 0.00000 0.00000 0.10000</pose>
+    </include>
+    <include>
+      <name>tree_01_09</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>14.00000 -24.24870 0.98912 0.00000 0.00000 -0.04000</pose>
+    </include>
+    <include>
+      <name>tree_01_10</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>21.00000 -24.24870 3.05457 0.00000 0.00000 0.23000</pose>
+    </include>
+    <include>
+      <name>tree_01_11</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>28.00000 -24.24870 5.64564 0.00000 0.00000 -0.05000</pose>
+    </include>
+    <include>
+      <name>tree_01_12</name>
+      <uri>model://oil_palm</uri>
+      <pose>35.00000 -24.24870 6.67812 0.00000 0.00000 -0.45000</pose>
+    </include>
+    <include>
+      <name>tree_01_13</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>42.00000 -24.24870 5.32965 0.00000 0.00000 0.03000</pose>
+    </include>
+    <include>
+      <name>tree_01_14</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>49.00000 -24.24870 2.71646 0.00000 0.00000 -0.44000</pose>
+    </include>
+    <include>
+      <name>tree_02_00</name>
+      <uri>model://oil_palm</uri>
+      <pose>-52.50000 -18.18650 2.76903 0.00000 0.00000 0.01000</pose>
+    </include>
+    <include>
+      <name>tree_02_01</name>
+      <uri>model://oil_palm</uri>
+      <pose>-45.50000 -18.18650 3.72433 0.00000 0.00000 -0.07000</pose>
+    </include>
+    <include>
+      <name>tree_02_02</name>
+      <uri>model://oil_palm</uri>
+      <pose>-38.50000 -18.18650 5.39748 0.00000 0.00000 -0.18000</pose>
+    </include>
+    <include>
+      <name>tree_02_03</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-31.50000 -18.18650 7.78145 0.00000 0.00000 -0.27000</pose>
+    </include>
+    <include>
+      <name>tree_02_04</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-24.50000 -18.18650 8.42758 0.00000 0.00000 -0.40000</pose>
+    </include>
+    <include>
+      <name>tree_02_05</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-17.50000 -18.18650 6.66801 0.00000 0.00000 0.07000</pose>
+    </include>
+    <include>
+      <name>tree_02_06</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-10.50000 -18.18650 4.58308 0.00000 0.00000 0.35000</pose>
+    </include>
+    <include>
+      <name>tree_02_07</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-3.50000 -18.18650 2.90757 0.00000 0.00000 -0.43000</pose>
+    </include>
+    <include>
+      <name>tree_02_08</name>
+      <uri>model://oil_palm</uri>
+      <pose>3.50000 -18.18650 1.38236 0.00000 0.00000 0.01000</pose>
+    </include>
+    <include>
+      <name>tree_02_09</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>10.50000 -18.18650 0.98543 0.00000 0.00000 -0.33000</pose>
+    </include>
+    <include>
+      <name>tree_02_10</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>17.50000 -18.18650 1.92540 0.00000 0.00000 0.40000</pose>
+    </include>
+    <include>
+      <name>tree_02_11</name>
+      <uri>model://oil_palm</uri>
+      <pose>24.50000 -18.18650 3.21149 0.00000 0.00000 0.53000</pose>
+    </include>
+    <include>
+      <name>tree_02_12</name>
+      <uri>model://oil_palm</uri>
+      <pose>31.50000 -18.18650 4.45292 0.00000 0.00000 0.16000</pose>
+    </include>
+    <include>
+      <name>tree_02_13</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>38.50000 -18.18650 4.69641 0.00000 0.00000 -0.24000</pose>
+    </include>
+    <include>
+      <name>tree_02_14</name>
+      <uri>model://oil_palm</uri>
+      <pose>45.50000 -18.18650 3.08183 0.00000 0.00000 0.33000</pose>
+    </include>
+    <include>
+      <name>tree_02_15</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>52.50000 -18.18650 1.29201 0.00000 0.00000 -0.04000</pose>
+    </include>
+    <include>
+      <name>tree_03_00</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-49.00000 -12.12440 2.70849 0.00000 0.00000 0.43000</pose>
+    </include>
+    <include>
+      <name>tree_03_01</name>
+      <uri>model://oil_palm</uri>
+      <pose>-42.00000 -12.12440 4.49840 0.00000 0.00000 0.28000</pose>
+    </include>
+    <include>
+      <name>tree_03_02</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-35.00000 -12.12440 7.39140 0.00000 0.00000 0.21000</pose>
+    </include>
+    <include>
+      <name>tree_03_03</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-28.00000 -12.12440 8.75232 0.00000 0.00000 0.46000</pose>
+    </include>
+    <include>
+      <name>tree_03_04</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-21.00000 -12.12440 7.53048 0.00000 0.00000 0.33000</pose>
+    </include>
+    <include>
+      <name>tree_03_05</name>
+      <uri>model://oil_palm</uri>
+      <pose>-14.00000 -12.12440 5.42623 0.00000 0.00000 -0.44000</pose>
+    </include>
+    <include>
+      <name>tree_03_06</name>
+      <uri>model://oil_palm</uri>
+      <pose>-7.00000 -12.12440 3.41314 0.00000 0.00000 -0.24000</pose>
+    </include>
+    <include>
+      <name>tree_03_07</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>0.00000 -12.12440 1.39915 0.00000 0.00000 -0.03000</pose>
+    </include>
+    <include>
+      <name>tree_03_08</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>7.00000 -12.12440 1.52397 0.00000 0.00000 -0.29000</pose>
+    </include>
+    <include>
+      <name>tree_03_09</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>14.00000 -12.12440 1.95438 0.00000 0.00000 -0.21000</pose>
+    </include>
+    <include>
+      <name>tree_03_10</name>
+      <uri>model://oil_palm</uri>
+      <pose>21.00000 -12.12440 2.04223 0.00000 0.00000 -0.20000</pose>
+    </include>
+    <include>
+      <name>tree_03_11</name>
+      <uri>model://oil_palm</uri>
+      <pose>28.00000 -12.12440 2.44188 0.00000 0.00000 0.51000</pose>
+    </include>
+    <include>
+      <name>tree_03_12</name>
+      <uri>model://oil_palm</uri>
+      <pose>35.00000 -12.12440 3.12915 0.00000 0.00000 -0.10000</pose>
+    </include>
+    <include>
+      <name>tree_03_13</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>42.00000 -12.12440 2.66775 0.00000 0.00000 0.31000</pose>
+    </include>
+    <include>
+      <name>tree_03_14</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>49.00000 -12.12440 1.68834 0.00000 0.00000 -0.29000</pose>
+    </include>
+    <include>
+      <name>tree_04_00</name>
+      <uri>model://oil_palm</uri>
+      <pose>-52.50000 -6.06220 1.43414 0.00000 0.00000 -0.11000</pose>
+    </include>
+    <include>
+      <name>tree_04_01</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-45.50000 -6.06220 2.71314 0.00000 0.00000 0.33000</pose>
+    </include>
+    <include>
+      <name>tree_04_02</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-38.50000 -6.06220 5.26378 0.00000 0.00000 0.35000</pose>
+    </include>
+    <include>
+      <name>tree_04_03</name>
+      <uri>model://oil_palm</uri>
+      <pose>-31.50000 -6.06220 6.82744 0.00000 0.00000 0.45000</pose>
+    </include>
+    <include>
+      <name>tree_04_04</name>
+      <uri>model://oil_palm</uri>
+      <pose>-24.50000 -6.06220 6.46127 0.00000 0.00000 0.31000</pose>
+    </include>
+    <include>
+      <name>tree_04_05</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-17.50000 -6.06220 5.05672 0.00000 0.00000 0.50000</pose>
+    </include>
+    <include>
+      <name>tree_04_06</name>
+      <uri>model://oil_palm_tag0</uri>
+      <pose>-10.50000 -6.06220 3.14983 0.00000 0.00000 0.00000</pose>
+    </include>
+    <include>
+      <name>tree_04_07</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-3.50000 -6.06220 0.00405 0.00000 0.00000 0.14000</pose>
+    </include>
+    <include>
+      <name>tree_04_08</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>3.50000 -6.06220 0.00000 0.00000 0.00000 0.53000</pose>
+    </include>
+    <include>
+      <name>tree_04_09</name>
+      <uri>model://oil_palm_tag1</uri>
+      <pose>10.50000 -6.06220 2.50293 0.00000 0.00000 0.00000</pose>
+    </include>
+    <include>
+      <name>tree_04_10</name>
+      <uri>model://oil_palm_tag2</uri>
+      <pose>17.50000 -6.06220 2.39746 0.00000 0.00000 0.00000</pose>
+    </include>
+    <include>
+      <name>tree_04_11</name>
+      <uri>model://oil_palm_tag3</uri>
+      <pose>24.50000 -6.06220 2.30414 0.00000 0.00000 0.00000</pose>
+    </include>
+    <include>
+      <name>tree_04_12</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>31.50000 -6.06220 2.60941 0.00000 0.00000 0.26000</pose>
+    </include>
+    <include>
+      <name>tree_04_13</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>38.50000 -6.06220 2.34620 0.00000 0.00000 0.19000</pose>
+    </include>
+    <include>
+      <name>tree_04_14</name>
+      <uri>model://oil_palm</uri>
+      <pose>45.50000 -6.06220 1.98263 0.00000 0.00000 0.46000</pose>
+    </include>
+    <include>
+      <name>tree_04_15</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>52.50000 -6.06220 2.25178 0.00000 0.00000 0.48000</pose>
+    </include>
+    <include>
+      <name>tree_05_00</name>
+      <uri>model://oil_palm</uri>
+      <pose>-49.00000 0.00000 1.33560 0.00000 0.00000 -0.22000</pose>
+    </include>
+    <include>
+      <name>tree_05_01</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-42.00000 0.00000 3.09088 0.00000 0.00000 0.01000</pose>
+    </include>
+    <include>
+      <name>tree_05_02</name>
+      <uri>model://oil_palm</uri>
+      <pose>-35.00000 0.00000 4.25978 0.00000 0.00000 0.15000</pose>
+    </include>
+    <include>
+      <name>tree_05_03</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-28.00000 0.00000 4.42102 0.00000 0.00000 -0.52000</pose>
+    </include>
+    <include>
+      <name>tree_05_04</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-21.00000 0.00000 3.90180 0.00000 0.00000 0.26000</pose>
+    </include>
+    <include>
+      <name>tree_05_05</name>
+      <uri>model://oil_palm</uri>
+      <pose>-14.00000 0.00000 2.51668 0.00000 0.00000 0.00000</pose>
+    </include>
+    <include>
+      <name>tree_05_06</name>
+      <uri>model://oil_palm_tag0</uri>
+      <pose>-7.00000 0.00000 0.55471 0.00000 0.00000 0.00000</pose>
+    </include>
+    <include>
+      <name>tree_05_07</name>
+      <uri>model://oil_palm</uri>
+      <pose>0.00000 0.00000 0.00000 0.00000 0.00000 0.23000</pose>
+    </include>
+    <include>
+      <name>tree_05_08</name>
+      <uri>model://oil_palm_tag1</uri>
+      <pose>7.00000 0.00000 1.12750 0.00000 0.00000 0.00000</pose>
+    </include>
+    <include>
+      <name>tree_05_09</name>
+      <uri>model://oil_palm_tag2</uri>
+      <pose>14.00000 0.00000 3.24590 0.00000 0.00000 0.00000</pose>
+    </include>
+    <include>
+      <name>tree_05_10</name>
+      <uri>model://oil_palm_tag3</uri>
+      <pose>21.00000 0.00000 3.75960 0.00000 0.00000 0.00000</pose>
+    </include>
+    <include>
+      <name>tree_05_11</name>
+      <uri>model://oil_palm</uri>
+      <pose>28.00000 0.00000 4.10087 0.00000 0.00000 0.44000</pose>
+    </include>
+    <include>
+      <name>tree_05_12</name>
+      <uri>model://oil_palm</uri>
+      <pose>35.00000 0.00000 3.47734 0.00000 0.00000 -0.16000</pose>
+    </include>
+    <include>
+      <name>tree_05_13</name>
+      <uri>model://oil_palm</uri>
+      <pose>42.00000 0.00000 2.86283 0.00000 0.00000 0.43000</pose>
+    </include>
+    <include>
+      <name>tree_05_14</name>
+      <uri>model://oil_palm</uri>
+      <pose>49.00000 0.00000 2.96831 0.00000 0.00000 -0.43000</pose>
+    </include>
+    <include>
+      <name>tree_06_00</name>
+      <uri>model://oil_palm</uri>
+      <pose>-52.50000 6.06220 0.97284 0.00000 0.00000 -0.09000</pose>
+    </include>
+    <include>
+      <name>tree_06_01</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-45.50000 6.06220 1.90251 0.00000 0.00000 0.28000</pose>
+    </include>
+    <include>
+      <name>tree_06_02</name>
+      <uri>model://oil_palm</uri>
+      <pose>-38.50000 6.06220 2.44603 0.00000 0.00000 0.15000</pose>
+    </include>
+    <include>
+      <name>tree_06_03</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-31.50000 6.06220 2.77776 0.00000 0.00000 -0.02000</pose>
+    </include>
+    <include>
+      <name>tree_06_04</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-24.50000 6.06220 2.90807 0.00000 0.00000 0.03000</pose>
+    </include>
+    <include>
+      <name>tree_06_05</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-17.50000 6.06220 2.05640 0.00000 0.00000 -0.12000</pose>
+    </include>
+    <include>
+      <name>tree_06_06</name>
+      <uri>model://oil_palm</uri>
+      <pose>-10.50000 6.06220 1.17299 0.00000 0.00000 -0.12000</pose>
+    </include>
+    <include>
+      <name>tree_06_07</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-3.50000 6.06220 1.39941 0.00000 0.00000 0.11000</pose>
+    </include>
+    <include>
+      <name>tree_06_08</name>
+      <uri>model://oil_palm</uri>
+      <pose>3.50000 6.06220 2.14753 0.00000 0.00000 -0.28000</pose>
+    </include>
+    <include>
+      <name>tree_06_09</name>
+      <uri>model://oil_palm</uri>
+      <pose>10.50000 6.06220 3.39047 0.00000 0.00000 -0.36000</pose>
+    </include>
+    <include>
+      <name>tree_06_10</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>17.50000 6.06220 5.26554 0.00000 0.00000 -0.43000</pose>
+    </include>
+    <include>
+      <name>tree_06_11</name>
+      <uri>model://oil_palm</uri>
+      <pose>24.50000 6.06220 6.77154 0.00000 0.00000 0.05000</pose>
+    </include>
+    <include>
+      <name>tree_06_12</name>
+      <uri>model://oil_palm</uri>
+      <pose>31.50000 6.06220 6.41799 0.00000 0.00000 0.40000</pose>
+    </include>
+    <include>
+      <name>tree_06_13</name>
+      <uri>model://oil_palm</uri>
+      <pose>38.50000 6.06220 5.26342 0.00000 0.00000 0.22000</pose>
+    </include>
+    <include>
+      <name>tree_06_14</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>45.50000 6.06220 4.35625 0.00000 0.00000 0.06000</pose>
+    </include>
+    <include>
+      <name>tree_06_15</name>
+      <uri>model://oil_palm</uri>
+      <pose>52.50000 6.06220 3.14612 0.00000 0.00000 0.23000</pose>
+    </include>
+    <include>
+      <name>tree_07_00</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-49.00000 12.12440 1.76988 0.00000 0.00000 0.17000</pose>
+    </include>
+    <include>
+      <name>tree_07_01</name>
+      <uri>model://oil_palm</uri>
+      <pose>-42.00000 12.12440 1.76667 0.00000 0.00000 -0.21000</pose>
+    </include>
+    <include>
+      <name>tree_07_02</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-35.00000 12.12440 2.16031 0.00000 0.00000 -0.50000</pose>
+    </include>
+    <include>
+      <name>tree_07_03</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-28.00000 12.12440 2.69947 0.00000 0.00000 -0.04000</pose>
+    </include>
+    <include>
+      <name>tree_07_04</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-21.00000 12.12440 2.17921 0.00000 0.00000 0.26000</pose>
+    </include>
+    <include>
+      <name>tree_07_05</name>
+      <uri>model://oil_palm</uri>
+      <pose>-14.00000 12.12440 1.49709 0.00000 0.00000 -0.36000</pose>
+    </include>
+    <include>
+      <name>tree_07_06</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-7.00000 12.12440 1.74880 0.00000 0.00000 -0.55000</pose>
+    </include>
+    <include>
+      <name>tree_07_07</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>0.00000 12.12440 1.99739 0.00000 0.00000 0.32000</pose>
+    </include>
+    <include>
+      <name>tree_07_08</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>7.00000 12.12440 2.49165 0.00000 0.00000 -0.14000</pose>
+    </include>
+    <include>
+      <name>tree_07_09</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>14.00000 12.12440 5.09903 0.00000 0.00000 -0.36000</pose>
+    </include>
+    <include>
+      <name>tree_07_10</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>21.00000 12.12440 8.30396 0.00000 0.00000 0.11000</pose>
+    </include>
+    <include>
+      <name>tree_07_11</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>28.00000 12.12440 9.40161 0.00000 0.00000 0.25000</pose>
+    </include>
+    <include>
+      <name>tree_07_12</name>
+      <uri>model://oil_palm</uri>
+      <pose>35.00000 12.12440 8.62003 0.00000 0.00000 0.42000</pose>
+    </include>
+    <include>
+      <name>tree_07_13</name>
+      <uri>model://oil_palm</uri>
+      <pose>42.00000 12.12440 6.75354 0.00000 0.00000 -0.33000</pose>
+    </include>
+    <include>
+      <name>tree_07_14</name>
+      <uri>model://oil_palm</uri>
+      <pose>49.00000 12.12440 4.15305 0.00000 0.00000 -0.48000</pose>
+    </include>
+    <include>
+      <name>tree_08_00</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-52.50000 18.18650 2.14368 0.00000 0.00000 0.06000</pose>
+    </include>
+    <include>
+      <name>tree_08_01</name>
+      <uri>model://oil_palm</uri>
+      <pose>-45.50000 18.18650 1.90883 0.00000 0.00000 -0.46000</pose>
+    </include>
+    <include>
+      <name>tree_08_02</name>
+      <uri>model://oil_palm</uri>
+      <pose>-38.50000 18.18650 2.51560 0.00000 0.00000 -0.25000</pose>
+    </include>
+    <include>
+      <name>tree_08_03</name>
+      <uri>model://oil_palm</uri>
+      <pose>-31.50000 18.18650 3.55599 0.00000 0.00000 -0.21000</pose>
+    </include>
+    <include>
+      <name>tree_08_04</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-24.50000 18.18650 3.21624 0.00000 0.00000 -0.23000</pose>
+    </include>
+    <include>
+      <name>tree_08_05</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-17.50000 18.18650 2.40235 0.00000 0.00000 -0.28000</pose>
+    </include>
+    <include>
+      <name>tree_08_06</name>
+      <uri>model://oil_palm</uri>
+      <pose>-10.50000 18.18650 2.33630 0.00000 0.00000 -0.53000</pose>
+    </include>
+    <include>
+      <name>tree_08_07</name>
+      <uri>model://oil_palm</uri>
+      <pose>-3.50000 18.18650 1.97434 0.00000 0.00000 0.11000</pose>
+    </include>
+    <include>
+      <name>tree_08_08</name>
+      <uri>model://oil_palm</uri>
+      <pose>3.50000 18.18650 1.48287 0.00000 0.00000 -0.04000</pose>
+    </include>
+    <include>
+      <name>tree_08_09</name>
+      <uri>model://oil_palm</uri>
+      <pose>10.50000 18.18650 3.21345 0.00000 0.00000 0.48000</pose>
+    </include>
+    <include>
+      <name>tree_08_10</name>
+      <uri>model://oil_palm</uri>
+      <pose>17.50000 18.18650 6.94135 0.00000 0.00000 -0.34000</pose>
+    </include>
+    <include>
+      <name>tree_08_11</name>
+      <uri>model://oil_palm</uri>
+      <pose>24.50000 18.18650 9.71129 0.00000 0.00000 0.06000</pose>
+    </include>
+    <include>
+      <name>tree_08_12</name>
+      <uri>model://oil_palm</uri>
+      <pose>31.50000 18.18650 10.47191 0.00000 0.00000 0.50000</pose>
+    </include>
+    <include>
+      <name>tree_08_13</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>38.50000 18.18650 8.90156 0.00000 0.00000 0.35000</pose>
+    </include>
+    <include>
+      <name>tree_08_14</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>45.50000 18.18650 5.48123 0.00000 0.00000 0.20000</pose>
+    </include>
+    <include>
+      <name>tree_08_15</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>52.50000 18.18650 2.72929 0.00000 0.00000 0.27000</pose>
+    </include>
+    <include>
+      <name>tree_09_00</name>
+      <uri>model://oil_palm</uri>
+      <pose>-49.00000 24.24870 2.10626 0.00000 0.00000 0.53000</pose>
+    </include>
+    <include>
+      <name>tree_09_01</name>
+      <uri>model://oil_palm</uri>
+      <pose>-42.00000 24.24870 2.88542 0.00000 0.00000 0.36000</pose>
+    </include>
+    <include>
+      <name>tree_09_02</name>
+      <uri>model://oil_palm</uri>
+      <pose>-35.00000 24.24870 4.55313 0.00000 0.00000 -0.24000</pose>
+    </include>
+    <include>
+      <name>tree_09_03</name>
+      <uri>model://oil_palm</uri>
+      <pose>-28.00000 24.24870 4.82165 0.00000 0.00000 -0.45000</pose>
+    </include>
+    <include>
+      <name>tree_09_04</name>
+      <uri>model://oil_palm</uri>
+      <pose>-21.00000 24.24870 3.83116 0.00000 0.00000 0.46000</pose>
+    </include>
+    <include>
+      <name>tree_09_05</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-14.00000 24.24870 3.12908 0.00000 0.00000 0.46000</pose>
+    </include>
+    <include>
+      <name>tree_09_06</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-7.00000 24.24870 2.27814 0.00000 0.00000 -0.54000</pose>
+    </include>
+    <include>
+      <name>tree_09_07</name>
+      <uri>model://oil_palm</uri>
+      <pose>0.00000 24.24870 1.21900 0.00000 0.00000 0.05000</pose>
+    </include>
+    <include>
+      <name>tree_09_08</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>7.00000 24.24870 1.42638 0.00000 0.00000 0.41000</pose>
+    </include>
+    <include>
+      <name>tree_09_09</name>
+      <uri>model://oil_palm</uri>
+      <pose>14.00000 24.24870 3.76965 0.00000 0.00000 -0.47000</pose>
+    </include>
+    <include>
+      <name>tree_09_10</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>21.00000 24.24870 6.88071 0.00000 0.00000 0.22000</pose>
+    </include>
+    <include>
+      <name>tree_09_11</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>28.00000 24.24870 9.09419 0.00000 0.00000 0.17000</pose>
+    </include>
+    <include>
+      <name>tree_09_12</name>
+      <uri>model://oil_palm</uri>
+      <pose>35.00000 24.24870 8.89679 0.00000 0.00000 0.40000</pose>
+    </include>
+    <include>
+      <name>tree_09_13</name>
+      <uri>model://oil_palm</uri>
+      <pose>42.00000 24.24870 6.07158 0.00000 0.00000 -0.43000</pose>
+    </include>
+    <include>
+      <name>tree_09_14</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>49.00000 24.24870 3.20817 0.00000 0.00000 0.05000</pose>
+    </include>
+    <include>
+      <name>tree_10_00</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-52.50000 30.31090 1.87658 0.00000 0.00000 -0.03000</pose>
+    </include>
+    <include>
+      <name>tree_10_01</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-45.50000 30.31090 2.54186 0.00000 0.00000 0.34000</pose>
+    </include>
+    <include>
+      <name>tree_10_02</name>
+      <uri>model://oil_palm</uri>
+      <pose>-38.50000 30.31090 4.09585 0.00000 0.00000 -0.47000</pose>
+    </include>
+    <include>
+      <name>tree_10_03</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>-31.50000 30.31090 5.03020 0.00000 0.00000 0.30000</pose>
+    </include>
+    <include>
+      <name>tree_10_04</name>
+      <uri>model://oil_palm</uri>
+      <pose>-24.50000 30.31090 4.68508 0.00000 0.00000 -0.35000</pose>
+    </include>
+    <include>
+      <name>tree_10_05</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>-17.50000 30.31090 3.66934 0.00000 0.00000 0.49000</pose>
+    </include>
+    <include>
+      <name>tree_10_06</name>
+      <uri>model://oil_palm</uri>
+      <pose>-10.50000 30.31090 2.41254 0.00000 0.00000 0.40000</pose>
+    </include>
+    <include>
+      <name>tree_10_07</name>
+      <uri>model://oil_palm</uri>
+      <pose>-3.50000 30.31090 1.43512 0.00000 0.00000 0.55000</pose>
+    </include>
+    <include>
+      <name>tree_10_08</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>3.50000 30.31090 1.02821 0.00000 0.00000 -0.28000</pose>
+    </include>
+    <include>
+      <name>tree_10_09</name>
+      <uri>model://oil_palm</uri>
+      <pose>10.50000 30.31090 1.43589 0.00000 0.00000 -0.33000</pose>
+    </include>
+    <include>
+      <name>tree_10_10</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>17.50000 30.31090 3.30974 0.00000 0.00000 -0.03000</pose>
+    </include>
+    <include>
+      <name>tree_10_11</name>
+      <uri>model://oil_palm_large</uri>
+      <pose>24.50000 30.31090 5.70995 0.00000 0.00000 -0.35000</pose>
+    </include>
+    <include>
+      <name>tree_10_12</name>
+      <uri>model://oil_palm_small</uri>
+      <pose>31.50000 30.31090 6.55476 0.00000 0.00000 -0.14000</pose>
+    </include>
+    <include>
+      <name>tree_10_13</name>
+      <uri>model://oil_palm</uri>
+      <pose>38.50000 30.31090 5.12987 0.00000 0.00000 -0.35000</pose>
+    </include>
+    <include>
+      <name>tree_10_14</name>
+      <uri>model://oil_palm</uri>
+      <pose>45.50000 30.31090 3.27360 0.00000 0.00000 0.16000</pose>
+    </include>
+    <include>
+      <name>tree_10_15</name>
+      <uri>model://oil_palm</uri>
+      <pose>52.50000 30.31090 2.13001 0.00000 0.00000 -0.49000</pose>
+    </include>
+    <include>
+      <name>crate_01</name>
+      <uri>model://wooden_crate</uri>
+      <pose>-25.00000 -21.21760 7.63590 0.00000 0.00000 0.20000</pose>
+    </include>
+    <include>
+      <name>crate_02</name>
+      <uri>model://wooden_crate</uri>
+      <pose>27.50000 9.09330 8.23864 0.00000 0.00000 -0.45000</pose>
+    </include>
+    <include>
+      <name>crate_03</name>
+      <uri>model://wooden_crate</uri>
+      <pose>-42.50000 27.27980 3.08467 0.00000 0.00000 0.70000</pose>
+    </include>
+    <include>
+      <name>sacks_01</name>
+      <uri>model://sack_stack</uri>
+      <pose>12.50000 -9.09330 2.23906 0.00000 0.00000 -0.25000</pose>
+    </include>
+    <include>
+      <name>sacks_02</name>
+      <uri>model://sack_stack</uri>
+      <pose>-5.00000 21.21760 2.08103 0.00000 0.00000 0.40000</pose>
+    </include>
+    <include>
+      <name>fence_01</name>
+      <uri>model://low_fence</uri>
+      <pose>37.50000 -3.03110 2.59621 0.00000 0.00000 1.57080</pose>
+    </include>
+    <include>
+      <name>fence_02</name>
+      <uri>model://low_fence</uri>
+      <pose>-32.50000 3.03110 3.41606 0.00000 0.00000 0.15000</pose>
+    </include>
+    <include>
+      <name>fence_03</name>
+      <uri>model://low_fence</uri>
+      <pose>5.00000 27.27980 1.04483 0.00000 0.00000 -0.35000</pose>
+    </include>
+    <model name="takeoff_pad">
+      <static>true</static>
+      <pose>0 -3 -0.25 0 0 0</pose>
+      <link name="pad">
+        <collision name="pad_collision">
+          <geometry>
+            <box>
+              <size>6 6 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+  </world>
+</sdf>

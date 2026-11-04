@@ -67,6 +67,13 @@
   gz_type_name: "gz.msgs.LaserScan"
   direction: "GZ_TO_ROS"
 
+# Ground-truth input for sim_zed_adapter and the simulation validator.
+- ros_topic_name: "/simulation/ground_truth/odom"
+  gz_topic_name: "/plantation_uav/dummy_vslam"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: "GZ_TO_ROS"
+
 - ros_topic_name: "/mavros/odometry/out"
   gz_topic_name: "/plantation_uav/dummy_vslam"
   ros_type_name: "nav_msgs/msg/Odometry"
