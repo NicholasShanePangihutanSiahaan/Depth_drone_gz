@@ -223,9 +223,15 @@
           <scan>
             <horizontal>
               <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
             </horizontal>
             <vertical>
               <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
             </vertical>
           </scan>
           <range>
@@ -607,6 +613,12 @@
       <gazeboXYZToNED degrees="true">0 0 0 180 0 90</gazeboXYZToNED>
 
       <imuName>imu_sensor</imuName>
+
+      <sensor>
+        <type>sonar</type>
+        <index>1</index>
+        <topic>/plantation_uav/range</topic>
+      </sensor>
 
       <control channel="0">
         <jointName>rotor_0_joint</jointName>
