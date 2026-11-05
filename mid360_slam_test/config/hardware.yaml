@@ -1,0 +1,74 @@
+/**:
+  ros__parameters:
+    mode: hardware
+    use_sim_time: false
+    cloud_topic: /livox/lidar
+    imu_topic: /livox/imu
+    # Matches msg_MID360_launch.py; change for a PointCloud2 driver.
+    cloud_type: livox_ros_driver2/msg/CustomMsg
+    expected_frame: livox_frame
+    expected_imu_frame: livox_frame
+    allowed_publishers: [livox_lidar_publisher]
+    acceleration_unit: g
+    imu_cloud_same_clock: true
+    timestamps_synchronized: false
+    # Set true only AFTER checking actual units/frames/mount. No invented extrinsics.
+    mounting_confirmed: false
+    imu_lidar_rotation_rpy_deg: [0.0, 0.0, 0.0]
+    exclusion_boxes_json: '[]'
+    minimum_range_m: 0.3
+    maximum_range_m: 30.0
+    reject_tag_mask: 0
+    calibration_seconds: 2.0
+    calibration_min_samples: 100
+    imu_max_dt_s: 0.1
+    imu_receipt_timeout_s: 0.5
+    cloud_timeout_s: 0.5
+    estimator_timeout_s: 1.0
+    max_imu_cloud_offset_s: 0.06
+    preprocess_voxel_m: 0.06
+    preprocess_max_points: 12000
+    voxel_m: 0.12
+    max_points: 4000
+    min_points: 100
+    icp_iterations: 25
+    correspondence_m: 0.5
+    min_overlap: 0.55
+    max_rmse_m: 0.12
+    min_geometry_ratio: 0.02
+    max_scan_gap_s: 0.7
+    max_speed_mps: 1.0
+    max_rotation_step_deg: 35.0
+    keyframe_translation_m: 0.35
+    keyframe_rotation_deg: 15.0
+    max_keyframes: 160
+    loop_enabled: true
+    loop_radius_m: 1.0
+    loop_min_separation: 12
+    loop_min_travel_m: 4.0
+    loop_min_seconds: 10.0
+    loop_cooldown_s: 5.0
+    loop_overlap: 0.75
+    loop_rmse_m: 0.08
+    loop_max_correction_m: 1.0
+    loop_max_correction_deg: 25.0
+    graph_translation_sigma_m: 0.05
+    graph_rotation_sigma_deg: 3.0
+    graph_max_evaluations: 50
+    settle_window_s: 1.0
+    settle_position_span_m: 0.03
+    settle_angle_span_deg: 2.0
+    minimum_settle_samples: 5
+    loop_wait_s: 20.0
+    # -1 = no operator-approved acceptance threshold; results stay NOT TESTED.
+    max_position_error_m: -1.0
+    max_angle_error_deg: -1.0
+    max_stationary_drift_m: -1.0
+    max_stationary_orientation_deg: -1.0
+    reference_uncertainty_m: -1.0
+    reference_uncertainty_deg: -1.0
+    map_publish_period_s: 2.0
+    visual_max_points: 60000
+    device_serial: UNKNOWN
+    operator_notes: ''
+    mounting_notes: UNCONFIRMED

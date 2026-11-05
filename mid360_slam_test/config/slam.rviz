@@ -1,0 +1,85 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ''
+  Global Options:
+    Fixed Frame: slam_map
+    Background Color: 28; 28; 28
+    Frame Rate: 15
+  Displays:
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Current registered scan
+      Enabled: true
+      Topic:
+        Value: /slam_test/registered_points
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 2
+      Position Transformer: XYZ
+      Color Transformer: FlatColor
+      Color: 0; 200; 255
+      Style: Points
+      Size (Pixels): 3
+      Decay Time: 0
+    - Class: rviz_default_plugins/Grid
+      Name: Grid metres
+      Enabled: true
+      Cell Size: 1
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/TF
+      Name: Sensor pose
+      Enabled: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Optimized keyframe map
+      Enabled: true
+      Topic:
+        Value: /slam_test/map_points
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 1
+      Position Transformer: XYZ
+      Color Transformer: AxisColor
+      Axis: Z
+      Style: Points
+      Size (Pixels): 2
+      Decay Time: 0
+    - Class: rviz_default_plugins/Path
+      Name: Local odometry trajectory
+      Enabled: true
+      Topic:
+        Value: /slam_test/path_local
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+      Color: 255; 165; 0
+      Line Style: Lines
+      Line Width: 0.02
+    - Class: rviz_default_plugins/Path
+      Name: Corrected keyframe trajectory
+      Enabled: true
+      Topic:
+        Value: /slam_test/path_map
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+      Color: 0; 255; 128
+      Line Style: Lines
+      Line Width: 0.03
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Operator reference start and target
+      Enabled: true
+      Topic:
+        Value: /slam_test/reference_markers
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 10
+      Pitch: 0.6
+      Yaw: 0.8
+Window Geometry:
+  Width: 1200
+  Height: 850

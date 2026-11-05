@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    mode: replay
+    use_sim_time: true
+    cloud_topic: /livox/lidar
+    imu_topic: /livox/imu
+    cloud_type: livox_ros_driver2/msg/CustomMsg
+    expected_frame: livox_frame
+    expected_imu_frame: livox_frame
+    acceleration_unit: g
+    imu_cloud_same_clock: true
+    mounting_confirmed: false
+    timestamps_synchronized: false
+    operator_notes: REPLAY_NOT_NEW_HARDWARE_EVIDENCE

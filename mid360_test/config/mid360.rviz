@@ -1,0 +1,46 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ''
+  Global Options:
+    Background Color: 32; 32; 32
+    Fixed Frame: livox_frame
+    Frame Rate: 20
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+      Plane: XY
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/Axes
+      Name: Sensor axes X red Y green Z blue
+      Enabled: true
+      Reference Frame: <Fixed Frame>
+      Length: 1
+      Radius: 0.02
+    - Class: rviz_default_plugins/PointCloud2
+      Name: MID360 raw analysis copy
+      Enabled: true
+      Topic:
+        Value: /lidar_test/points
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 5
+      Position Transformer: XYZ
+      Color Transformer: AxisColor
+      Axis: Z
+      Style: Points
+      Size (Pixels): 2
+      Decay Time: 0
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 8
+      Pitch: 0.6
+      Yaw: 0.8
+Window Geometry:
+  Width: 1100
+  Height: 800

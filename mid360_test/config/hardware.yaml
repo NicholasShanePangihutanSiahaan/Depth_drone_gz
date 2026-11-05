@@ -1,0 +1,41 @@
+/**:
+  ros__parameters:
+    mode: hardware
+    use_sim_time: false
+    cloud_topic: /livox/lidar
+    imu_topic: /livox/imu
+    # Or livox_ros_driver2/msg/CustomMsg; install/source the driver's messages first.
+    cloud_type: sensor_msgs/msg/PointCloud2
+    expected_frame: livox_frame
+    expected_imu_frame: livox_frame
+    allowed_publishers: [livox_lidar_publisher]
+    # +/-5 degrees horizontal, +/-5 degrees elevation, in SENSOR axes.
+    sector_half_width_deg: 5.0
+    elevation_min_deg: -5.0
+    elevation_max_deg: 5.0
+    minimum_range_m: 0.2
+    maximum_range_m: 70.0
+    # Zero means no vendor-specific tag classification; raw tags are still recorded.
+    reject_tag_mask: 0
+    # Upstream Livox ROS driver2 forwards acceleration in g. Verify installed version!
+    acceleration_unit: g
+    calibration_seconds: 2.0
+    calibration_min_samples: 100
+    calibration_gyro_limit_rad_s: 0.03
+    calibration_accel_std_m_s2: 0.15
+    imu_max_dt_s: 0.1
+    cloud_timeout_s: 0.5
+    imu_timeout_s: 0.1
+    # Enable only after PTP/host timestamp alignment has actually been verified.
+    timestamps_synchronized: false
+    # Source cloud and IMU from the SAME device/driver clock, not host wall clock.
+    imu_cloud_same_clock: true
+    sync_tolerance_s: 0.05
+    expected_cloud_hz: 10.0
+    expected_imu_hz: 0.0
+    logger_hz: 5.0
+    recorder_max_queue_bytes: 134217728
+    recorder_queue_messages: 512
+    operator_notes: ''
+    device_serial: UNKNOWN
+    mounting_notes: UNCONFIRMED

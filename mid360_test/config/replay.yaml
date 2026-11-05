@@ -1,0 +1,16 @@
+/**:
+  ros__parameters:
+    mode: replay
+    use_sim_time: true
+    cloud_topic: /livox/lidar
+    imu_topic: /livox/imu
+    cloud_type: sensor_msgs/msg/PointCloud2
+    expected_frame: livox_frame
+    expected_imu_frame: livox_frame
+    acceleration_unit: g
+    timestamps_synchronized: false
+    imu_cloud_same_clock: true
+    # Use normal playback speed. Pauses cause explicit timeouts, not silent recovery.
+    cloud_timeout_s: 0.5
+    imu_timeout_s: 0.1
+    operator_notes: REPLAY_ONLY_NOT_HARDWARE_EVIDENCE
