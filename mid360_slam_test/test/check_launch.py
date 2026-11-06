@@ -103,6 +103,8 @@ def main():
     rec=json.loads((session/'recorder_status.json').read_text())
     assert rec['closed'] and rec['dropped_by_recorder']==0,rec
     assert rec['written_by_topic']['/slam_test/loop_events']>0,rec
+    assert rec['written_by_topic']['/slam_test/follow_points']>0,rec
+    assert rec['written_by_topic']['/slam_test/follow_status']>0,rec
     assert (session/'raw_bag/metadata.yaml').exists()
     assert (session/'keyframe_poses.npz').exists()
     result=dict(status='PASS',scope='installed_multi_process_synthetic_replay_only',

@@ -12,4 +12,5 @@ setup(name='mid360_slam_test', version='0.1.0', packages=find_packages(),
     entry_points={'console_scripts': [
         f'{name} = mid360_slam_test.nodes:{name}_main' for name in
         ('cloud_preprocessor', 'lidar_imu_estimator', 'test_evaluator', 'test_monitor', 'slam_recorder')
-    ]+['test_controller = mid360_slam_test.controller:main']})
+    ]+['test_controller = mid360_slam_test.controller:main',
+       'follow_view = mid360_slam_test.follow_view:main']})

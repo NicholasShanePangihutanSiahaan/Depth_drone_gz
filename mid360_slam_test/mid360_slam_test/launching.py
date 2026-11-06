@@ -44,6 +44,7 @@ def description(mode):
         for package,executable in [('mid360_test','cloud_adapter'),
             ('mid360_slam_test','cloud_preprocessor'),('mid360_slam_test','lidar_imu_estimator'),
             ('mid360_slam_test','test_evaluator'),('mid360_slam_test','test_monitor'),
+            ('mid360_slam_test','follow_view'),
             ('mid360_slam_test','slam_recorder')]:
             node=Node(package=package,executable=executable,parameters=params,output='screen',
                       sigterm_timeout='30',sigkill_timeout='10')
@@ -51,8 +52,10 @@ def description(mode):
                 on_exit=[EmitEvent(event=Shutdown(reason=executable+' exited'))])))
             actions.append(node)
         if arg('rviz')=='true':
+            view = {'drone': 'drone_view.rviz', 'slam': 'slam.rviz',
+                    'lidar': 'self_filter.rviz', 'follow': 'follow_view.rviz'}[arg('rviz_view')]
             actions.append(Node(package='rviz2',executable='rviz2',
-                arguments=['-d',str(share/'config/slam.rviz')],
+                arguments=['-d',str(share/'config'/view)],
                 parameters=[dict(use_sim_time=mode=='replay')],output='screen'))
         return actions
     output=str(Path.cwd()/'reports/slam_test'/(
@@ -61,4 +64,6 @@ def description(mode):
         DeclareLaunchArgument('config',default_value=str(share/'config'/f'{mode}.yaml')),
         DeclareLaunchArgument('output_dir',default_value=output),
         DeclareLaunchArgument('rviz',default_value='true',choices=['true','false']),
+        DeclareLaunchArgument('rviz_view',default_value='follow' if mode=='hardware' else 'slam',
+                              choices=['follow','drone','slam','lidar']),
         OpaqueFunction(function=setup)])

@@ -1,0 +1,57 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ''
+  Global Options:
+    Fixed Frame: slam_odom
+    Background Color: 25; 25; 25
+    Frame Rate: 15
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Gravity reference XY (metres)
+      Enabled: true
+      Cell Size: 1
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/Axes
+      Name: Drone orientation at measured body center
+      Enabled: true
+      Reference Frame: slam_test_drone_body
+      Length: 0.4
+      Radius: 0.015
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Healthy matched scan in gravity-initialized odometry
+      Enabled: true
+      Topic:
+        Value: /slam_test/follow_points
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 2
+      Position Transformer: XYZ
+      Color Transformer: FlatColor
+      Color: 0; 255; 100
+      Style: Points
+      Size (Pixels): 3
+      Decay Time: 0
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Tracking status and body sphere
+      Enabled: true
+      Topic:
+        Value: /slam_test/follow_markers
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Target Frame: slam_test_follow
+      Distance: 4
+      Pitch: 0.5
+      Yaw: 0.8
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+Window Geometry:
+  Width: 1100
+  Height: 800

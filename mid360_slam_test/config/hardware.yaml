@@ -15,6 +15,16 @@
     # Set true only AFTER checking actual units/frames/mount. No invented extrinsics.
     mounting_confirmed: false
     imu_lidar_rotation_rpy_deg: [0.0, 0.0, 0.0]
+    # Operator supplied native LiDAR center (0,0,-16) cm at pitch-down 20 deg.
+    # Check sphere and removed-point preview in RViz before evaluating SLAM.
+    body_sphere_filter_enabled: true
+    lidar_mount_pitch_down_deg: 20.0
+    # Orientation-only display frame; origin stays at LiDAR, not drone center.
+    publish_drone_view_tf: true
+    # No additional pitch rotation of this center. Replaces previous a/b model.
+    body_sphere_center_mode: lidar_coordinates
+    body_sphere_center_lidar_cm: [0.0, 0.0, -16.0]
+    body_sphere_radius_cm: 44.0
     exclusion_boxes_json: '[]'
     minimum_range_m: 0.3
     maximum_range_m: 30.0

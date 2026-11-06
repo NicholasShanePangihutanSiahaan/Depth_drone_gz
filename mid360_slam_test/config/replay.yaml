@@ -10,5 +10,11 @@
     acceleration_unit: g
     imu_cloud_same_clock: true
     mounting_confirmed: false
+    # Copy measured settings from the recorded session to reproduce filtering.
+    body_sphere_filter_enabled: false
+    lidar_mount_pitch_down_deg: 0.0
+    drone_center_a_cm: 0.0
+    drone_center_b_cm: 0.0
+    body_sphere_radius_cm: 0.0
     timestamps_synchronized: false
     operator_notes: REPLAY_NOT_NEW_HARDWARE_EVIDENCE

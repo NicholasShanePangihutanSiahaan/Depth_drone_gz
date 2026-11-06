@@ -20,7 +20,7 @@ from sensor_msgs_py import point_cloud2
 from geometry_msgs.msg import PoseStamped, TransformStamped, Point
 from std_msgs.msg import String, Header
 from visualization_msgs.msg import Marker, MarkerArray
-from tf2_ros import TransformBroadcaster
+from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 
 from mid360_test.nodes import BenchNode, RawRecorder, sensor_qos, xyz, stamp_s, json_message, run
 from mid360_test.core.integration import ImuIntegrator
@@ -29,10 +29,15 @@ from mid360_test.core.health import stats
 from .estimator import SlamEstimator, DEFAULTS
 from .geometry import downsample, pose, inverse, transform, pack, unpack
 from .evaluation import Evaluation
+from .self_filter import BodySphere
 
 EXTRAS = dict(
     imu_lidar_rotation_rpy_deg=[0., 0., 0.], mounting_confirmed=False,
     exclusion_boxes_json='[]', preprocess_voxel_m=.06, preprocess_max_points=12000,
+    body_sphere_filter_enabled=False, lidar_mount_pitch_down_deg=0.,
+    drone_center_a_cm=0., drone_center_b_cm=0., body_sphere_radius_cm=0.,
+    body_sphere_center_mode='body_offset', body_sphere_center_lidar_cm=[0., 0., 0.],
+    publish_drone_view_tf=False,
     max_imu_cloud_offset_s=.06, estimator_timeout_s=1., imu_receipt_timeout_s=.5,
     settle_window_s=1., settle_position_span_m=.03, settle_angle_span_deg=2.,
     minimum_settle_samples=5, loop_wait_s=20.,
@@ -71,7 +76,7 @@ class SlamNode(BenchNode):
         super().guard_update()
         # No two estimator/evaluator sessions may share one ROS domain.
         names = self.get_node_names()
-        duplicates = [name for name in ('lidar_imu_estimator','test_evaluator','cloud_preprocessor','test_monitor')
+        duplicates = [name for name in ('lidar_imu_estimator','test_evaluator','cloud_preprocessor','test_monitor','follow_view')
                       if names.count(name)>1]
         if duplicates:
             self.guard_reason = (self.guard_reason+';duplicate_test_nodes:'+','.join(duplicates)).strip(';')
@@ -80,6 +85,10 @@ class SlamNode(BenchNode):
 class CloudPreprocessor(SlamNode):
     def __init__(self):
         super().__init__('cloud_preprocessor')
+        self.sphere = BodySphere(self.c['lidar_mount_pitch_down_deg'], self.c['drone_center_a_cm'],
+            self.c['drone_center_b_cm'], self.c['body_sphere_radius_cm'], self.c['body_sphere_filter_enabled'],
+            center_mode=self.c['body_sphere_center_mode'],
+            center_lidar_cm=self.c['body_sphere_center_lidar_cm'])
         self.boxes = json.loads(self.c['exclusion_boxes_json'])
         for box in self.boxes:
             if set(box) != {'min', 'max'}:
@@ -88,7 +97,23 @@ class CloudPreprocessor(SlamNode):
             if lo.shape != (3,) or hi.shape != (3,) or not np.all(np.isfinite(np.r_[lo,hi])) or np.any(lo >= hi):
                 raise ValueError('invalid exclusion box')
         self.pub = self.create_publisher(PointCloud2, '/slam_test/points', sensor_qos(2))
+        self.removed_pub = self.create_publisher(PointCloud2, '/slam_test/self_removed_points', sensor_qos(2))
+        self.sphere_pub = self.create_publisher(MarkerArray, '/slam_test/body_sphere_marker', latched())
         self.stats = self.create_publisher(String, '/slam_test/preprocessing', 10)
+        atomic_json(self.directory/'body_sphere_filter.json', self.sphere.metadata())
+        self.get_logger().info('Body sphere filter: '+json.dumps(self.sphere.metadata()))
+        # A visualization frame with body orientation and origin at the LiDAR.
+        # This is not base_link, world leveling, or an estimated drone pose.
+        self.mount_tf = None
+        if self.c['publish_drone_view_tf']:
+            self.mount_tf = StaticTransformBroadcaster(self)
+            mounting = TransformStamped()
+            mounting.header = Header(stamp=self.get_clock().now().to_msg(),
+                                     frame_id='slam_test_drone_view')
+            mounting.child_frame_id = self.c['expected_frame']
+            q = Rotation.from_euler('y', self.c['lidar_mount_pitch_down_deg'], degrees=True).as_quat()
+            mounting.transform.rotation.x, mounting.transform.rotation.y, mounting.transform.rotation.z, mounting.transform.rotation.w = map(float, q)
+            self.mount_tf.sendTransform(mounting)
         self.create_subscription(PointCloud2, '/lidar_test/points', self.cloud, sensor_qos(2))
 
     def cloud(self, msg):
@@ -103,12 +128,30 @@ class CloudPreprocessor(SlamNode):
                 self.get_logger().error('configured tag filter but tag missing')
                 return
             keep &= (tags & self.c['reject_tag_mask']) == 0
+        sphere_inside = self.sphere.inside(points)
+        sphere_removed = keep & sphere_inside
+        keep &= ~sphere_inside
         for box in self.boxes:
             keep &= ~np.all((points >= box['min']) & (points <= box['max']), axis=1)
         selected = downsample(points[keep], self.c['preprocess_voxel_m'], self.c['preprocess_max_points'])
         self.pub.publish(point_cloud2.create_cloud_xyz32(msg.header, selected.tolist()))
+        # Diagnostic preview contains the actual finite nonzero raw returns
+        # inside the sphere, even if the range gate also discarded them.
+        preview = sphere_inside & np.all(np.isfinite(points), axis=1) & (radius > 0)
+        self.removed_pub.publish(point_cloud2.create_cloud_xyz32(msg.header, points[preview].tolist()))
+        marker = Marker()
+        marker.header = msg.header
+        marker.ns, marker.id, marker.type = 'body_sphere', 0, Marker.SPHERE
+        marker.action = Marker.ADD if self.sphere.enabled else Marker.DELETE
+        marker.pose.orientation.w = 1.
+        vector(marker.pose.position, self.sphere.center)
+        marker.scale.x = marker.scale.y = marker.scale.z = 2.*self.sphere.radius_m
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = 1., .3, 0., .2
+        self.sphere_pub.publish(MarkerArray(markers=[marker]))
         self.stats.publish(json_message(dict(stamp=stamp_s(msg.header.stamp), raw_points=len(points),
             selected_points=len(selected), removed_points=int((~keep).sum()),
+            sphere_filter=self.sphere.metadata(), sphere_removed_points=int(sphere_removed.sum()),
+            sphere_preview_points=int(preview.sum()),
             processing_ms=(time.monotonic()-started)*1000., deskewed=False,
             filtered_frame=msg.header.frame_id, source_fields_preserved_in_raw_bag=True)))
 
@@ -540,6 +583,7 @@ class SlamRecorder(RawRecorder):
         super().__init__()
         import rosbag2_py
         topics = [('/slam_test/points','sensor_msgs/msg/PointCloud2'),
+            ('/slam_test/self_removed_points','sensor_msgs/msg/PointCloud2'),
             ('/slam_test/registered_points','sensor_msgs/msg/PointCloud2'),
             ('/slam_test/odometry_local','nav_msgs/msg/Odometry'),
             ('/slam_test/pose_map','geometry_msgs/msg/PoseStamped'),
@@ -548,13 +592,16 @@ class SlamRecorder(RawRecorder):
             ('/slam_test/estimator_status','std_msgs/msg/String'),('/slam_test/loop_events','std_msgs/msg/String'),
             ('/slam_test/commands','std_msgs/msg/String'),('/slam_test/command_ack','std_msgs/msg/String'),
             ('/slam_test/test_state','std_msgs/msg/String'),('/slam_test/preprocessing','std_msgs/msg/String'),
+            ('/slam_test/follow_points','sensor_msgs/msg/PointCloud2'),
+            ('/slam_test/follow_status','std_msgs/msg/String'),
             ('/tf','tf2_msgs/msg/TFMessage')]
         from rosidl_runtime_py.utilities import get_message
         for topic, kind in topics:
             self.writer.create_topic(rosbag2_py.TopicMetadata(name=topic, type=kind, serialization_format='cdr'))
             with self.lock:
                 self.received_by_topic[topic] = self.written_by_topic[topic] = 0
-            qos = latched() if topic in ('/slam_test/test_state','/slam_test/path_local','/slam_test/path_map') else sensor_qos(100)
+            qos = latched() if topic in ('/slam_test/test_state','/slam_test/path_local','/slam_test/path_map',
+                                        '/slam_test/follow_status') else sensor_qos(100)
             self.create_subscription(get_message(kind), topic, lambda data,t=topic:self.receive(t,data), qos, raw=True)
 
     def accepts(self, topic):

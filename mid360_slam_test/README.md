@@ -40,6 +40,8 @@ satu sesi tes, satu menu kontrol dalam satu domain ROS.
 | `/livox/imu` | Imu | Gyro/accelerometer asli, direkam tanpa konversi |
 | `/lidar_test/points` | PointCloud2 | Salinan driver untuk analisis, semua field PC2 dipertahankan |
 | `/slam_test/points` | PointCloud2 | XYZ finite, range/box filter dan downsample untuk ICP |
+| `/slam_test/self_removed_points` | PointCloud2 | Preview pantulan finite/nonzero di dalam bola self-filter |
+| `/slam_test/body_sphere_marker` | MarkerArray | Posisi dan diameter bola dalam frame LiDAR asli |
 | `/slam_test/odometry_local` | Odometry | Odometry kontinu, tidak dikoreksi oleh loop |
 | `/slam_test/pose_map` | PoseStamped | Pose saat ini setelah koreksi graph |
 | `/slam_test/estimator_status` | String JSON | Validitas tracking, kualitas ICP, timing, batas backend |
@@ -48,10 +50,13 @@ satu sesi tes, satu menu kontrol dalam satu domain ROS.
 | `/slam_test/path_map` | Path | Keyframe yang direvisi menggunakan graph terbaru |
 | `/slam_test/registered_points` | PointCloud2 | Scan terbaru ditransform ke map setelah registrasi |
 | `/slam_test/map_points` | PointCloud2 | Peta keyframe terkoreksi untuk RViz |
+| `/slam_test/follow_points` | PointCloud2 | Scan sehat dengan pose timestamp cocok di odom |
+| `/slam_test/follow_status` | String JSON | Kesiapan tampilan mengikuti drone dan alasan penolakan |
+| `/slam_test/follow_markers` | MarkerArray | Teks status dan bola badan untuk tampilan follow |
 | `/slam_test/reference_markers` | MarkerArray | Penanda awal dan target yang dimasukkan operator |
 | `/slam_test/commands`, `/slam_test/command_ack` | String JSON | Perintah menu dengan ID dan konfirmasi penerimaan |
 | `/slam_test/test_state` | String JSON | Tahap, fase, hasil, dan kesiapan memulai |
-| `/tf` | TFMessage | Hanya `slam_map → slam_odom → slam_lidar` |
+| `/tf` | TFMessage | Rantai map/odom/LiDAR serta target kamera dan pose badan untuk follow |
 
 `slam_odom` dan `slam_map` memakai sumbu awal yang dilevelkan terhadap gravitasi,
 yaw awal lokal nol. `slam_lidar` memiliki sumbu LiDAR. Tidak ada TF palsu ke
@@ -118,6 +123,151 @@ Periksa pengaturan berikut berdasarkan data/perangkat nyata:
   yang sama. `timestamps_synchronized` default false: tidak mengklaim latency
   akuisisi dengan mengurangkan jam perangkat dan host yang berbeda.
 - Isi serial, mounting_notes, operator_notes, dan ketidakpastian pengukuran.
+
+### Tampilan mengikuti posisi drone dengan acuan gravitasi
+
+Hardware kini memakai `rviz_view:=follow` secara default. Fixed Frame adalah
+`slam_odom`, dan kamera Orbit menargetkan `slam_test_follow`. Frame target ini
+mengikuti **posisi pusat badan yang diukur**, dengan rotasi identitas terhadap
+odom. Jadi kamera mengikuti perpindahan tanpa ikut roll/pitch/yaw drone.
+Sumbu `slam_test_drone_body` menunjukkan orientasi badan yang sebenarnya
+diestimasi, termasuk koreksi mounting pitch 20 derajat. Tidak ada model dimensi
+drone yang dikarang; sumbu dan bola digunakan sebagai representasi pusat drone.
+
+```bash
+# Setelah build/source workspace dan memverifikasi konfigurasi hardware:
+ros2 launch mid360_slam_test hardware_test.launch.py rviz_view:=follow
+```
+
+Diamkan perangkat selama kalibrasi IMU awal sampai tracking siap, lalu gerakkan
+perlahan. Tanah horizontal seharusnya tetap level terhadap bidang XY walau drone
+dimiringkan, **selama estimasi orientasi sehat**. Jangan mulai dengan perangkat
+bergerak. Acuan gravitasi berasal dari accelerometer saat kalibrasi; orientasi
+berikutnya dari backend ICP dengan prediksi IMU yang sudah ada. Ini bukan
+penambahan continuous gravity fusion, jaminan bebas drift, atau bukti akurasi
+hardware. Yaw relatif terhadap awal, tanpa magnetometer/GPS.
+
+Node pasif `follow_view` mencocokkan `/slam_test/points` dengan pose **lokal**
+dari `/slam_test/estimator_status` pada timestamp yang sama (toleransi pembulatan
+JSON 1 mikrodetik). Cloud ditransformasikan ke odom pada waktu akuisisinya;
+pose berbeda waktu tidak dipakai. Batas usia callback memakai
+`estimator_timeout_s`, bukan selisih jam hardware yang belum disinkronkan.
+Pemakaian odom lokal menghindari lompatan kamera akibat optimasi loop map.
+Raw bag, frame sumber, dan perhitungan SLAM tidak diubah oleh tampilan.
+
+Output tambahan:
+
+- `/slam_test/follow_points`: cloud yang sudah ditransformasikan ke `slam_odom`.
+- `/slam_test/follow_status`: JSON valid/reason, sumber orientasi, dan latency
+  callback cloud sampai proses tampilan (bukan latency sensor-ke-layar).
+- `/slam_test/follow_markers`: bola badan dan teks TRACKING/NOT READY di RViz.
+- TF dinamis `slam_odom -> slam_test_follow` (translasi saja) dan
+  `slam_odom -> slam_test_drone_body` (pose badan).
+- `follow_view_status.json`: status terakhir pada direktori sesi. Cloud dan
+  status tambahan juga direkam oleh recorder sesi.
+
+Saat lokalisasi tidak sehat, guard menolak sumber, atau pasangan cloud/pose
+basi, cloud live dikosongkan, bola disembunyikan, dan teks menjadi NOT READY.
+TF terakhir tidak diprediksi atau dibuat seolah valid; sumbu/kamera dapat
+tertahan pada lokasi terakhir. Periksa status sebelum melanjutkan pengukuran.
+GUI dan akurasi level saat gerak cepat tetap perlu diverifikasi pada Jetson.
+
+Untuk membuka tampilan ini pada sesi yang sudah berjalan:
+
+```bash
+ros2 run rviz2 rviz2 -d "$(ros2 pkg prefix mid360_slam_test)/share/mid360_slam_test/config/follow_view.rviz"
+```
+
+### Filter bola berpusat di badan drone, untuk LiDAR pitch-down
+
+Pilihan `rviz_view:=drone` memakai `drone_view.rviz`, dengan Fixed Frame
+`slam_test_drone_view`. TF statis dari frame tampilan ini ke `livox_frame`
+menggunakan rotasi pitch +20 derajat (mount menunduk). Asal frame tampilan tetap
+di pusat LiDAR; ini bukan posisi pusat badan drone atau output lokalisasi.
+Dengan drone level, lantai horizontal semestinya terlihat level. Kemiringan
+badan drone saat dipegang tetap terlihat; TF mounting bukan kompensasi gravitasi
+dari IMU atau SLAM. Roll/yaw mounting diasumsikan nol dalam konfigurasi ini.
+
+`publish_drone_view_tf: true` mengaktifkan TF pada konfigurasi hardware.
+Jangan menjalankan publisher TF lain untuk child `livox_frame` bersamaan.
+Mode replay default tidak menerbitkan TF ini; untuk tampilan drone saat replay,
+aktifkan parameter tersebut dan gunakan pitch mounting sesuai rekaman.
+
+Pilihan RViz pada launch:
+
+```bash
+# Hardware: kamera mengikuti posisi, orientasi tetap terhadap odom (default)
+ros2 launch mid360_slam_test hardware_test.launch.py rviz_view:=follow
+# Alternatif: tampilan ikut orientasi badan drone
+ros2 launch mid360_slam_test hardware_test.launch.py rviz_view:=drone
+# Tampilan peta dan lintasan SLAM
+ros2 launch mid360_slam_test hardware_test.launch.py rviz_view:=slam
+# Frame lokal LiDAR tanpa koreksi tampilan
+ros2 launch mid360_slam_test hardware_test.launch.py rviz_view:=lidar
+```
+
+Pilih satu launch untuk satu sesi. Untuk membuka tampilan tambahan pada sesi
+yang sudah berjalan, gunakan `ros2 run rviz2 rviz2 -d
+$(ros2 pkg prefix mid360_slam_test)/share/mid360_slam_test/config/drone_view.rviz`.
+Data cloud dan definisi bola tetap dalam frame sensor asli; RViz memakai TF
+untuk menampilkan keduanya secara konsisten. Ini tidak meratakan peta SLAM;
+orientasi awal peta SLAM tetap bergantung inisialisasi estimator.
+
+Nilai hardware berikut diberikan operator. Konfigurasi replay tetap terpisah;
+sesuaikan dengan mounting yang digunakan saat perekaman:
+
+```yaml
+body_sphere_filter_enabled: true
+lidar_mount_pitch_down_deg: 20.0
+body_sphere_center_mode: lidar_coordinates
+body_sphere_center_lidar_cm: [0.0, 0.0, -16.0]
+body_sphere_radius_cm: 44.0
+```
+
+Pusat drone berada **16 cm pada sumbu Z negatif lokal LiDAR** pada mounting
+pitch-down **20 derajat**. Pusat bola dalam meter adalah **(0, 0, -0.16)**.
+Radius sebelumnya 29 cm ditambah 15 cm menjadi **44 cm**. Pusat diberikan
+langsung dalam frame sensor: **tidak dirotasi lagi menggunakan pitch**.
+Pengukuran ini menggantikan offset a/b sebelumnya. Pitch tetap dicatat sebagai
+informasi mounting; filter tidak meratakan cloud atau mengubah extrinsic IMU.
+
+Titik dengan jarak Euclidean dari pusat bola <= radius diabaikan oleh SLAM.
+Filter aktif pada konfigurasi hardware; default node dan replay tetap nonaktif.
+Restart sesi setelah perubahan agar satu peta tidak mencampur konfigurasi filter.
+Parameter pusat harus tiga koordinat finite dalam cm dan radius aktif harus >0.
+
+Untuk kompatibilitas data lama, mode `body_offset` masih mendukung
+`drone_center_a_cm` dan `drone_center_b_cm` dalam sumbu badan (+X depan, +Y kiri,
++Z atas), dengan rumus `Ry(-pitch) @ [-b,0,-a]`. Mode itu **tidak digunakan**
+oleh konfigurasi hardware saat ini. Mode `lidar_coordinates` mengabaikan a/b.
+
+Filter bola bekerja sebelum exclusion boxes dan downsampling. Titik di luar
+bola tetap harus lolos filter range/tag yang sudah dikonfigurasi. Metrik
+`sphere_removed_points` adalah jumlah titik yang lolos range/tag lalu dihapus
+oleh bola; `sphere_preview_points` termasuk pantulan finite/nonzero di dalam
+bola yang mungkin juga dihapus oleh range gate. Preview tidak menyertakan zero
+return. Data raw pada rosbag dan `/lidar_test/points` tidak diubah.
+
+`body_sphere_filter.json` menyimpan input dan pusat yang dihitung. Diagnostik
+`/slam_test/preprocessing` mencatat pengaturan serta jumlah titik yang dihapus.
+Untuk mengecek bola sebelum menilai SLAM, buka RViz tambahan:
+
+```bash
+ros2 run rviz2 rviz2 -d ~/mid360_ws/mid360_slam_test/config/self_filter.rviz
+```
+
+Fixed Frame `livox_frame`, atau frame sumber nyata jika berbeda. Cloud hasil
+filter hijau, titik di dalam bola merah, bola transparan oranye. Aktifkan raw
+returns untuk perbandingan. Letakkan papan **di luar batas bola**, dengan jarak
+masih dalam range gate, dan pastikan titiknya tetap hijau. Jangan menganggap
+preview ini segmentasi semantik bagian drone: semua objek di dalam bola akan
+terhapus, termasuk objek lingkungan yang terlalu dekat.
+
+Bola besar dapat menghapus ruang di antara lengan drone beserta objek nyata.
+Karena itu ukur radius secukupnya dan verifikasi di RViz; parameter berasal dari
+informasi operator, bukan perkiraan dari foto. Titik terhapus adalah data yang diabaikan, **bukan bukti ruang bebas**.
+Area lingkungan yang tertutup penyangga/kabel tidak dapat dikembalikan dengan
+filter; penyelesaian halangan optik tetap melalui penataan mekanis.
 
 Gates algoritma pada YAML adalah **heuristik awal tes meja**, bukan angka aman
 atau spesifikasi akurasi. Contohnya overlap .55, residual ICP .12 m, kandidat loop
@@ -228,7 +378,7 @@ akumulasi yaw, pose map dan timing. RPY adalah orientasi LiDAR; belum drone body
 Kecepatan diperoleh dari beda pose LiDAR, bukan integrasi percepatan tanpa koreksi.
 IMU hanya dipakai untuk inisialisasi gravitasi/bias dan prediksi rotasi ICP.
 
-RViz pada desktop Jetson: Fixed Frame `slam_map`; scan terbaru cyan, peta keyframe,
+Pada pilihan `rviz_view:=slam`: Fixed Frame `slam_map`; scan terbaru cyan, peta keyframe,
 lintasan lokal oranye dan lintasan keyframe terkoreksi hijau, TF sensor serta
 penanda operator. Peta/path keyframe diperbarui setiap 2 detik default, scan
 terdaftar diterbitkan setiap hasil estimasi. Raw cloud tetap tersedia untuk

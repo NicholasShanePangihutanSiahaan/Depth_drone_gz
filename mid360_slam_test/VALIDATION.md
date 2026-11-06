@@ -49,3 +49,56 @@ rotasi, tidak ada tightly coupled fusion/deskew/global place recognition.
 Kandidat loop bergantung kedekatan pose dan dapat gagal pada drift besar atau
 geometri sawit berulang. Loop accepted tetap harus diverifikasi dengan referensi
 fisik dan peta; endpoint nol tidak dianggap sebagai loop closure.
+
+## Penambahan filter bola untuk mounting pitch-down
+
+Filter mendukung pusat di frame badan (mode lama `body_offset`) dan koordinat
+langsung dalam frame LiDAR (`lidar_coordinates`). Konfigurasi hardware terbaru
+menggunakan pitch-down 20 derajat sebagai informasi mounting, pusat (0,0,-16) cm
+di frame LiDAR, dan radius 44 cm berdasarkan informasi operator. Pusat tidak
+dirotasi lagi. Filter hardware aktif; default node dan replay tetap nonaktif.
+Raw bag tidak diubah. Preview titik terhapus dan marker bola tersedia di RViz.
+
+Tes geometri mencakup konversi satuan, rotasi mode lama, pusat native yang tidak
+berubah terhadap pitch, konfigurasi hardware, batas bola, titik di luar bola,
+serta parameter invalid. Kesesuaian fisik dan preview RViz pada Jetson tetap
+NOT TESTED. Laporan lokal: `reports/slam_test/body_sphere_validation/`.
+
+Verifikasi perubahan pusat native/radius: 28 tes geometri dan 3 tes integrasi
+ROS sintetis lulus. Termasuk uji pusat tetap (0,0,-0.16) m walau pitch berubah;
+mode native tidak menerapkan rotasi mounting kedua kali.
+
+Tampilan berorientasi drone ditambahkan: TF statis `slam_test_drone_view` ke
+frame LiDAR dengan pitch mounting +20 derajat dan translasi nol (asal tetap di
+LiDAR). Hardware default memakai tampilan tersebut; `rviz_view:=slam` dan
+`rviz_view:=lidar` tetap tersedia. Uji ROS sintetis lantai horizontal memverifikasi
+arah rotasi TF dan koreksi kemiringan, serta transform pusat bola yang konsisten.
+28 tes geometri dan 4 tes ROS lulus. Ini bukan kompensasi kemiringan badan drone
+terhadap gravitasi dan bukan perubahan orientasi peta SLAM. GUI/hardware tetap
+NOT TESTED.
+
+## 2026-11-06 — Kamera mengikuti posisi tanpa mengikuti rotasi
+
+Ditambahkan node pasif `follow_view`, pilihan `rviz_view:=follow` (default
+hardware), target kamera dengan rotasi identitas di `slam_odom`, dan sumbu
+pose badan dengan mounting pitch 20 derajat. Pusat badan memakai pengukuran
+(0,0,-16) cm pada frame LiDAR; radius bola 44 cm. Scan/pose harus cocok timestamp
+sebelum digunakan. Tracking invalid/basi menghapus scan live dan menampilkan
+NOT READY; tidak menghasilkan pose pengganti atau perintah gerak.
+
+11 tes tampilan/integrasi ROS sintetis lulus: lima kombinasi orientasi, uji
+ROS pairing/center/dropout/malformed input, registrasi ICP aktual untuk gerak
+roll/pitch/yaw bertahap, dan empat tes integrasi ROS sebelumnya (termasuk
+rekaman output follow dari pipeline). Build kedua package berhasil.
+Smoke test launch terinstal antarp­roses juga PASS dengan data sintetis;
+recorder menyimpan cloud/status follow, 631 pesan total, dan dua loop diterima.
+Laporan JSON/JUnit: `reports/slam_test/follow_view_validation/`.
+
+Uji dropout menemukan alasan input malformed tertimpa timer stale. Timer
+sekarang hanya menandai stale saat tampilan masih aktif, sehingga diagnosis
+invalid yang terakhir tetap terbaca sampai ada data sehat berikutnya.
+
+Acuan gravitasi hanya diinisialisasi saat diam oleh estimator yang sudah ada;
+tidak ditambahkan continuous gravity fusion atau deskew. Drift/degenerasi
+geometri tetap membatasi ketepatan tampilan. GUI NoMachine, hardware, kalibrasi
+mounting/IMU, dan akurasi lantai saat gerak asli masih NOT TESTED.
