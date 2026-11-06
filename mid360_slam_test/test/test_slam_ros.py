@@ -121,6 +121,25 @@ def test_preprocessor_box_preserves_near_real_object():
     assert xyz(published[0])[0][:,0]==pytest.approx([.3,2.])
 
 
+def test_monitor_unreadable_temperature_keeps_logging(monkeypatch):
+    import io
+    from types import SimpleNamespace
+    import mid360_slam_test.nodes as nodes
+    saves = []
+    error = {'thermal_zone0': {'error_type': 'TypeError',
+                              'message': "can't concat NoneType to bytes"}}
+    monkeypatch.setattr(nodes, 'read_temperatures', lambda: ({'thermal_zone1': 42.5}, error))
+    fake = SimpleNamespace(last_cpu_ticks=None, resources=io.StringIO(),
+        started=time.monotonic(), save_runtime=lambda: saves.append(True))
+    nodes.MonitorNode.resource_tick(fake)
+    nodes.MonitorNode.resource_tick(fake)
+    rows = [json.loads(line) for line in fake.resources.getvalue().splitlines()]
+    assert len(rows) == 2 and len(saves) == 2
+    assert all(row['thermal_read_status'] == 'PARTIAL' for row in rows)
+    assert rows[-1]['thermal_read_errors'] == error
+    assert rows[-1]['thermal_c'] == {'thermal_zone1': 42.5}
+
+
 def test_preprocessor_rotated_sphere_removes_body_keeps_near_external_and_raw():
     from types import SimpleNamespace
     from std_msgs.msg import Header

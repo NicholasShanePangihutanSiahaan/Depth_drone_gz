@@ -102,3 +102,18 @@ Acuan gravitasi hanya diinisialisasi saat diam oleh estimator yang sudah ada;
 tidak ditambahkan continuous gravity fusion atau deskew. Drift/degenerasi
 geometri tetap membatasi ketepatan tampilan. GUI NoMachine, hardware, kalibrasi
 mounting/IMU, dan akurasi lantai saat gerak asli masih NOT TESTED.
+
+## 2026-11-06 — Perbaikan crash telemetri suhu Jetson
+
+Operator melaporkan startup hardware berhenti pada `resource_tick` dengan
+`TypeError: can't concat NoneType to bytes` dari pembacaan sysfs temperatur.
+Pembacaan sebelumnya hanya menangani OSError/ValueError. Kini pembaca suhu
+juga menangani TypeError dan UnicodeError per sensor, menolak nilai nonfinite,
+serta menyimpan `thermal_read_errors` dan status OK/PARTIAL/UNAVAILABLE dalam
+`resources.jsonl`. Sensor yang gagal dibaca tidak diberi suhu nol. Kegagalan
+telemetri suhu tidak menghentikan pengujian/recorder.
+
+Sembilan tes pembaca suhu lulus, termasuk reproduksi exception dari log operator,
+serta regression test callback monitor untuk memastikan logging tetap berlanjut.
+Pengujian ulang pada Jetson masih NOT TESTED. Warning ketidakcocokan NumPy/SciPy
+dan penolakan publisher perlu didiagnosis terpisah tanpa melonggarkan allowlist.

@@ -30,6 +30,7 @@ from .estimator import SlamEstimator, DEFAULTS
 from .geometry import downsample, pose, inverse, transform, pack, unpack
 from .evaluation import Evaluation
 from .self_filter import BodySphere
+from .resources import read_temperatures
 
 EXTRAS = dict(
     imu_lidar_rotation_rpy_deg=[0., 0., 0.], mounting_confirmed=False,
@@ -532,12 +533,7 @@ class MonitorNode(SlamNode):
             s.get('processing_ms'),s.get('queue_ms'),self.pre.get('processing_ms'),s.get('loops_accepted'),s.get('reason')])
 
     def resource_tick(self):
-        temps = {}
-        for path in Path('/sys/class/thermal').glob('thermal_zone*/temp'):
-            try:
-                temps[path.parent.name] = float(path.read_text())/1000.
-            except (OSError, ValueError):
-                pass
+        temps, thermal_errors = read_temperatures()
         memory = {}
         try:
             for line in Path('/proc/meminfo').read_text().splitlines():
@@ -557,6 +553,9 @@ class MonitorNode(SlamNode):
         self.last_cpu_ticks = cpu_ticks if cpu_ticks else self.last_cpu_ticks
         self.resources.write(json.dumps(dict(elapsed_wall_s=time.monotonic()-self.started,
             host_load_average=list(os.getloadavg()), host_memory=memory, thermal_c=temps,
+            thermal_read_errors=thermal_errors,
+            thermal_read_status=('PARTIAL' if thermal_errors and temps else
+                                 'UNAVAILABLE' if not temps else 'OK'),
             host_cpu_ticks=cpu_ticks,host_cpu_utilization_percent=cpu_percent,cpu_scope='host_aggregate_ticks_not_per_node',
             processing_scope='preprocessing_and_registration_only_no_flight_pipeline'))+'\n')
         self.save_runtime()
