@@ -72,6 +72,7 @@ from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -124,7 +125,7 @@ def generate_launch_description():
             output='screen',
             parameters=[{
                 # Command(['cat ', file]) reads the file and outputs its contents as a string
-                'robot_description': Command(['cat ', model_file])
+                'robot_description': ParameterValue(Command(['cat ', model_file]), value_type=str)
             }],
             remappings=[
                 # Map standard ROS /joint_states to the bridged Gazebo topic
