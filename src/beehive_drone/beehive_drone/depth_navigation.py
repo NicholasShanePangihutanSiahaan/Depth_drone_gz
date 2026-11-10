@@ -210,8 +210,13 @@ class LocalGrid:
 
     def segment_free(self, a, b):
         a, b = np.asarray(a), np.asarray(b)
+        if not np.all(np.isfinite([a, b])):
+            return False
         n = max(2, int(np.linalg.norm(b-a)/(self.resolution*0.3))+1)
-        return all(self.free(self.cell(p)) for p in np.linspace(a, b, n))
+        cells = np.rint((np.linspace(a, b, n)-self.origin)/self.resolution).astype(int)
+        if np.any(cells < 0) or np.any(cells >= self.size):
+            return False
+        return not np.any(self.blocked[cells[:, 0], cells[:, 1]])
 
     def plan(self, start, goal):
         first, last = self.cell(start), self.cell(goal)
