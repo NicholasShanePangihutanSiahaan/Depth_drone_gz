@@ -20,6 +20,20 @@ depth_avoidance_controller:
     max_pose_skew: 0.15
     blocked_timeout: 30.0
     orbit_radius: 2.6
+    # Bounded CPU projected-sampling refinement; complete-grid A* is fallback.
+    planner_backend: priest
+    planner_budget_ms: 60.0
+    planner_result_max_age: 0.3
+    use_lidar: true
+    lidar_topic: /livox/top/points
+    lidar_frame: livox_top_link
+    lidar_translation: [0.0, 0.0, 0.18]
+    lidar_rpy_degrees: [0.0, 0.0, 0.0]
+    lidar_timeout: 0.4
+    sensor_max_age: 0.35
+    max_navigation_speed: 0.4
+    braking_acceleration: 0.5
+    control_latency: 0.15
     # Real sensors require matching acquisition timestamps; Gazebo launch
     # explicitly overrides these two options for simulated images.
     use_receipt_time: false
