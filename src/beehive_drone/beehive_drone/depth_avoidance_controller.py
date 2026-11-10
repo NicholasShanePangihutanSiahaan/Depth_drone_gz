@@ -6,6 +6,7 @@ guarantee coverage in an enclosed region: unavailable routes result in HOLD.
 """
 
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import json
 import math
@@ -17,12 +18,14 @@ from geometry_msgs.msg import Point, PoseStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
-from sensor_msgs.msg import CameraInfo, Image
+from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from std_msgs.msg import Bool, String
 
 from beehive_drone.depth_navigation import (
     DepthView, LocalGrid, ObstacleMemory, decode_depth, rotation, wrap,
 )
+from beehive_drone.lidar_navigation import LidarView, decode_xyz
+from beehive_drone.priest_local_planner import PriestLocalPlanner, path_valid
 
 
 def stamp_seconds(stamp):
@@ -55,6 +58,19 @@ class DepthAvoidanceController(Node):
             'orbit_radius': 2.6,
             'pose_jump_distance': 1.0,
             'pose_jump_yaw_degrees': 45.0,
+            'use_lidar': True,
+            'lidar_topic': '/livox/top/points',
+            'lidar_frame': 'livox_top_link',
+            'lidar_translation': [0.0, 0.0, 0.18],
+            'lidar_rpy_degrees': [0.0, 0.0, 0.0],
+            'lidar_timeout': 0.4,
+            'sensor_max_age': 0.35,
+            'planner_backend': 'priest',
+            'planner_budget_ms': 60.0,
+            'planner_result_max_age': 0.3,
+            'braking_acceleration': 0.5,
+            'control_latency': 0.15,
+            'max_navigation_speed': 0.4,
         }
         for name, default in defaults.items():
             self.declare_parameter(name, default)
@@ -69,6 +85,26 @@ class DepthAvoidanceController(Node):
         cy, sy = math.cos(yaw/2), math.sin(yaw/2)
         self.mount = rotation((sr*cp*cy-cr*sp*sy, cr*sp*cy+sr*cp*sy,
                                cr*cp*sy-sr*sp*cy, cr*cp*cy+sr*sp*sy))
+        from scipy.spatial.transform import Rotation
+        self.lidar_mount = Rotation.from_euler(
+            'xyz', self.p['lidar_rpy_degrees'], degrees=True).as_matrix()
+        if self.p['planner_backend'] not in ('priest', 'astar'):
+            raise ValueError('planner_backend must be priest or astar')
+        if self.p['braking_acceleration'] <= 0 or self.p['max_navigation_speed'] <= 0:
+            raise ValueError('invalid motion limits')
+        self.planner = PriestLocalPlanner(budget_ms=self.p['planner_budget_ms'])
+        self.worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='local_planner')
+        self.future = None
+        self.planner_backend = 'astar'
+        self.planner_ms = 0.0
+        self.planner_error = ''
+        self.committed_path = None
+        self.committed_goal = None
+        self.speed = 0.0
+        self.lidar_view = None
+        self.lidar_time = -float('inf')
+        self.lidar_stamp = None
+        self.lidar_error = ''
         self.memory = ObstacleMemory(radius=self.p['planning_radius']+4.0)
         self.poses = deque(maxlen=120)
         self.pose = None
@@ -99,6 +135,9 @@ class DepthAvoidanceController(Node):
                                  QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.create_subscription(CameraInfo, self.p['camera_info_topic'],
                                  self.info_cb, qos_profile_sensor_data)
+        if self.p['use_lidar']:
+            self.create_subscription(PointCloud2, self.p['lidar_topic'], self.lidar_cb,
+                                     QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.create_subscription(String, '/mission/fsm_state', self.state_cb, 10)
         self.create_subscription(PoseStamped, '/navigation/local_goal',
                                  lambda m: self.goal_cb('fsm', m), 10)
@@ -113,7 +152,7 @@ class DepthAvoidanceController(Node):
         self.ready_pub = self.create_publisher(Bool, '/avoidance/ready', 10)
         self.path_pub = self.create_publisher(Path, '/avoidance/path', 10)
         self.create_timer(0.1, self.tick)
-        self.get_logger().info('Depth navigation: inflated A*, observe-before-move, fixed local Z.')
+        self.get_logger().info('Local avoidance: depth + Livox, asynchronous projected sampling, A* fallback.')
 
     def pose_cb(self, msg):
         now = time.monotonic()
@@ -127,6 +166,9 @@ class DepthAvoidanceController(Node):
             if (math.dist((a.x, a.y, a.z), (b.x, b.y, b.z)) > self.p['pose_jump_distance']
                     or abs(dyaw) > math.radians(self.p['pose_jump_yaw_degrees'])):
                 self.latched_fault = 'POSE_RESET_RESTART_REQUIRED'
+            dt = stamp_seconds(msg.header.stamp)-stamp_seconds(self.pose.header.stamp)
+            if dt > 1e-4:
+                self.speed = math.hypot(b.x-a.x, b.y-a.y)/dt
         self.pose, self.pose_time = msg, now
         self.poses.append((stamp_seconds(msg.header.stamp), now, deepcopy(msg.pose)))
 
@@ -143,6 +185,7 @@ class DepthAvoidanceController(Node):
             self.detour_goal = None
             self.hold_pose = None
             self.blocked_since = None
+            self.committed_path = None
         self.state = msg.data
 
     def goal_cb(self, key, msg):
@@ -157,6 +200,9 @@ class DepthAvoidanceController(Node):
         if not self.poses or self.info is None:
             return
         stamp = stamp_seconds(msg.header.stamp)
+        if not self.sensor_stamp_valid(stamp):
+            self.last_camera_error = 'DEPTH_ACQUISITION_STALE'
+            return
         if self.last_stamp is not None and stamp <= self.last_stamp:
             if stamp < self.last_stamp:
                 self.latched_fault = 'DEPTH_CLOCK_RESET_RESTART_REQUIRED'
@@ -197,6 +243,96 @@ class DepthAvoidanceController(Node):
         except (ValueError, TypeError, IndexError) as exc:
             self.last_camera_error = str(exc)
 
+    def sensor_stamp_valid(self, stamp):
+        if self.p['use_receipt_time']:
+            return True  # Explicit simulation-only option, never a real-flight default.
+        age = self.get_clock().now().nanoseconds*1e-9-stamp
+        return -.05 <= age <= self.p['sensor_max_age']
+
+    def lidar_cb(self, msg):
+        if not self.poses:
+            return
+        stamp, now = stamp_seconds(msg.header.stamp), time.monotonic()
+        if self.lidar_stamp is not None and stamp <= self.lidar_stamp:
+            if stamp < self.lidar_stamp:
+                self.latched_fault = 'LIDAR_CLOCK_RESET_RESTART_REQUIRED'
+            return
+        if msg.header.frame_id != self.p['lidar_frame']:
+            self.lidar_error = 'LIDAR_FRAME_MISMATCH'
+            return
+        if not self.sensor_stamp_valid(stamp):
+            self.lidar_error = 'LIDAR_ACQUISITION_STALE'
+            return
+        if self.p['use_receipt_time']:
+            match = self.poses[-1]
+            skew = now-match[1]
+        else:
+            match = min(self.poses, key=lambda item: abs(item[0]-stamp))
+            skew = abs(match[0]-stamp)
+        if skew > self.p['max_pose_skew']:
+            self.lidar_error = 'LIDAR_POSE_UNSYNCHRONIZED'
+            return
+        try:
+            points = decode_xyz(msg)
+            p, q = match[2].position, match[2].orientation
+            pos = np.array([p.x, p.y, p.z])
+            body = rotation((q.x, q.y, q.z, q.w))
+            view = LidarView(points, pos+body@np.asarray(self.p['lidar_translation']),
+                             body@self.lidar_mount, self.p['max_depth'])
+            if len(view.local) < 10:
+                raise ValueError('LIDAR_INSUFFICIENT_RETURNS')
+            self.memory.update(view, pos)
+            self.lidar_view, self.lidar_time, self.lidar_stamp = view, now, stamp
+            self.lidar_error = ''
+        except (ValueError, TypeError, IndexError) as exc:
+            self.lidar_error = str(exc)
+
+    def refine_path(self, grid, path, now):
+        """Never wait for the optimizer; revalidate results against the current map."""
+        self.planner_backend = 'astar'
+        if self.p['planner_backend'] == 'astar':
+            return path
+        result_path = path
+        if self.future is not None and self.future.done():
+            try:
+                result = self.future.result()
+                self.planner_ms = result.elapsed_ms
+                if (now-self.plan_started <= self.p['planner_result_max_age']
+                        and self.plan_state == self.state and len(result.path) >= 2
+                        and np.linalg.norm(result.path[-1]-path[-1]) < .25):
+                    points = np.asarray(result.path)
+                    nearest = int(np.argmin(np.linalg.norm(points-path[0], axis=1)))
+                    candidate = [path[0], *points[nearest+1:]]
+                    if path_valid(grid, candidate):
+                        result_path = candidate
+                        self.planner_backend = result.backend
+                self.planner_error = ''
+            except Exception as exc:
+                self.planner_error = type(exc).__name__
+            self.future = None
+        if self.future is None:
+            self.plan_started, self.plan_state = now, self.state
+            self.future = self.worker.submit(self.planner.plan, grid, list(path),
+                                             self.p['max_navigation_speed'],
+                                             self.p['braking_acceleration'])
+        return result_path
+
+    def stable_path(self, grid, start, desired):
+        """Keep a chosen detour side until its remaining corridor is invalid."""
+        previous = self.committed_path
+        if (previous is not None and self.committed_goal is not None
+                and np.linalg.norm(desired-self.committed_goal) < .6):
+            points = np.asarray(previous)
+            nearest = int(np.argmin(np.linalg.norm(points-start, axis=1)))
+            # Connect to a later visible point, never return behind the vehicle.
+            candidate = [start, *points[nearest+1:], desired]
+            if path_valid(grid, candidate):
+                return candidate
+        path = grid.plan(start, desired)
+        if path:
+            self.committed_path, self.committed_goal = path, desired.copy()
+        return path
+
     def output(self, goal, status, hold, paused, path=None):
         now = time.monotonic()
         if hold:
@@ -226,6 +362,11 @@ class DepthAvoidanceController(Node):
             'nearest_obstacle_xy_m': self.nearest_obstacle,
             'waypoint_xy': self.waypoint.tolist() if self.waypoint is not None else None,
             'fsm_state': self.state, 'camera_error': self.last_camera_error,
+            'lidar_age_s': round(now-self.lidar_time, 3) if self.lidar_view else None,
+            'lidar_error': self.lidar_error,
+            'planner_backend': self.planner_backend, 'planner_ms': round(self.planner_ms, 2),
+            'planner_error': self.planner_error,
+            'measured_speed_m_s': round(self.speed, 3),
         })))
         if path is not None:
             message = Path()
@@ -241,9 +382,11 @@ class DepthAvoidanceController(Node):
             self.ready_pub.publish(Bool(data=False))
             return
         now = time.monotonic()
+        lidar_fresh = (getattr(self, 'lidar_view', None) is not None
+                       and now-self.lidar_time <= self.p['lidar_timeout'])
         healthy = (self.latched_fault is None
                    and now-self.pose_time <= self.p['pose_timeout']
-                   and now-self.depth_time <= self.p['depth_timeout'])
+                   and (now-self.depth_time <= self.p['depth_timeout'] or lidar_fresh))
         self.ready_pub.publish(Bool(data=healthy))
         orbit = self.state in ('START_ORBIT', 'WAIT_ORBIT')
         key = 'orbit' if orbit else 'fsm'
@@ -255,7 +398,7 @@ class DepthAvoidanceController(Node):
         fault = self.latched_fault
         if now-self.pose_time > self.p['pose_timeout']:
             fault = 'POSE_STALE'
-        elif now-self.depth_time > self.p['depth_timeout']:
+        elif now-self.depth_time > self.p['depth_timeout'] and not lidar_fresh:
             fault = 'DEPTH_STALE'
         elif now-self.goal_times.get(key, -float('inf')) > self.p['goal_timeout']:
             fault = 'GOAL_STALE'
@@ -305,7 +448,8 @@ class DepthAvoidanceController(Node):
         horizon = self.p['planning_radius']-1.0
         if np.linalg.norm(delta) > horizon:
             desired = start+delta/np.linalg.norm(delta)*horizon
-        path = grid.plan(start, desired)
+        path = (self.stable_path(grid, start, desired) if hasattr(self, 'stable_path')
+                else grid.plan(start, desired))
         # A nominal orbital point can itself be occupied by a frond. Rejoin
         # the circle farther CCW, after planning every leg around the obstacle.
         if not path and centre is not None:
@@ -330,30 +474,54 @@ class DepthAvoidanceController(Node):
             self.output(goal, status, True, True, [])
             return
         self.blocked_since = None
+        nominal_delta = desired-start
+        nominal_length = np.linalg.norm(nominal_delta)
+        offsets = np.asarray(path)-start
+        deviation = (np.max(np.abs(offsets[:, 0]*nominal_delta[1]
+                                  - offsets[:, 1]*nominal_delta[0]))
+                     / max(nominal_length, 1e-6))
+        detour = deviation > self.p['grid_resolution'] or self.detour_goal is not None
+        if hasattr(self, 'refine_path'):
+            path = self.refine_path(grid, path, now)
         if (self.waypoint is None or np.linalg.norm(start-self.waypoint) < 0.20
                 or not grid.segment_free(start, self.waypoint)
                 or np.linalg.norm(desired-start) < 0.8):
             self.waypoint = grid.next_waypoint(start, path, self.p['lookahead'])
         direction = self.waypoint-start
         heading = math.atan2(direction[1], direction[0])
+        nominal_orientation = deepcopy(goal.pose.orientation)
         goal.pose.orientation.x = goal.pose.orientation.y = 0.0
         goal.pose.orientation.z = math.sin(heading/2)
         goal.pose.orientation.w = math.cos(heading/2)
         yaw_error = abs(wrap(heading-self.yaw(self.pose.pose.orientation)))
-        if yaw_error > math.radians(self.p['yaw_tolerance_degrees']):
+        speed = getattr(self, 'speed', 0.0)
+        latency = self.p.get('control_latency', .15)
+        latency += min(now-self.depth_time, now-getattr(self, 'lidar_time', -float('inf')))
+        braking = max(.25, speed*latency + speed**2/(2*self.p.get('braking_acceleration', .5)))
+        endpoint = np.array([*self.waypoint, p.z])
+        lidar_seen = (lidar_fresh and self.lidar_view.corridor_seen(
+            np.array([p.x, p.y, p.z]), endpoint, self.p['vehicle_radius'],
+            self.p['vehicle_half_height'], extra=braking))
+        if lidar_seen:
+            goal.pose.orientation = nominal_orientation
+        if yaw_error > math.radians(self.p['yaw_tolerance_degrees']) and not lidar_seen:
             self.output(goal, 'LOOK_BEFORE_MOVE', True, True, path)
             return
-        endpoint = np.array([*self.waypoint, p.z])
-        if not self.view.corridor_seen(np.array([p.x, p.y, p.z]), endpoint,
+        camera_seen = (now-self.depth_time <= self.p['depth_timeout']
+                      and self.view.corridor_seen(np.array([p.x, p.y, p.z]), endpoint,
                                        self.p['vehicle_radius'],
-                                       self.p['vehicle_half_height']):
+                                       self.p['vehicle_half_height'], extra=braking))
+        if not (lidar_seen or camera_seen):
             self.waypoint = None
             self.output(goal, 'UNOBSERVED_HOLD', True, True, path)
             return
         goal.pose.position.x, goal.pose.position.y = map(float, self.waypoint)
-        detour = len(path) > 2 or self.detour_goal is not None
         self.output(goal, 'DETOUR' if detour else 'TRACKING', False,
                     self.detour_goal is not None, path)
+
+    def destroy_node(self):
+        self.worker.shutdown(wait=True, cancel_futures=True)
+        return super().destroy_node()
 
 
 def main(args=None):
