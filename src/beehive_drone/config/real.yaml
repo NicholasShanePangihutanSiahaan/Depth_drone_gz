@@ -56,6 +56,8 @@ tree_mapper:
 
 mission_state_machine:
   ros__parameters:
+    lidar_verification_timeout: 8.0    # Batas menunggu validasi LiDAR (detik).
+    lidar_max_position_correction: 0.8 # Maksimum koreksi yang diterima FSM (m).
     require_lidar_verification: false
     adaptive_orbit_enabled: false
     adaptive_orbit_fraction: 0.5
@@ -156,3 +158,35 @@ mission_analyzer:
     expected_takeoff_altitude: 1.5
     expected_approach_distance: 1.5
     expected_orbit_radius: 1.5
+
+# Tuning LiDAR; restart launch setelah mengubah parameter.
+lidar_tree_verifier:
+  ros__parameters:
+    lidar_topic: /livox/top/points
+    target_frame: odom                 # Harus sama dengan frame kandidat kamera.
+    association_radius: 0.8            # Radius ROI titik dari kandidat kamera (m).
+    max_center_offset: 0.6             # Maksimum koreksi pusat lingkaran (m).
+    min_points: 30                     # Minimum titik dalam ROI.
+    slice_height: 0.25                 # Tebal lapisan horizontal (m).
+    min_slice_points: 6                # Minimum titik/inlier tiap lapisan.
+    ransac_iterations: 60
+    min_radius: 0.10                   # Radius batang (m).
+    max_radius: 0.65
+    circle_tolerance: 0.035            # Jarak titik ke lingkaran yang diterima (m).
+    min_inlier_ratio: 0.6              # Fraksi titik pendukung, rentang (0, 1].
+    min_arc_coverage: 0.5              # Cakupan busur minimum (radian).
+    min_slices: 4                      # Minimum lapisan yang cocok.
+    slice_center_tolerance: 0.12       # Toleransi keselarasan pusat lapisan (m).
+    min_vertical_span: 0.75            # Rentang vertikal lapisan yang cocok (m).
+    surface_tolerance: 0.06            # Ketebalan seleksi permukaan batang (m).
+    bottom_percentile: 3.0             # Persentil Z untuk bagian bawah/atas.
+    top_percentile: 97.0
+    min_height: 0.8                    # Tinggi batang teramati minimum (m).
+    scan_window: 5                     # Jumlah maksimum scan dalam median.
+    min_consistent_scans: 3            # Harus <= scan_window dan >= 2.
+    scan_center_tolerance: 0.15         # Perubahan pusat antar-scan (m).
+    max_height_variation: 0.5          # Rentang variasi tinggi dalam window (m).
+    processing_period: 0.15            # Periode pemrosesan (detik).
+    scan_timeout: 1.0                  # Umur maksimum scan sejak diterima (detik).
+    candidate_timeout: 1.0             # Umur permintaan kandidat (detik).
+    max_scan_gap: 1.0                  # Reset window jika jeda scan valid > ini.
