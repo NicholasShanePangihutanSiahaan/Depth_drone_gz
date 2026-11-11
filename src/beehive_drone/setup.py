@@ -25,6 +25,8 @@ setup(
     license='TODO: License declaration',
     entry_points={
         'console_scripts': [
+            'lidar_tree_verifier = beehive_drone.lidar_tree_verifier:main',
+            'tree_hover_recorder = beehive_drone.tree_hover_recorder:main',
             'terrain_mapping_recorder = beehive_drone.terrain_mapping_recorder:main',
             'terrain_straight_test = beehive_drone.terrain_straight_test:main',
             'depth_avoidance_controller = beehive_drone.depth_avoidance_controller:main',
