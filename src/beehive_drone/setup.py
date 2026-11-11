@@ -25,6 +25,8 @@ setup(
     license='TODO: License declaration',
     entry_points={
         'console_scripts': [
+            'terrain_mapping_recorder = beehive_drone.terrain_mapping_recorder:main',
+            'terrain_straight_test = beehive_drone.terrain_straight_test:main',
             'depth_avoidance_controller = beehive_drone.depth_avoidance_controller:main',
             # DAFTARKAN SEMUA NODE DI SINI (nama_eksekusi = nama_folder.nama_file:main)
             'mission_state_machine = beehive_drone.mission_state_machine:main',
