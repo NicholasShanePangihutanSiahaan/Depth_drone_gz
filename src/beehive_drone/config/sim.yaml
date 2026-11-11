@@ -4,7 +4,7 @@
 
 pcl_proc_node:
   ros__parameters:
-    use_transform_pcl: false
+    use_transform_pcl: true
     min_sensor_range: 0.3
     max_sensor_range: 15.0
     voxel_leaf_size: 0.20
@@ -31,6 +31,10 @@ tree_mapper:
 
 mission_state_machine:
   ros__parameters:
+    adaptive_orbit_enabled: true
+    adaptive_orbit_fraction: 0.5
+    adaptive_orbit_min_height: 1.0
+    adaptive_orbit_max_height: 4.0
     flight_altitude: 1.5
     # Sama dengan konfigurasi real: berhenti 1.5 m dari pusat batang.
     approach_distance: 1.5
@@ -61,7 +65,7 @@ dynamic_orbit_controller:
 flight_manager:
   ros__parameters:
     altitude_source: rangefinder
-    hover_tolerance: 0.2
+    hover_tolerance: 0.35
     rangefinder_topic: /simulation/rangefinder
     rangefinder_timeout: 1.0
     rangefinder_min_valid: 0.08
