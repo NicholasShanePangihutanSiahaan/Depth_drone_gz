@@ -56,6 +56,10 @@ tree_mapper:
 
 mission_state_machine:
   ros__parameters:
+    adaptive_orbit_enabled: false
+    adaptive_orbit_fraction: 0.5
+    adaptive_orbit_min_height: 1.0
+    adaptive_orbit_max_height: 4.0
     # Default mempertahankan perilaku Jetson teruji: satu pohon lalu pulang.
     mission_mode: single_tree
     # Hanya digunakan pada multi_tree; 0 berarti tanpa batas jumlah.
