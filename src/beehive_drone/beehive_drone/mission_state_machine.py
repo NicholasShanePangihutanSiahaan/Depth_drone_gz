@@ -196,6 +196,7 @@ class MissionStateMachine(Node):
         self.active_tree_pub = self.create_publisher(Int32, "/mission/active_tree_id", 10)
         self.declare_parameter('require_lidar_verification', True)
         self.declare_parameter('lidar_verification_timeout', 8.0)
+        self.declare_parameter('lidar_max_position_correction', 0.8)
         self.lidar_result = None
         self.rejected_tree_ids = set()
         self.lidar_request_pub = self.create_publisher(Float64MultiArray, '/mission/lidar_candidate', 10)
@@ -303,7 +304,7 @@ class MissionStateMachine(Node):
         if not all(math.isfinite(v) for v in msg.data) or int(msg.data[0])!=self.target_tree.id:
             return
         _, x, y, base, height, radius = msg.data
-        if height <= 0 or math.hypot(x-self.target_tree.x,y-self.target_tree.y)>.8:
+        if height <= 0 or math.hypot(x-self.target_tree.x,y-self.target_tree.y)>float(self.get_parameter("lidar_max_position_correction").value):
             return
         self.lidar_result=(self.target_tree.id,x,y,base,height,time.monotonic())
         self.adaptive_estimates[self.target_tree.id]=(base,height,time.monotonic())
