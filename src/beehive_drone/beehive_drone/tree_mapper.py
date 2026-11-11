@@ -39,6 +39,7 @@ class TreeMapper(Node):
         self.declare_parameter("min_height", 0.8)
         self.declare_parameter("max_height", 8.0)
         self.declare_parameter("max_trunk_base_height", 0.65)
+        self.declare_parameter("use_absolute_trunk_base_gate", True)
         self.declare_parameter("min_cylinder_confidence", 0.20)
         self.declare_parameter("position_alpha", 0.25)
         self.frame_id = self.get_parameter("frame_id").value
@@ -156,7 +157,8 @@ class TreeMapper(Node):
             # pelepah/tajuk dapat terlihat vertikal dan lolos radius/height,
             # tetapi bagian bawahnya melayang jauh di atas z=0.
             trunk_base_z = cylinder.pose.position.z - 0.5 * cylinder.height
-            if trunk_base_z > self.max_trunk_base_height:
+            if (bool(self.get_parameter("use_absolute_trunk_base_gate").value)
+                    and trunk_base_z > self.max_trunk_base_height):
                 self.get_logger().debug(
                     f"Cylinder tajuk ditolak: base_z={trunk_base_z:.2f}, "
                     f"height={cylinder.height:.2f}")
@@ -218,9 +220,10 @@ class TreeMapper(Node):
             alpha = self.position_alpha
 
             # update posisi
-            tree["x"] += alpha * (x-tree["x"])
-            tree["y"] += alpha * (y-tree["y"])
-            tree["z"] += alpha * (z-tree["z"])
+            if not tree["validated"]:
+                tree["x"] += alpha * (x-tree["x"])
+                tree["y"] += alpha * (y-tree["y"])
+                tree["z"] += alpha * (z-tree["z"])
 
             ##################################################
             # Confidence hanya naik jika belum inspected
