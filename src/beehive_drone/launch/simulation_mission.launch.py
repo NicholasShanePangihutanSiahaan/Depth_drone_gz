@@ -20,7 +20,7 @@ def generate_launch_description():
         package='beehive_drone', executable='mission_state_machine',
         parameters=[config], remappings=sim_pose_remap, output='screen')
     return LaunchDescription([
-        Node(package='beehive_drone', executable='lidar_tree_verifier', output='screen'),
+        Node(package='beehive_drone', executable='lidar_tree_verifier', parameters=[config], output='screen'),
         Node(package='beehive_drone', executable='sim_external_odometry', output='screen'),
         Node(package='beehive_drone', executable='sim_rangefinder_bridge',
              parameters=[config], output='screen'),
