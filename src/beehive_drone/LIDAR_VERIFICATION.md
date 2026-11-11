@@ -41,3 +41,27 @@ ros2 launch beehive_drone multi_tree_simulation.launch.py
 Recorder hover CSV now includes height_source. Before LiDAR validation this can
 be camera; after validation it is lidar. Raw scan screenshots are not segmented
 images. Full simulated flight of this new verification path remains unvalidated.
+
+## YAML tuning
+
+Edit the lidar_tree_verifier section in config/sim.yaml (simulation) or
+config/real.yaml (real profile). simulation_mission,
+adaptive_orbit_validation and multi_tree_simulation load this file automatically.
+Restart the mission after edits; verifier tuning parameters are read-only while
+the node is running. Defaults preserve the previous thresholds.
+
+association_radius is the point ROI radius (0.8 m). max_center_offset is the
+stricter fitted-center correction gate (0.6 m). FSM has a separate
+lidar_max_position_correction gate (0.8 m); all gates must pass. Increasing
+only association_radius does not increase the allowed fitted-center correction.
+Keep target_frame=odom for these launches because candidate coordinates and
+verified results use odom. A different frame requires changing the upstream FSM
+contract too. Lengths are meters, times seconds, arc angles radians.
+
+For standalone use:
+ros2 run beehive_drone lidar_tree_verifier --ros-args --params-file src/beehive_drone/config/sim.yaml
+
+Do not run standalone verifier alongside a launch that already starts it.
+
+The real profile keeps require_lidar_verification disabled as before. Defining
+tuning in real.yaml does not start a verifier or enable verification by itself.
