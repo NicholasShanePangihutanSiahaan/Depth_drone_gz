@@ -26,7 +26,6 @@ def upright_quaternion():
 def follower(**overrides):
     """Build a fast deterministic follower for unit tests."""
     values = {
-        'desired_agl': 1.5,
         'timeout': 0.5,
         'filter_alpha': 1.0,
         'max_target_rate': 1.0,
@@ -51,13 +50,13 @@ def test_target_rises_with_a_gentle_hill():
     control = follower()
     quaternion = upright_quaternion()
     assert control.ingest(1.5, quaternion, now=0.0)
-    target, status = control.compute_target(1.5, 1.5, now=0.0)
+    target, status = control.compute_target(1.5, 1.5, now=0.0, desired_agl=1.5)
     assert status == TerrainFollower.TRACKING
     assert target == pytest.approx(1.5)
 
     # Ground rises while the vehicle has not reacted yet: AGL falls to 1.1 m.
     assert control.ingest(1.1, quaternion, now=1.0)
-    target, status = control.compute_target(1.5, 1.5, now=1.0)
+    target, status = control.compute_target(1.5, 1.5, now=1.0, desired_agl=1.5)
     assert status == TerrainFollower.TRACKING
     assert target == pytest.approx(1.9)
 
@@ -67,9 +66,9 @@ def test_target_rate_is_limited():
     control = follower(max_target_rate=0.25)
     quaternion = upright_quaternion()
     control.ingest(1.5, quaternion, now=0.0)
-    control.compute_target(1.5, 1.5, now=0.0)
+    control.compute_target(1.5, 1.5, now=0.0, desired_agl=1.5)
     control.ingest(0.8, quaternion, now=0.2)
-    target, _ = control.compute_target(1.5, 1.5, now=0.2)
+    target, _ = control.compute_target(1.5, 1.5, now=0.2, desired_agl=1.5)
     assert target == pytest.approx(1.55)
 
 
@@ -78,8 +77,8 @@ def test_stale_range_freezes_last_target():
     control = follower(timeout=0.2)
     quaternion = upright_quaternion()
     control.ingest(1.2, quaternion, now=0.0)
-    target, _ = control.compute_target(1.5, 1.5, now=0.0)
-    held, status = control.compute_target(1.6, 1.5, now=0.3)
+    target, _ = control.compute_target(1.5, 1.5, now=0.0, desired_agl=1.5)
+    held, status = control.compute_target(1.6, 1.5, now=0.3, desired_agl=1.5)
     assert status == TerrainFollower.HOLD_RANGE_STALE
     assert held == pytest.approx(target)
 
@@ -99,5 +98,14 @@ def test_excessive_tilt_measurement_is_rejected():
     control = follower(min_tilt_cosine=0.7)
     quaternion = quaternion_from_roll(math.radians(60.0))
     assert not control.ingest(1.5, quaternion, now=0.0)
-    _, status = control.compute_target(1.5, 1.5, now=0.0)
+    _, status = control.compute_target(1.5, 1.5, now=0.0, desired_agl=1.5)
     assert status == TerrainFollower.WAITING_FOR_RANGE
+
+
+def test_agl_target_can_change_between_mission_phases():
+    control = follower(max_target_rate=10.0)
+    control.ingest(1.5, upright_quaternion(), now=0.0)
+    first, _ = control.compute_target(3.0, 3.0, 0.0, 1.5)
+    second, _ = control.compute_target(3.0, 3.0, 0.1, 2.0)
+    assert first == pytest.approx(3.0)
+    assert second == pytest.approx(3.5)
