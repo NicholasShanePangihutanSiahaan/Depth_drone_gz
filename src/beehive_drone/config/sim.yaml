@@ -31,6 +31,8 @@ tree_mapper:
 
 mission_state_machine:
   ros__parameters:
+    require_lidar_verification: true
+    lidar_verification_timeout: 8.0
     adaptive_orbit_enabled: true
     adaptive_orbit_fraction: 0.5
     adaptive_orbit_min_height: 1.0
