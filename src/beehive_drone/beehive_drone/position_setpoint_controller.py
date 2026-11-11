@@ -55,6 +55,9 @@ class PositionSetpointController(Node):
             self.get_parameter('rangefinder_min_valid').value)
         self.rangefinder_max = float(
             self.get_parameter('rangefinder_max_valid').value)
+        self.orbit_z = None
+        self.orbit_z_time = 0.0
+        self.create_subscription(Float32, "/control/orbit_local_z", self.orbit_z_cb, 10)
         self.pose = None
         self.target = None
         self.target_time = None
@@ -100,6 +103,10 @@ class PositionSetpointController(Node):
             'Position setpoint controller aktif (continuous + slew limit, %s).'
             % mode)
 
+    def orbit_z_cb(self, msg):
+        self.orbit_z = float(msg.data)
+        self.orbit_z_time = time.monotonic()
+
     def pose_cb(self, msg):
         self.pose = msg
 
@@ -117,7 +124,7 @@ class PositionSetpointController(Node):
             self.agl_target_time = time.monotonic()
 
     def rangefinder_cb(self, msg):
-        if not self.terrain_enabled or self.pose is None:
+        if self.pose is None:
             return
         value = float(msg.range)
         lower = self.rangefinder_min
@@ -200,7 +207,12 @@ class PositionSetpointController(Node):
             self.pub.publish(self.copy_pose(self.commanded_pose, now.to_msg(), self.output_frame))
             return
         target_z = float(self.target.pose.position.z)
-        if self.terrain_enabled:
+        if self.orbit_z is not None and math.isfinite(self.orbit_z):
+            if time.monotonic()-self.orbit_z_time > self.timeout:
+                self.pub.publish(self.copy_pose(self.commanded_pose, now.to_msg(), self.output_frame))
+                return
+            target_z = self.orbit_z
+        elif self.terrain_enabled:
             tick = time.monotonic()
             if (self.agl_target is None or self.agl_target_time is None
                     or tick - self.agl_target_time > self.timeout
