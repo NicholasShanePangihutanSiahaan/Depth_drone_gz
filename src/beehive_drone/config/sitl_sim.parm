@@ -11,3 +11,7 @@ ARMING_NEED_LOC 0
 AHRS_ORIGIN_LAT -35.363261
 AHRS_ORIGIN_LON 149.165230
 AHRS_ORIGIN_ALT 584.0
+
+# Gazebo exposes one IMU; do not compare it against synthetic secondary IMUs.
+INS_USE2 0
+INS_USE3 0
