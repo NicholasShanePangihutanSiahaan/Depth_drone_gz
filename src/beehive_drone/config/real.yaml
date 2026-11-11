@@ -1,3 +1,7 @@
+/**:
+  ros__parameters:
+    altitude_mode: home_relative
+
 pcl_proc_node:
   ros__parameters:
     # Dipertahankan untuk replay/legacy pcl_proc_node. Pada penerbangan real,
@@ -101,9 +105,7 @@ position_setpoint_controller:
     output_frame: map
     # EKF tetap memakai local-Z yang halus; rangefinder hanya menggeser target
     # vertikal agar clearance terhadap permukaan tetap 1.5 m.
-    terrain_following_enabled: false
     rangefinder_topic: /mavros/rangefinder/rangefinder
-    desired_agl: 1.7
     rangefinder_timeout: 0.50
     rangefinder_min_valid: 0.08
     rangefinder_max_valid: 8.0
@@ -113,7 +115,6 @@ position_setpoint_controller:
     minimum_tilt_cosine: 0.70
     max_terrain_correction: 1.0
     max_terrain_target_rate: 0.50
-    hold_position_on_range_loss: true
 
 # Dipakai jika real launch dialihkan ke kontrol kecepatan untuk tuning.
 velocity_controller:
