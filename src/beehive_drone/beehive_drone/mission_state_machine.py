@@ -65,6 +65,10 @@ class MissionStateMachine(Node):
         self.end_of_row_dist = MissionConfig.END_OF_ROW_DIST
         self.end_of_farm_dist = MissionConfig.END_OF_FARM_DIST
         self.approach_safe_dist = MissionConfig.APPROACH_SAFE_DIST
+        self.declare_parameter('altitude_mode', 'home_relative')
+        self.altitude_mode = str(self.get_parameter('altitude_mode').value)
+        if self.altitude_mode not in ('home_relative', 'terrain_following'):
+            raise ValueError('altitude_mode harus home_relative atau terrain_following')
         self.flight_altitude = MissionConfig.FLIGHT_ALTITUDE
         self.declare_parameter('flight_altitude', self.flight_altitude)
         self.declare_parameter('approach_distance', self.approach_safe_dist)
@@ -234,6 +238,7 @@ class MissionStateMachine(Node):
         
         # Command ke Dynamic Orbit Controller
         self.orbit_start_pub = self.create_publisher(Bool, "/control/orbit_start", 10)
+        self.agl_target_pub = self.create_publisher(Float32, '/control/target_agl', 10)
         self.orbit_target_pub = self.create_publisher(Point, "/control/orbit_target", 10)
         
         # Command navigasi lokal
@@ -381,8 +386,10 @@ class MissionStateMachine(Node):
         # flight_altitude adalah tinggi terhadap home untuk CommandTOL. Setelah
         # takeoff, pertahankan koordinat Z lokal yang benar-benar dicapai FC.
         goal.pose.position.z = (
-            self.navigation_altitude
-            if self.navigation_altitude is not None else self.flight_altitude
+            float(self.current_pose.pose.position.z)
+            if self.altitude_mode == 'terrain_following' else
+            (self.navigation_altitude
+             if self.navigation_altitude is not None else self.flight_altitude)
         )
         
         qx, qy, qz, qw = euler_to_quaternion(0, 0, yaw)
@@ -399,6 +406,9 @@ class MissionStateMachine(Node):
     def fsm_loop(self):
         if self.current_pose is None:
             return
+
+        if self.altitude_mode == 'terrain_following' and self.navigation_altitude is not None:
+            self.agl_target_pub.publish(Float32(data=float(self.navigation_altitude)))
 
         active = self.state not in ('WAIT_START', 'DONE', 'ABORT', 'MANUAL_OVERRIDE')
         navigation_states = (
@@ -501,7 +511,8 @@ class MissionStateMachine(Node):
                 self.hold_x = cx
                 self.hold_y = cy
                 self.hold_yaw = self.takeoff_yaw
-                self.navigation_altitude = self.current_pose.pose.position.z
+                self.navigation_altitude = (self.flight_altitude if self.altitude_mode == 'terrain_following'
+                                            else self.current_pose.pose.position.z)
                 self.last_tree_x = cx
                 self.last_tree_y = cy
                 self.transition("POST_TAKEOFF_HOVER")
