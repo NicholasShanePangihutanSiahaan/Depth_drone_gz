@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 
 import math
+import time
 from copy import deepcopy
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from beehive_drone.mission_params import MissionConfig
+from beehive_drone.adaptive_orbit import orbit_target_z
 from beehive_drone.missions import MISSION_PROFILES
 from geometry_msgs.msg import PoseStamped, Point
-from std_msgs.msg import Bool, String, Float32
+from std_msgs.msg import Bool, String, Float32, Float64MultiArray
 from uav_interfaces.msg import TreeArray, Tree
 
 def euler_to_quaternion(roll, pitch, yaw):
@@ -185,6 +187,19 @@ class MissionStateMachine(Node):
         self.abort_command_sent = False
         self.last_landing_command_time = None
         self.trees = []
+        self.declare_parameter('adaptive_orbit_enabled', True)
+        self.declare_parameter('land_after_orbit', False)
+        self.declare_parameter('adaptive_orbit_fraction', 0.5)
+        self.declare_parameter('adaptive_estimate_max_age', 60.0)
+        self.declare_parameter('adaptive_orbit_min_height', 1.0)
+        self.declare_parameter('adaptive_orbit_max_height', 4.0)
+        self.adaptive_estimates = {}
+        self.adaptive_z = None
+        self.adaptive_stable_since = None
+        self.adaptive_agl = None
+        self.create_subscription(Float64MultiArray, '/map/trunk_estimates', self.trunk_estimate_cb, 10)
+        self.create_subscription(Float32, '/control/measured_agl', self.adaptive_agl_cb, 10)
+        self.orbit_z_pub = self.create_publisher(Float32, '/control/orbit_local_z', 10)
         self.target_tree = None
         self.frozen_target_tree = None
         self.completed_tree_ids = set()
@@ -275,6 +290,16 @@ class MissionStateMachine(Node):
             return True
         return (self.depth_ready and self.depth_ready_time is not None
                 and (self.get_clock().now()-self.depth_ready_time).nanoseconds*1e-9 < 1.0)
+    def trunk_estimate_cb(self, msg):
+        if len(msg.data) == 3 and all(math.isfinite(v) for v in msg.data):
+            tree_id, base, height = msg.data
+            if height > 0:
+                self.adaptive_estimates[int(tree_id)] = (base, height, time.monotonic())
+
+    def adaptive_agl_cb(self, msg):
+        if math.isfinite(msg.data):
+            self.adaptive_agl = (msg.data, time.monotonic())
+
     def tree_cb(self, msg):
         trees = list(msg.trees)
         if self.mission_profile is not None:
@@ -407,6 +432,11 @@ class MissionStateMachine(Node):
         if self.current_pose is None:
             return
 
+        if self.state not in ('START_ORBIT', 'WAIT_ORBIT'):
+            self.adaptive_z = None
+            self.adaptive_stable_since = None
+        adapting = self.state in ('START_ORBIT', 'WAIT_ORBIT') and self.adaptive_z is not None
+        self.orbit_z_pub.publish(Float32(data=float(self.adaptive_z) if adapting else float('nan')))
         if self.altitude_mode == 'terrain_following' and self.navigation_altitude is not None:
             self.agl_target_pub.publish(Float32(data=float(self.navigation_altitude)))
 
@@ -665,6 +695,30 @@ class MissionStateMachine(Node):
                     self.transition("EXPLORE_ROW")
                     
         elif self.state == "START_ORBIT":
+            if bool(self.get_parameter('adaptive_orbit_enabled').value):
+                if self.adaptive_z is None:
+                    estimate = self.adaptive_estimates.get(self.target_tree.id)
+                    if estimate is None or time.monotonic()-estimate[2] > float(self.get_parameter("adaptive_estimate_max_age").value):
+                        self.publish_goal(cx, cy, self.current_yaw())
+                        return  # Wait for a recent repeated trunk estimate; normal state timeout applies.
+                    base, height, _ = estimate
+                    self.adaptive_z = orbit_target_z(base, height,
+                        float(self.get_parameter('adaptive_orbit_fraction').value),
+                        float(self.get_parameter('adaptive_orbit_min_height').value),
+                        float(self.get_parameter('adaptive_orbit_max_height').value))
+                    self.get_logger().info(f'Adaptive orbit: observed trunk={height:.2f}m, base Z={base:.2f}, orbit Z={self.adaptive_z:.2f}')
+                self.publish_goal(cx, cy, self.current_yaw())
+                self.orbit_z_pub.publish(Float32(data=float(self.adaptive_z)))
+                agl_ok = (self.adaptive_agl is not None and time.monotonic()-self.adaptive_agl[1] < 0.5
+                          and self.adaptive_agl[0] >= 0.8)
+                if abs(self.current_pose.pose.position.z-self.adaptive_z) > 0.2 or not agl_ok:
+                    self.adaptive_stable_since = None
+                    return
+                if self.adaptive_stable_since is None:
+                    self.adaptive_stable_since = time.monotonic()
+                if time.monotonic()-self.adaptive_stable_since < 1.0:
+                    return
+
             # Do not let the previous tree's completion finish this tree before
             # the orbit controller has acknowledged its new command.
             self.orbit_status = 'IN_PROGRESS'
@@ -672,7 +726,7 @@ class MissionStateMachine(Node):
             target_msg.x = self.target_tree.x
             target_msg.y = self.target_tree.y
             # Kirim Z lokal misi, bukan tinggi/geometri pusat pohon.
-            target_msg.z = float(self.navigation_altitude)
+            target_msg.z = float(self.adaptive_z if self.adaptive_z is not None else self.navigation_altitude)
             self.orbit_target_pub.publish(target_msg)
             
             start_msg = Bool(); start_msg.data = True
@@ -721,11 +775,18 @@ class MissionStateMachine(Node):
 
                 # Misi hanya menginspeksi satu pohon. Tahan posisi akhir orbit
                 # sebelum menghadap dan kembali ke titik takeoff.
+                if bool(self.get_parameter('land_after_orbit').value):
+                    self.adaptive_z = None
+                    self.publish_setpoint_enabled(False)
+                    self.transition('LANDING')
+                    return
                 self.hold_x = cx
                 self.hold_y = cy
                 self.hold_yaw = self.current_yaw()
                 self.hover_timer = 0
                 self.target_tree = None
+                self.adaptive_z = None
+                self.adaptive_stable_since = None
                 self.transition("POST_ORBIT_HOVER")
                 self.get_logger().info(
                     "Orbit satu pohon selesai. Hover sebelum kembali ke titik takeoff."
