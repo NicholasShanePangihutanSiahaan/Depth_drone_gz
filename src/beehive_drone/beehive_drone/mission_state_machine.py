@@ -10,7 +10,7 @@ from beehive_drone.mission_params import MissionConfig
 from beehive_drone.adaptive_orbit import orbit_target_z
 from beehive_drone.missions import MISSION_PROFILES
 from geometry_msgs.msg import PoseStamped, Point
-from std_msgs.msg import Bool, String, Float32, Float64MultiArray
+from std_msgs.msg import Bool, String, Float32, Float64MultiArray, Int32
 from uav_interfaces.msg import TreeArray, Tree
 
 def euler_to_quaternion(roll, pitch, yaw):
@@ -193,6 +193,13 @@ class MissionStateMachine(Node):
         self.declare_parameter('adaptive_estimate_max_age', 60.0)
         self.declare_parameter('adaptive_orbit_min_height', 1.0)
         self.declare_parameter('adaptive_orbit_max_height', 4.0)
+        self.active_tree_pub = self.create_publisher(Int32, "/mission/active_tree_id", 10)
+        self.declare_parameter('require_lidar_verification', True)
+        self.declare_parameter('lidar_verification_timeout', 8.0)
+        self.lidar_result = None
+        self.rejected_tree_ids = set()
+        self.lidar_request_pub = self.create_publisher(Float64MultiArray, '/mission/lidar_candidate', 10)
+        self.create_subscription(Float64MultiArray, '/perception/lidar_verified_tree', self.lidar_result_cb, 10)
         self.adaptive_estimates = {}
         self.adaptive_z = None
         self.adaptive_stable_since = None
@@ -290,7 +297,20 @@ class MissionStateMachine(Node):
             return True
         return (self.depth_ready and self.depth_ready_time is not None
                 and (self.get_clock().now()-self.depth_ready_time).nanoseconds*1e-9 < 1.0)
+    def lidar_result_cb(self, msg):
+        if self.state != 'VERIFY_TREE' or self.target_tree is None or len(msg.data)!=6:
+            return
+        if not all(math.isfinite(v) for v in msg.data) or int(msg.data[0])!=self.target_tree.id:
+            return
+        _, x, y, base, height, radius = msg.data
+        if height <= 0 or math.hypot(x-self.target_tree.x,y-self.target_tree.y)>.8:
+            return
+        self.lidar_result=(self.target_tree.id,x,y,base,height,time.monotonic())
+        self.adaptive_estimates[self.target_tree.id]=(base,height,time.monotonic())
+
     def trunk_estimate_cb(self, msg):
+        if bool(self.get_parameter('require_lidar_verification').value):
+            return
         if len(msg.data) == 3 and all(math.isfinite(v) for v in msg.data):
             tree_id, base, height = msg.data
             if height > 0:
@@ -384,7 +404,7 @@ class MissionStateMachine(Node):
         min_dist = float('inf')
 
         for tree in self.trees:
-            if not tree.inspected and int(tree.id) not in self.completed_tree_ids:
+            if not tree.inspected and int(tree.id) not in self.completed_tree_ids and int(tree.id) not in self.rejected_tree_ids:
                 dist = self.distance(cx, cy, tree.x, tree.y)
                 is_virtual = self.mission_profile is not None and \
                     self.mission_profile.is_virtual(tree)
@@ -432,6 +452,7 @@ class MissionStateMachine(Node):
         if self.current_pose is None:
             return
 
+        self.active_tree_pub.publish(Int32(data=int(self.target_tree.id) if self.target_tree is not None else -1))
         if self.state not in ('START_ORBIT', 'WAIT_ORBIT'):
             self.adaptive_z = None
             self.adaptive_stable_since = None
@@ -622,6 +643,20 @@ class MissionStateMachine(Node):
             target_yaw = math.atan2(self.target_tree.y - cy, self.target_tree.x - cx)
             self.publish_goal(cx, cy, target_yaw)
             
+            if bool(self.get_parameter('require_lidar_verification').value):
+                self.lidar_request_pub.publish(Float64MultiArray(data=[float(self.target_tree.id),
+                    float(self.target_tree.x),float(self.target_tree.y),float(self.target_tree.z)]))
+                valid = (self.lidar_result is not None and self.lidar_result[0]==self.target_tree.id
+                         and time.monotonic()-self.lidar_result[5]<1.0)
+                if not valid:
+                    self.hover_timer = 0
+                    if elapsed > float(self.get_parameter('lidar_verification_timeout').value):
+                        self.rejected_tree_ids.add(int(self.target_tree.id))
+                        self.get_logger().warning(f'LiDAR verification failed for tree {self.target_tree.id}; skip candidate.')
+                        self.target_tree = None
+                        self.lidar_result = None
+                        self.transition('EXPLORE_ROW')
+                    return
             self.hover_timer += 1
             
             # Setelah 40 siklus (4 detik hovering stabil)
@@ -634,6 +669,12 @@ class MissionStateMachine(Node):
                         target_matched_tree = tree
                         break
                 
+                if (target_matched_tree is not None
+                        and bool(self.get_parameter('require_lidar_verification').value)):
+                    target_matched_tree=deepcopy(target_matched_tree)
+                    _,x,y,base,height,_ = self.lidar_result
+                    target_matched_tree.x=float(x);target_matched_tree.y=float(y)
+                    target_matched_tree.z=float(base+height/2)
                 # Cek 1: Apakah ID pohon tersebut masih ada di database mapper?
                 if target_matched_tree is not None:
                     
