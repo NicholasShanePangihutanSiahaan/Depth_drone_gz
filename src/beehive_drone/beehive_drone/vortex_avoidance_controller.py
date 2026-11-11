@@ -88,7 +88,8 @@ class VortexAvoidanceController(Node):
 
         # 1. Tentukan Goal Mana yang Sedang Aktif
         active_goal = None
-        if self.fsm_state in ["START_ORBIT", "WAIT_ORBIT"]:
+        # START_ORBIT still uses the FSM hover goal while altitude adapts.
+        if self.fsm_state == "WAIT_ORBIT":
             active_goal = self.orbit_goal
         else:
             active_goal = self.fsm_goal

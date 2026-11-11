@@ -7,6 +7,9 @@ import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import Point
+from std_msgs.msg import Float64MultiArray
+from collections import deque
+from statistics import median
 from pcl_cstm_msg.msg import TrackedCylinderArray
 
 from uav_interfaces.msg import Tree
@@ -36,6 +39,7 @@ class TreeMapper(Node):
         self.declare_parameter("min_height", 0.8)
         self.declare_parameter("max_height", 8.0)
         self.declare_parameter("max_trunk_base_height", 0.65)
+        self.declare_parameter("use_absolute_trunk_base_gate", True)
         self.declare_parameter("min_cylinder_confidence", 0.20)
         self.declare_parameter("position_alpha", 0.25)
         self.frame_id = self.get_parameter("frame_id").value
@@ -67,6 +71,8 @@ class TreeMapper(Node):
         ##################################################
         self.tree_database = {}
         self.next_tree_id = 1
+        self.trunk_samples = {}
+        self.trunk_pub = self.create_publisher(Float64MultiArray, "/map/trunk_estimates", 10)
 
         ##################################################
         # Subscribers
@@ -151,7 +157,8 @@ class TreeMapper(Node):
             # pelepah/tajuk dapat terlihat vertikal dan lolos radius/height,
             # tetapi bagian bawahnya melayang jauh di atas z=0.
             trunk_base_z = cylinder.pose.position.z - 0.5 * cylinder.height
-            if trunk_base_z > self.max_trunk_base_height:
+            if (bool(self.get_parameter("use_absolute_trunk_base_gate").value)
+                    and trunk_base_z > self.max_trunk_base_height):
                 self.get_logger().debug(
                     f"Cylinder tajuk ditolak: base_z={trunk_base_z:.2f}, "
                     f"height={cylinder.height:.2f}")
@@ -161,7 +168,17 @@ class TreeMapper(Node):
             point.x = cylinder.pose.position.x
             point.y = cylinder.pose.position.y
             point.z = cylinder.pose.position.z
+            if not all(math.isfinite(v) for v in (point.x, point.y, point.z, trunk_base_z, cylinder.height)):
+                continue
             self.tree_callback(point)
+            tree_id = min(self.tree_database, key=lambda k: math.hypot(
+                self.tree_database[k]['x']-point.x, self.tree_database[k]['y']-point.y))
+            samples = self.trunk_samples.setdefault(tree_id, deque(maxlen=7))
+            samples.append((trunk_base_z, cylinder.height))
+            if len(samples) >= 3:
+                # One record per accepted observation: ID, observed base Z, observed height.
+                self.trunk_pub.publish(Float64MultiArray(data=[float(tree_id),
+                    median(v[0] for v in samples), median(v[1] for v in samples)]))
 
 
     ##################################################
@@ -203,9 +220,10 @@ class TreeMapper(Node):
             alpha = self.position_alpha
 
             # update posisi
-            tree["x"] += alpha * (x-tree["x"])
-            tree["y"] += alpha * (y-tree["y"])
-            tree["z"] += alpha * (z-tree["z"])
+            if not tree["validated"]:
+                tree["x"] += alpha * (x-tree["x"])
+                tree["y"] += alpha * (y-tree["y"])
+                tree["z"] += alpha * (z-tree["z"])
 
             ##################################################
             # Confidence hanya naik jika belum inspected

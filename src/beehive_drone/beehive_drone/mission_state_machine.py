@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 
 import math
+import time
 from copy import deepcopy
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from beehive_drone.mission_params import MissionConfig
+from beehive_drone.adaptive_orbit import orbit_target_z
 from beehive_drone.missions import MISSION_PROFILES
 from geometry_msgs.msg import PoseStamped, Point
-from std_msgs.msg import Bool, String, Float32
+from std_msgs.msg import Bool, String, Float32, Float64MultiArray, Int32
 from uav_interfaces.msg import TreeArray, Tree
 
 def euler_to_quaternion(roll, pitch, yaw):
@@ -65,6 +67,10 @@ class MissionStateMachine(Node):
         self.end_of_row_dist = MissionConfig.END_OF_ROW_DIST
         self.end_of_farm_dist = MissionConfig.END_OF_FARM_DIST
         self.approach_safe_dist = MissionConfig.APPROACH_SAFE_DIST
+        self.declare_parameter('altitude_mode', 'home_relative')
+        self.altitude_mode = str(self.get_parameter('altitude_mode').value)
+        if self.altitude_mode not in ('home_relative', 'terrain_following'):
+            raise ValueError('altitude_mode harus home_relative atau terrain_following')
         self.flight_altitude = MissionConfig.FLIGHT_ALTITUDE
         self.declare_parameter('flight_altitude', self.flight_altitude)
         self.declare_parameter('approach_distance', self.approach_safe_dist)
@@ -181,6 +187,26 @@ class MissionStateMachine(Node):
         self.abort_command_sent = False
         self.last_landing_command_time = None
         self.trees = []
+        self.declare_parameter('adaptive_orbit_enabled', True)
+        self.declare_parameter('land_after_orbit', False)
+        self.declare_parameter('adaptive_orbit_fraction', 0.5)
+        self.declare_parameter('adaptive_estimate_max_age', 60.0)
+        self.declare_parameter('adaptive_orbit_min_height', 1.0)
+        self.declare_parameter('adaptive_orbit_max_height', 4.0)
+        self.active_tree_pub = self.create_publisher(Int32, "/mission/active_tree_id", 10)
+        self.declare_parameter('require_lidar_verification', True)
+        self.declare_parameter('lidar_verification_timeout', 8.0)
+        self.lidar_result = None
+        self.rejected_tree_ids = set()
+        self.lidar_request_pub = self.create_publisher(Float64MultiArray, '/mission/lidar_candidate', 10)
+        self.create_subscription(Float64MultiArray, '/perception/lidar_verified_tree', self.lidar_result_cb, 10)
+        self.adaptive_estimates = {}
+        self.adaptive_z = None
+        self.adaptive_stable_since = None
+        self.adaptive_agl = None
+        self.create_subscription(Float64MultiArray, '/map/trunk_estimates', self.trunk_estimate_cb, 10)
+        self.create_subscription(Float32, '/control/measured_agl', self.adaptive_agl_cb, 10)
+        self.orbit_z_pub = self.create_publisher(Float32, '/control/orbit_local_z', 10)
         self.target_tree = None
         self.frozen_target_tree = None
         self.completed_tree_ids = set()
@@ -234,6 +260,7 @@ class MissionStateMachine(Node):
         
         # Command ke Dynamic Orbit Controller
         self.orbit_start_pub = self.create_publisher(Bool, "/control/orbit_start", 10)
+        self.agl_target_pub = self.create_publisher(Float32, '/control/target_agl', 10)
         self.orbit_target_pub = self.create_publisher(Point, "/control/orbit_target", 10)
         
         # Command navigasi lokal
@@ -270,6 +297,29 @@ class MissionStateMachine(Node):
             return True
         return (self.depth_ready and self.depth_ready_time is not None
                 and (self.get_clock().now()-self.depth_ready_time).nanoseconds*1e-9 < 1.0)
+    def lidar_result_cb(self, msg):
+        if self.state != 'VERIFY_TREE' or self.target_tree is None or len(msg.data)!=6:
+            return
+        if not all(math.isfinite(v) for v in msg.data) or int(msg.data[0])!=self.target_tree.id:
+            return
+        _, x, y, base, height, radius = msg.data
+        if height <= 0 or math.hypot(x-self.target_tree.x,y-self.target_tree.y)>.8:
+            return
+        self.lidar_result=(self.target_tree.id,x,y,base,height,time.monotonic())
+        self.adaptive_estimates[self.target_tree.id]=(base,height,time.monotonic())
+
+    def trunk_estimate_cb(self, msg):
+        if bool(self.get_parameter('require_lidar_verification').value):
+            return
+        if len(msg.data) == 3 and all(math.isfinite(v) for v in msg.data):
+            tree_id, base, height = msg.data
+            if height > 0:
+                self.adaptive_estimates[int(tree_id)] = (base, height, time.monotonic())
+
+    def adaptive_agl_cb(self, msg):
+        if math.isfinite(msg.data):
+            self.adaptive_agl = (msg.data, time.monotonic())
+
     def tree_cb(self, msg):
         trees = list(msg.trees)
         if self.mission_profile is not None:
@@ -354,7 +404,7 @@ class MissionStateMachine(Node):
         min_dist = float('inf')
 
         for tree in self.trees:
-            if not tree.inspected and int(tree.id) not in self.completed_tree_ids:
+            if not tree.inspected and int(tree.id) not in self.completed_tree_ids and int(tree.id) not in self.rejected_tree_ids:
                 dist = self.distance(cx, cy, tree.x, tree.y)
                 is_virtual = self.mission_profile is not None and \
                     self.mission_profile.is_virtual(tree)
@@ -381,8 +431,10 @@ class MissionStateMachine(Node):
         # flight_altitude adalah tinggi terhadap home untuk CommandTOL. Setelah
         # takeoff, pertahankan koordinat Z lokal yang benar-benar dicapai FC.
         goal.pose.position.z = (
-            self.navigation_altitude
-            if self.navigation_altitude is not None else self.flight_altitude
+            float(self.current_pose.pose.position.z)
+            if self.altitude_mode == 'terrain_following' else
+            (self.navigation_altitude
+             if self.navigation_altitude is not None else self.flight_altitude)
         )
         
         qx, qy, qz, qw = euler_to_quaternion(0, 0, yaw)
@@ -399,6 +451,15 @@ class MissionStateMachine(Node):
     def fsm_loop(self):
         if self.current_pose is None:
             return
+
+        self.active_tree_pub.publish(Int32(data=int(self.target_tree.id) if self.target_tree is not None else -1))
+        if self.state not in ('START_ORBIT', 'WAIT_ORBIT'):
+            self.adaptive_z = None
+            self.adaptive_stable_since = None
+        adapting = self.state in ('START_ORBIT', 'WAIT_ORBIT') and self.adaptive_z is not None
+        self.orbit_z_pub.publish(Float32(data=float(self.adaptive_z) if adapting else float('nan')))
+        if self.altitude_mode == 'terrain_following' and self.navigation_altitude is not None:
+            self.agl_target_pub.publish(Float32(data=float(self.navigation_altitude)))
 
         active = self.state not in ('WAIT_START', 'DONE', 'ABORT', 'MANUAL_OVERRIDE')
         navigation_states = (
@@ -501,7 +562,8 @@ class MissionStateMachine(Node):
                 self.hold_x = cx
                 self.hold_y = cy
                 self.hold_yaw = self.takeoff_yaw
-                self.navigation_altitude = self.current_pose.pose.position.z
+                self.navigation_altitude = (self.flight_altitude if self.altitude_mode == 'terrain_following'
+                                            else self.current_pose.pose.position.z)
                 self.last_tree_x = cx
                 self.last_tree_y = cy
                 self.transition("POST_TAKEOFF_HOVER")
@@ -581,6 +643,20 @@ class MissionStateMachine(Node):
             target_yaw = math.atan2(self.target_tree.y - cy, self.target_tree.x - cx)
             self.publish_goal(cx, cy, target_yaw)
             
+            if bool(self.get_parameter('require_lidar_verification').value):
+                self.lidar_request_pub.publish(Float64MultiArray(data=[float(self.target_tree.id),
+                    float(self.target_tree.x),float(self.target_tree.y),float(self.target_tree.z)]))
+                valid = (self.lidar_result is not None and self.lidar_result[0]==self.target_tree.id
+                         and time.monotonic()-self.lidar_result[5]<1.0)
+                if not valid:
+                    self.hover_timer = 0
+                    if elapsed > float(self.get_parameter('lidar_verification_timeout').value):
+                        self.rejected_tree_ids.add(int(self.target_tree.id))
+                        self.get_logger().warning(f'LiDAR verification failed for tree {self.target_tree.id}; skip candidate.')
+                        self.target_tree = None
+                        self.lidar_result = None
+                        self.transition('EXPLORE_ROW')
+                    return
             self.hover_timer += 1
             
             # Setelah 40 siklus (4 detik hovering stabil)
@@ -593,6 +669,12 @@ class MissionStateMachine(Node):
                         target_matched_tree = tree
                         break
                 
+                if (target_matched_tree is not None
+                        and bool(self.get_parameter('require_lidar_verification').value)):
+                    target_matched_tree=deepcopy(target_matched_tree)
+                    _,x,y,base,height,_ = self.lidar_result
+                    target_matched_tree.x=float(x);target_matched_tree.y=float(y)
+                    target_matched_tree.z=float(base+height/2)
                 # Cek 1: Apakah ID pohon tersebut masih ada di database mapper?
                 if target_matched_tree is not None:
                     
@@ -654,6 +736,30 @@ class MissionStateMachine(Node):
                     self.transition("EXPLORE_ROW")
                     
         elif self.state == "START_ORBIT":
+            if bool(self.get_parameter('adaptive_orbit_enabled').value):
+                if self.adaptive_z is None:
+                    estimate = self.adaptive_estimates.get(self.target_tree.id)
+                    if estimate is None or time.monotonic()-estimate[2] > float(self.get_parameter("adaptive_estimate_max_age").value):
+                        self.publish_goal(cx, cy, self.current_yaw())
+                        return  # Wait for a recent repeated trunk estimate; normal state timeout applies.
+                    base, height, _ = estimate
+                    self.adaptive_z = orbit_target_z(base, height,
+                        float(self.get_parameter('adaptive_orbit_fraction').value),
+                        float(self.get_parameter('adaptive_orbit_min_height').value),
+                        float(self.get_parameter('adaptive_orbit_max_height').value))
+                    self.get_logger().info(f'Adaptive orbit: observed trunk={height:.2f}m, base Z={base:.2f}, orbit Z={self.adaptive_z:.2f}')
+                self.publish_goal(cx, cy, self.current_yaw())
+                self.orbit_z_pub.publish(Float32(data=float(self.adaptive_z)))
+                agl_ok = (self.adaptive_agl is not None and time.monotonic()-self.adaptive_agl[1] < 0.5
+                          and self.adaptive_agl[0] >= 0.8)
+                if abs(self.current_pose.pose.position.z-self.adaptive_z) > 0.2 or not agl_ok:
+                    self.adaptive_stable_since = None
+                    return
+                if self.adaptive_stable_since is None:
+                    self.adaptive_stable_since = time.monotonic()
+                if time.monotonic()-self.adaptive_stable_since < 1.0:
+                    return
+
             # Do not let the previous tree's completion finish this tree before
             # the orbit controller has acknowledged its new command.
             self.orbit_status = 'IN_PROGRESS'
@@ -661,7 +767,7 @@ class MissionStateMachine(Node):
             target_msg.x = self.target_tree.x
             target_msg.y = self.target_tree.y
             # Kirim Z lokal misi, bukan tinggi/geometri pusat pohon.
-            target_msg.z = float(self.navigation_altitude)
+            target_msg.z = float(self.adaptive_z if self.adaptive_z is not None else self.navigation_altitude)
             self.orbit_target_pub.publish(target_msg)
             
             start_msg = Bool(); start_msg.data = True
@@ -710,11 +816,18 @@ class MissionStateMachine(Node):
 
                 # Misi hanya menginspeksi satu pohon. Tahan posisi akhir orbit
                 # sebelum menghadap dan kembali ke titik takeoff.
+                if bool(self.get_parameter('land_after_orbit').value):
+                    self.adaptive_z = None
+                    self.publish_setpoint_enabled(False)
+                    self.transition('LANDING')
+                    return
                 self.hold_x = cx
                 self.hold_y = cy
                 self.hold_yaw = self.current_yaw()
                 self.hover_timer = 0
                 self.target_tree = None
+                self.adaptive_z = None
+                self.adaptive_stable_since = None
                 self.transition("POST_ORBIT_HOVER")
                 self.get_logger().info(
                     "Orbit satu pohon selesai. Hover sebelum kembali ke titik takeoff."

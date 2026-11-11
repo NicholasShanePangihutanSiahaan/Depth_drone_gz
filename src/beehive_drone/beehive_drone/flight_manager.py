@@ -202,7 +202,7 @@ class FlightManager(Node):
         if (self.current_state.armed and self.target_takeoff_alt > 0.0
                 and current_alt is not None):
             is_hovering = (
-                abs(current_alt - self.target_takeoff_alt) < self.hover_tolerance
+                abs(current_alt - self.target_takeoff_alt) < float(self.get_parameter("hover_tolerance").value)
             )
         
         msg_hover = Bool()
